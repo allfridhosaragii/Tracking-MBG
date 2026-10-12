@@ -27,7 +27,7 @@
     <!-- Prototype Operational Banner (Honest Data Contract) -->
     <aside aria-label="Status Lingkungan Sistem" class="bg-[#172923] text-[#F5F7F3] text-xs font-medium py-1.5 px-4 text-center tracking-wide flex items-center justify-center gap-2 border-b border-[#2C3E37]">
         <span class="inline-block w-2 h-2 rounded-full bg-[#B78C56]" aria-hidden="true"></span>
-        <span class="text-[11px] sm:text-xs">LINGKUNGAN PENGUJIAN: DATA SIMULASI OPERASIONAL — PROTOTYPE AKADEMIK MBG-TRACK</span>
+        <span class="text-[11px] sm:text-xs">LINGKUNGAN PENGUJIAN: DATA SIMULASI OPERASIONAL • PROTOTYPE AKADEMIK MBG-TRACK</span>
     </aside>
 
     <!-- Navigation Bar -->
@@ -62,6 +62,10 @@
                                 <a href="{{ route('head.schools.index') }}" 
                                    class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('head.schools.*') ? 'bg-[#EDF2ED] text-[#1C6654]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
                                     Sekolah &amp; PIC
+                                </a>
+                                <a href="{{ route('head.employees.index') }}" 
+                                   class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('head.employees.*') ? 'bg-[#EDF2ED] text-[#1C6654]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
+                                    Pegawai &amp; Role
                                 </a>
                             @elseif ($roleEnum === \App\Enums\UserRole::PENGAWAS_GIZI)
                                 <a href="{{ route('nutrition.dashboard') }}" 
@@ -142,7 +146,7 @@
     <footer class="bg-white border-t border-[#DCE5DD] py-4 text-center text-xs text-[#53645B] mt-auto">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2.5">
             <div>
-                &copy; {{ date('Y') }} MBG-Track — Calm Utility Operational Monitoring
+                &copy; {{ date('Y') }} MBG-Track : Calm Utility Operational Monitoring
             </div>
             <div class="flex flex-wrap items-center justify-center gap-3 text-[11px] text-[#53645B]">
                 <span>Arsitektur Modular Monolith</span>

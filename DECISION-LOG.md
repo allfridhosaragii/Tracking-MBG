@@ -84,3 +84,19 @@ File ini mencatat seluruh keputusan arsitektur, database, dan implementasi yang 
   3. Menyediakan antarmuka responsif K02 (`index`, `create`, `edit`, `show`) bergaya Clean Luxury Calm Utility dengan touch target >=44px.
   4. Menyediakan suite pengujian komprehensif `SchoolManagementTest.php` (13 test cases, 63 assertions) menguji isolasi SPPG, izin role, soft deactivation, dan assignment PIC.
 - **Konsekuensi:** Sekolah dapat dinonaktifkan tanpa kehilangan jejak audit histori. Integritas referensial database terjaga penuh.
+
+---
+
+## DEC-009: PBI-02 Pegawai dan Hak Akses (Page K03) Implementation Standard
+- **Tanggal:** 12 Oktober 2026
+- **Status:** APPROVED & IMPLEMENTED
+- **Konteks:** Kontrak PBI-02 (`EMPLOYEE-MANAGEMENT.md`, `PBI-BACKLOG.md`, dan `DATA-DICTIONARY.md`) menetapkan pengelolaan pelaksana internal SPPG (Pengawas Gizi, Asisten Lapangan, Kurir) dengan isolasi multi-tenant ketat, pencegahan self-demote / privilege escalation, non-destructive status toggle, password reset ber-audit trail, dan pencatatan riwayat perubahan izin pada `activity_logs`.
+- **Keputusan:**
+  1. Membuat migrasi dan model `ActivityLog` sesuai spesifikasi `DATA-DICTIONARY.md` (actor_id, auditable_type, auditable_id, event, old_values, new_values, metadata, ip_address, user_agent).
+  2. Mengembangkan `EmployeeManagementService` yang mengelola transaksi atomik pendaftaran pegawai, pembaruan role, penonaktifan akun dengan proteksi sopir aktif (`hasActiveTrips()`) dan proteksi kepala tunggal (`isSoleActiveHead()`), serta reset kredensial.
+  3. Memperluas `UserPolicy` untuk memastikan Kepala SPPG hanya dapat melihat, menyunting, menonaktifkan, atau mereset pegawai yang berada dalam `sppg_id` miliknya (HTTP 403 untuk akses cross-tenant).
+  4. Menyediakan FormRequest `StoreEmployeeRequest` dan `UpdateEmployeeRequest` dengan validasi unik email, konfirmasi kata sandi minimal 8 karakter, dan whitelist role internal sah.
+  5. Membangun 4 antarmuka Blade K03 (`index`, `create`, `edit`, `show`) berbasis mobile-first 390px, visual Clean Luxury Calm Operational Editorial, ENERGY 1 / RHYTHM 2 / MOTION 1, touch target >= 44px, dan 0 em dash (`—`).
+  6. Menyediakan suite pengujian lengkap `EmployeeManagementTest.php` (13 tests, 93 assertions) yang mencakup isolasi tenant, proteksi self-demote, blokade login akun nonaktif, dan verifikasi jejak audit.
+- **Konsekuensi:** PBI-02 terimplementasi secara end-to-end tanpa merusak fitur PBI-01 maupun modul existing lainnya. Regression suite lulus 100% (52 tests, 486 assertions, 0 errors).
+

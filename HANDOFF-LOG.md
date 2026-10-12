@@ -53,11 +53,28 @@ Log ini mencatat ringkasan status implementasi, pengujian yang telah dieksekusi,
    - Publik 390px & 1440px: `public_school_390px_1791817668782.png`, `public_school_1440px_1791817673600.png`
    - Kepala SPPG 6 Resolusi (320px - 1440px): `dashboard_320x568_1791813827905.png` s/d `dashboard_1440x900_1791813847386.png`
    - PBI-01 Sekolah Index, Create, Detail (390px & 1440px): `pbi01_schools_*`
+   - PBI-02 Pegawai Index, Create, Show, Edit (320px, 390px, 1440px):
+     - `employees_page_loaded_1791820293140.png` (Desktop 1440px Index)
+     - `k03_index_390px_1791820339386.png` (Mobile 390px Index)
+     - `k03_create_390px_1791820349257.png` (Mobile 390px Create Form)
+     - `k03_show_1440px_1791820361307.png` (Desktop 1440px Show Dossier & Audit Log)
+     - `k03_edit_1440px_1791820373947.png` (Desktop 1440px Edit & Password Reset)
 
 ---
 
-## 4. Pelacakan Pekerjaan Berikutnya
-Sesuai arahan master prompt:
-1. Seluruh halaman existing telah dibangun ulang dengan visual fingerprint orisinal, estetika Clean Luxury Calm Utility, dan kepatuhan WCAG 2.2 AA.
-2. Tidak ada breaking changes pada database schema, migration, routing, authentication, authorization, maupun backend services.
-3. Progres lengkap dan hasil audit tercatat pada `REDESIGN-PROGRESS.md`.
+## 4. Status PBI Aktual
+
+| PBI | Modul | Page ID | Status | Test Coverage |
+|---|---|---|---|---|
+| **PBI-01** | Profil & PIC Sekolah Binaan | `K02` | **DONE & VERIFIED** | 13 tests, 63 assertions |
+| **PBI-02** | Akun Pegawai & Pembagian Role SPPG | `K03` | **DONE & VERIFIED** | 13 tests, 93 assertions |
+| **PBI-03** | Menu dan Kandungan Gizi | `G02` | Scoped Next | Ready for implementation |
+
+---
+
+## 5. Ringkasan Pengujian Akhir
+- **Total Test Suite:** **52 tests, 486 assertions, 0 errors, 100% PASS**
+- **Vite Production Bundle:** Compiled in 5.59s without errors
+- **Browser Visual Verification:** Verified across 320px, 390px, 1440px
+- **Delivery Gate Anti-Slop:** Zero em dashes (`—`), touch targets >= 44px, WCAG 2.2 AA contrast passed.
+

@@ -31,6 +31,7 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout')->midd
 // Public School Transparency portal (No Auth required, sanitized whitelist)
 Route::get('/public/schools/{slug}', [SchoolPublicController::class, 'show'])->name('public.schools.show');
 
+use App\Http\Controllers\Head\EmployeeManagementController;
 use App\Http\Controllers\Head\SchoolManagementController;
 
 // Protected Routes by Role and Active status
@@ -50,6 +51,16 @@ Route::middleware(['auth', 'active'])->group(function () {
             Route::get('/schools/{school}/edit', [SchoolManagementController::class, 'edit'])->name('schools.edit');
             Route::put('/schools/{school}', [SchoolManagementController::class, 'update'])->name('schools.update');
             Route::patch('/schools/{school}/toggle-active', [SchoolManagementController::class, 'toggleActive'])->name('schools.toggle-active');
+
+            // PBI-02: Employee & Role Management (Page K03)
+            Route::get('/employees', [EmployeeManagementController::class, 'index'])->name('employees.index');
+            Route::get('/employees/create', [EmployeeManagementController::class, 'create'])->name('employees.create');
+            Route::post('/employees', [EmployeeManagementController::class, 'store'])->name('employees.store');
+            Route::get('/employees/{user}', [EmployeeManagementController::class, 'show'])->name('employees.show');
+            Route::get('/employees/{user}/edit', [EmployeeManagementController::class, 'edit'])->name('employees.edit');
+            Route::put('/employees/{user}', [EmployeeManagementController::class, 'update'])->name('employees.update');
+            Route::patch('/employees/{user}/toggle-active', [EmployeeManagementController::class, 'toggleActive'])->name('employees.toggle-active');
+            Route::post('/employees/{user}/reset-password', [EmployeeManagementController::class, 'resetPassword'])->name('employees.reset-password');
         });
 
     // 2. Pengawas Gizi Module

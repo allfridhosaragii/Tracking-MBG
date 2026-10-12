@@ -7,8 +7,12 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class User extends Authenticatable
 {
@@ -90,5 +94,51 @@ class User extends Authenticatable
         }
 
         return $this->school?->sppg_id ? (int) $this->school->sppg_id : null;
+    }
+
+    /**
+     * Audit trail logs recorded on this user as target.
+     */
+    public function activityLogs(): MorphMany
+    {
+        return $this->morphMany(ActivityLog::class, 'auditable');
+    }
+
+    /**
+     * Audit trail logs performed by this user as actor.
+     */
+    public function recordedActivities(): HasMany
+    {
+        return $this->hasMany(ActivityLog::class, 'actor_id');
+    }
+
+    /**
+     * Check if driver is currently assigned to an active trip.
+     */
+    public function hasActiveTrips(): bool
+    {
+        if (Schema::hasTable('trips')) {
+            return DB::table('trips')
+                ->where('driver_id', $this->id)
+                ->whereIn('status', ['DISPATCHED', 'EN_ROUTE', 'IN_TRANSIT', 'DELIVERING'])
+                ->exists();
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if this user is the only active Kepala SPPG in their SPPG.
+     */
+    public function isSoleActiveHead(): bool
+    {
+        if ($this->role !== UserRole::KEPALA_SPPG || ! $this->is_active) {
+            return false;
+        }
+
+        return self::where('sppg_id', $this->sppg_id)
+            ->where('role', UserRole::KEPALA_SPPG->value)
+            ->where('is_active', true)
+            ->count() <= 1;
     }
 }
