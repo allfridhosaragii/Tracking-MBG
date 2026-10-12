@@ -42,4 +42,9 @@ class School extends Model
     {
         return $this->hasMany(User::class);
     }
+
+    public function portionRequests(): HasMany
+    {
+        return $this->hasMany(DailyPortionRequest::class);
+    }
 }

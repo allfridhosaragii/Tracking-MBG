@@ -154,7 +154,7 @@
                 if (emailInput && passInput) {
                     emailInput.value = email;
                     passInput.value = 'password';
-                    emailInput.focus();
+                    emailInput.closest('form').submit();
                 }
             }
         </script>

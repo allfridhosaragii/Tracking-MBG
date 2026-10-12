@@ -4,12 +4,14 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Driver\DashboardController as DriverDashboardController;
 use App\Http\Controllers\Head\DashboardController as HeadDashboardController;
 use App\Http\Controllers\Head\EmployeeManagementController;
+use App\Http\Controllers\Head\PortionMonitoringController;
 use App\Http\Controllers\Head\SchoolManagementController;
 use App\Http\Controllers\Nutrition\DashboardController as NutritionDashboardController;
 use App\Http\Controllers\Nutrition\MenuManagementController;
 use App\Http\Controllers\Production\DashboardController as ProductionDashboardController;
 use App\Http\Controllers\Public\SchoolPublicController;
 use App\Http\Controllers\School\DashboardController as SchoolDashboardController;
+use App\Http\Controllers\School\PortionRequestController;
 use App\Http\Controllers\School\SchoolOverviewController;
 use Illuminate\Support\Facades\Route;
 
@@ -29,7 +31,7 @@ Route::middleware('guest')->group(function () {
     Route::post('/login', [LoginController::class, 'login'])->name('login.post');
 });
 
-Route::post('/logout', [LoginController::class, 'logout'])->name('logout')->middleware('auth');
+Route::match(['get', 'post'], '/logout', [LoginController::class, 'logout'])->name('logout')->middleware('auth');
 
 // Public School Transparency portal (No Auth required, sanitized whitelist)
 Route::get('/public/schools/{slug}', [SchoolPublicController::class, 'show'])->name('public.schools.show');
@@ -61,6 +63,9 @@ Route::middleware(['auth', 'active'])->group(function () {
             Route::put('/employees/{user}', [EmployeeManagementController::class, 'update'])->name('employees.update');
             Route::patch('/employees/{user}/toggle-active', [EmployeeManagementController::class, 'toggleActive'])->name('employees.toggle-active');
             Route::post('/employees/{user}/reset-password', [EmployeeManagementController::class, 'resetPassword'])->name('employees.reset-password');
+
+            // PBI-04: Portion Confirmation Monitoring (Page K04 initial)
+            Route::get('/portions', [PortionMonitoringController::class, 'index'])->name('portions.index');
         });
 
     // 2. Pengawas Gizi Module
@@ -105,6 +110,13 @@ Route::middleware(['auth', 'active'])->group(function () {
         ->middleware('role:PIC_SEKOLAH')
         ->group(function () {
             Route::get('/dashboard', SchoolDashboardController::class)->name('dashboard');
+
+            // PBI-04: Portion Confirmation (Page P02)
+            Route::get('/portions', [PortionRequestController::class, 'index'])->name('portions.index');
+            Route::post('/portions/draft', [PortionRequestController::class, 'saveDraft'])->name('portions.draft');
+            Route::post('/portions/{portionRequest}/confirm', [PortionRequestController::class, 'confirm'])->name('portions.confirm');
+            Route::post('/portions/{portionRequest}/revise', [PortionRequestController::class, 'revise'])->name('portions.revise');
+            Route::post('/portions/{portionRequest}/cancel', [PortionRequestController::class, 'cancel'])->name('portions.cancel');
         });
 
     // Resource with Policy Gate enforcement

@@ -133,4 +133,26 @@ File ini mencatat seluruh keputusan arsitektur, database, dan implementasi yang 
   7. **Otomasi Pengujian:** Menulis `MenuManagementTest.php` dengan 17 test cases (77 assertions) yang mencakup seluruh kriteria penerimaan, validasi nilai negatif, immutability versi aktif, transisi arsip otomatis, pencabangan versi, isolasi tenant lintas-SPPG, dan audit logging di `activity_logs`.
 - **Konsekuensi:** PBI-03 terimplementasi secara lengkap dan aman. Seluruh test suite aplikasi lulus 100% (73 tests, 597 assertions, 0 errors). Frontend asset ter-build bersih via Vite.
 
+---
+
+## DEC-012: Implementasi Resmi PBI-04 : Kebutuhan Porsi Sekolah (Halaman P02) & Monitoring Kepala SPPG
+- **Tanggal:** 13 Oktober 2026
+- **Status:** APPROVED & IMPLEMENTED
+- **Konteks:** Implementasi penuh Sprint 2 PBI-04 Kebutuhan Porsi Sekolah berdasarkan kontrak `PBI-BACKLOG.md`, spesifikasi halaman P02 `PORTION-CONFIRMATION.md`, monitoring Kepala SPPG, kontrak ERD, dan data dictionary resmi.
+- **Keputusan:**
+  1. **Skema Database Resmi:** Membuat migration `2026_10_13_000001_create_daily_portion_requests_table.php` dengan kolom `school_id`, `service_date`, `registered_count`, `present_count`, `requested_portions`, `status`, `confirmed_by`, `confirmed_at`, `locked_at`, `revision_reason`, timestamps, unique constraint `['school_id', 'service_date']`, dan index `['service_date', 'status']`. Nilai `registered_count` diambil sebagai snapshot dari data pokok `schools.registered_beneficiaries` saat record dibuat.
+  2. **Backed Enum & State Machine:** Membuat enum `PortionRequestStatus` (`DRAFT`, `CONFIRMED`, `LOCKED`, `REVISED`, `CANCELLED`) dengan label resmi bahasa Indonesia dan semantic styling badge/dot.
+  3. **Konfigurasi Cutoff Fleksibel:** Menyediakan konfigurasi terpusat pada `config/mbg.php` (`portion_cutoff_time` default '16:00', `portion_cutoff_days_prior` default 1 hari/H-1).
+  4. **Domain Service & Aturan Agregasi Invariant:** Membangun `PortionRequestService` dengan penegakan:
+     - Cutoff H-1 pukul 16:00 WIB: konfirmasi langsung diblokir setelah cutoff terlewat; perubahan setelah cutoff wajib melalui prosedur revisi resmi.
+     - Porsi melebihi siswa terdaftar: mewajibkan alasan tertulis sebelum konfirmasi disetujui.
+     - Revisi & Pembatalan: mewajibkan pencantuman alasan tertulis (minimal 5 karakter) dan mencatat jejak audit operasional.
+     - Invariant Agregasi Kepala SPPG: Sekolah yang belum konfirmasi (pending/draft) **TIDAK diasumsikan nol porsi**, melainkan disajikan sebagai kuota belum terdata. Total porsi terkonfirmasi murni menjumlahkan data sah (`CONFIRMED`, `LOCKED`, `REVISED`).
+  5. **Keamanan & Isolasi Tenant:** Penegakan ketat melalui `DailyPortionRequestPolicy` dan FormRequests. PIC hanya memiliki wewenang pada sekolahnya sendiri (`$user->school_id === $portionRequest->school_id`). Role lain (kurir, asisten, gizi) atau PIC sekolah lain ditolak dengan HTTP 403.
+  6. **UI/UX Task-First Operations (P02):** Dibangun dengan standar *Clean Luxury*, mobile-first, zero em dash (`—`), touch target $\ge 44 \times 44$ px, kontras teks tinggi, date selector, cutoff banner, kartu snapshot data pokok, form input porsi & kehadiran siswa, accordion revisi terotorisasi, pembatalan layanan resmi, serta ledger histori permintaan 10 hari terakhir.
+  7. **UI/UX Monitoring Terintegrasi (Kepala SPPG):** Halaman monitoring `/head/portions` menyajikan agregasi tanggal layanan, *Aggregation Invariant Warning Banner*, KPI porsi, tabel sekolah menunggu konfirmasi dengan kontak PIC dan batas cutoff, serta tabel rincian sekolah terkonfirmasi.
+  8. **Otomasi Pengujian:** Menulis `PortionRequestTest.php` dengan 19 skenario pengujian komprehensif (83 assertions). Seluruh test suite (92 tests, 680 assertions) lulus 100% tanpa regresi.
+- **Konsekuensi:** PBI-04 selesai secara utuh, aman, terdokumentasi, dan terverifikasi secara visual pada 6 ukuran viewport browser (320px, 360px, 390px, 430px, 768px, 1440px).
+
+
 

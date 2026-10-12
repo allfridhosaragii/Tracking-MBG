@@ -67,6 +67,10 @@
                                    class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('head.employees.*') ? 'bg-[#EDF2ED] text-[#1C6654]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
                                     Pegawai &amp; Role
                                 </a>
+                                <a href="{{ route('head.portions.index') }}" 
+                                   class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('head.portions.*') ? 'bg-[#EDF2ED] text-[#1C6654]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
+                                    Monitoring Porsi
+                                </a>
                             @elseif ($roleEnum === \App\Enums\UserRole::PENGAWAS_GIZI)
                                 <a href="{{ route('nutrition.dashboard') }}" 
                                    class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('nutrition.dashboard') ? 'bg-[#EDF2ED] text-[#285F80]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
@@ -90,6 +94,10 @@
                                 <a href="{{ route('school.dashboard') }}" 
                                    class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('school.dashboard') ? 'bg-[#EDF2ED] text-[#21684B]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
                                     Penerimaan Sekolah
+                                </a>
+                                <a href="{{ route('school.portions.index') }}" 
+                                   class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('school.portions.*') ? 'bg-[#EDF2ED] text-[#21684B]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
+                                    Konfirmasi Porsi
                                 </a>
                             @endif
                         </nav>
@@ -206,6 +214,19 @@
                             <span class="w-1.5 h-1.5 rounded-full bg-[#1C6654] mt-0.5" aria-hidden="true"></span>
                         @endif
                     </a>
+
+                    <!-- Monitoring Porsi (PBI-04) -->
+                    <a href="{{ route('head.portions.index') }}" 
+                       @if(request()->routeIs('head.portions.*')) aria-current="page" @endif
+                       class="flex flex-col items-center justify-center flex-1 h-full py-1 text-center touch-target smooth-transition {{ request()->routeIs('head.portions.*') ? 'text-[#1C6654] font-bold' : 'text-[#53645B] hover:text-[#172923]' }}">
+                        <svg class="w-5 h-5 mb-0.5 {{ request()->routeIs('head.portions.*') ? 'text-[#1C6654]' : 'text-[#708177]' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                        </svg>
+                        <span class="text-[10px] leading-tight">Porsi</span>
+                        @if(request()->routeIs('head.portions.*'))
+                            <span class="w-1.5 h-1.5 rounded-full bg-[#1C6654] mt-0.5" aria-hidden="true"></span>
+                        @endif
+                    </a>
                 @elseif ($roleEnum === \App\Enums\UserRole::PENGAWAS_GIZI)
                     <a href="{{ route('nutrition.dashboard') }}" 
                        @if(request()->routeIs('nutrition.dashboard')) aria-current="page" @endif
@@ -253,12 +274,26 @@
                 @elseif ($roleEnum === \App\Enums\UserRole::PIC_SEKOLAH)
                     <a href="{{ route('school.dashboard') }}" 
                        @if(request()->routeIs('school.dashboard')) aria-current="page" @endif
-                       class="flex flex-col items-center justify-center flex-1 h-full py-1 text-center touch-target smooth-transition text-[#21684B] font-bold">
-                        <svg class="w-5 h-5 mb-0.5 text-[#21684B]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                       class="flex flex-col items-center justify-center flex-1 h-full py-1 text-center touch-target smooth-transition {{ request()->routeIs('school.dashboard') ? 'text-[#21684B] font-bold' : 'text-[#53645B] hover:text-[#172923]' }}">
+                        <svg class="w-5 h-5 mb-0.5 {{ request()->routeIs('school.dashboard') ? 'text-[#21684B]' : 'text-[#708177]' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                         </svg>
-                        <span class="text-[10px] leading-tight">Penerimaan Sekolah</span>
-                        <span class="w-1.5 h-1.5 rounded-full bg-[#21684B] mt-0.5" aria-hidden="true"></span>
+                        <span class="text-[10px] leading-tight">Penerimaan</span>
+                        @if(request()->routeIs('school.dashboard'))
+                            <span class="w-1.5 h-1.5 rounded-full bg-[#21684B] mt-0.5" aria-hidden="true"></span>
+                        @endif
+                    </a>
+
+                    <a href="{{ route('school.portions.index') }}" 
+                       @if(request()->routeIs('school.portions.*')) aria-current="page" @endif
+                       class="flex flex-col items-center justify-center flex-1 h-full py-1 text-center touch-target smooth-transition {{ request()->routeIs('school.portions.*') ? 'text-[#21684B] font-bold' : 'text-[#53645B] hover:text-[#172923]' }}">
+                        <svg class="w-5 h-5 mb-0.5 {{ request()->routeIs('school.portions.*') ? 'text-[#21684B]' : 'text-[#708177]' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                        </svg>
+                        <span class="text-[10px] leading-tight">Porsi MBG</span>
+                        @if(request()->routeIs('school.portions.*'))
+                            <span class="w-1.5 h-1.5 rounded-full bg-[#21684B] mt-0.5" aria-hidden="true"></span>
+                        @endif
                     </a>
                 @endif
             </div>

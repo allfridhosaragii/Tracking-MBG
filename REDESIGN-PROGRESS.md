@@ -90,3 +90,29 @@ Berdasarkan pemeriksaan mendalam terhadap 11 artefak PBI-02:
   - Browser Audit: Diuji pada 320px, 360px, 390px, 430px, 768px, 1440px tanpa horizontal scroll.
   - Zero em dashes (`—`) di seluruh antarmuka G02.
 
+---
+
+## 4. Implementasi PBI-04 : Kebutuhan Porsi Sekolah (P02) & Monitoring Kepala SPPG (K04)
+- **Status:** **DONE & VERIFIED**
+- **Mode:** `ANTISLOP MODE: DURING`
+- **Komponen yang Dibangun:**
+  - Migration: `2026_10_13_000001_create_daily_portion_requests_table.php` (unique `school_id, service_date`, snapshot `registered_count`)
+  - Model & Enum: `DailyPortionRequest`, `PortionRequestStatus` (`DRAFT`, `CONFIRMED`, `LOCKED`, `REVISED`, `CANCELLED`)
+  - Domain Service: `PortionRequestService` (cutoff logic H-1 16:00 WIB, justification validation, atomic transactions)
+  - Policy & Gate: `DailyPortionRequestPolicy` (PIC hanya sekolah binaan sendiri; Kepala SPPG hanya monitoring SPPG sendiri)
+  - Form Requests: `SavePortionDraftRequest`, `ConfirmPortionRequest`, `RevisePortionRequest`, `CancelPortionRequest`
+  - Views: `resources/views/school/portions/index.blade.php` (P02) & `resources/views/head/portions/index.blade.php` (K04 Monitoring)
+  - Blade Component: `resources/views/components/portion-status-badge.blade.php`
+- **Aturan Bisnis & Integritas:**
+  - **Invariant Agregasi Kepala SPPG:** Sekolah yang belum konfirmasi (pending/draft) **TIDAK dihitung nol porsi**. Banner peringatan agregasi parsial aktif jika ada sekolah pending.
+  - **Cutoff Operasional:** Konfirmasi standar ditutup pada H-1 pukul 16:00 WIB. Perubahan pasca cutoff wajib melalui prosedur revisi resmi dengan alasan tertulis minimal 5 karakter.
+  - **Porsi Melebihi Siswa Terdaftar:** Permintaan porsi yang melebihi snapshot `registered_count` ditolak kecuali menyertakan alasan tertulis yang sah.
+  - **Pembatalan Layanan:** Memerlukan alasan tertulis yang sah dan dicatat pada `activity_logs`.
+  - **Audit Logging:** Seluruh event (`portion_request.draft_saved`, `portion_request.confirmed`, `portion_request.revised`, `portion_request.cancelled`) tercatat lengkap di `activity_logs`.
+- **Hasil Pengujian & Verifikasi:**
+  - Total Test Suite: **92 tests, 680 assertions, 100% PASS** (19 tests khusus `PortionRequestTest`)
+  - Frontend Build: `npm run build` sukses (2.90s, CSS 64.23 kB)
+  - Browser Audit: Diuji pada 320px, 360px, 390px, 430px, 768px, 1440px tanpa horizontal scroll.
+  - Zero em dashes (`—`) di seluruh antarmuka P02 dan K04.
+
+

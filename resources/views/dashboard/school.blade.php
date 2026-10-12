@@ -165,11 +165,18 @@
                     </span>
                 </div>
             </div>
-        </div>
-
-        <div class="mt-5 p-3.5 rounded-xl bg-[#FAFBF9] border border-[#DCE5DD] text-xs text-[#53645B] flex items-center justify-between gap-3">
-            <span>Formulir pencatatan digital porsi harian & upload foto berita acara serah terima akan aktif pada modul transaksi layanan (PBI-04).</span>
-            <span class="text-[11px] font-mono text-[#1C6654] font-bold shrink-0">SIMULASI AKTIF</span>
+        <div class="mt-5 p-4 rounded-xl bg-[#EDF7F2] border border-[#BCE2D0] text-[#1B573E] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+                <span class="font-bold text-xs block text-[#172923]">Konfirmasi Kebutuhan Porsi Harian (P02) Aktif</span>
+                <span class="text-xs text-[#53645B] mt-0.5 block">Kirim konfirmasi jumlah siswa hadir dan kebutuhan ompreng H-1 sebelum pukul 16:00 WIB.</span>
+            </div>
+            <a href="{{ route('school.portions.index') }}" 
+               class="min-h-[44px] px-4 py-2 rounded-xl bg-[#1C6654] hover:bg-[#154D40] text-white text-xs font-bold transition-colors inline-flex items-center justify-center gap-2 subtle-shadow shrink-0 focus:outline-none focus:ring-2 focus:ring-[#1C6654] focus:ring-offset-2">
+                <span>Buka Konfirmasi Porsi</span>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+                </svg>
+            </a>
         </div>
     </x-card>
 </x-app-shell>

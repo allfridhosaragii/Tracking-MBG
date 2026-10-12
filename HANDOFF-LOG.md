@@ -69,29 +69,37 @@ Log ini mencatat ringkasan status implementasi, pengujian yang telah dieksekusi,
 | **PBI-01** | Profil & PIC Sekolah Binaan | `K02` | **DONE & VERIFIED** | 13 tests, 63 assertions |
 | **PBI-02** | Akun Pegawai & Pembagian Role SPPG | `K03` | **DONE & VERIFIED** | 15 tests, 120 assertions |
 | **PBI-03** | Menu dan Kandungan Gizi | `G02` | **DONE & VERIFIED** | 17 tests, 77 assertions |
-| **PBI-04** | Permintaan Porsi Harian Sekolah | `S01` / `S02` | Scoped Next | Ready for next sprint |
+| **PBI-04** | Permintaan Porsi Harian Sekolah | `P02` / `K04 (Monitoring)` | **DONE & VERIFIED** | 19 tests, 83 assertions |
+| **PBI-05** | Perencanaan Produksi Harian | `K04` | Scoped Next | Ready for Sprint 2 (PBI-05) |
 
 ---
 
-## 5. Ringkasan Pengujian Akhir & Status PBI-03
-- **Total Test Suite:** **73 tests, 597 assertions, 0 errors, 100% PASS**
+## 5. Ringkasan Pengujian Akhir & Status PBI-04
+- **Total Test Suite:** **92 tests, 680 assertions, 0 errors, 100% PASS**
   - PBI-01: 13 tests, 63 assertions
   - PBI-02 & Security Audit: 15 tests, 120 assertions
   - PBI-03 Menu & Nutrition Management: 17 tests, 77 assertions
+  - PBI-04 Daily Portion Request & Aggregation: 19 tests, 83 assertions
   - Anti-Slop Empty State Tests: 3 tests, 23 assertions
   - Auth, Policy & Tenant Isolation: 24 tests, 68 assertions
   - Cryptographic Documentation Integrity: 1 test, 245 assertions
-- **Vite Production Bundle:** Compiled in 4.77s without errors (CSS 62.86 kB / gzip 11.79 kB)
-- **Browser Visual Verification:** Verified across 6 viewports (320px, 360px, 390px, 430px, 768px, 1440px)
+- **Vite Production Bundle:** Compiled in 2.90s without errors (CSS 64.23 kB / gzip 12.08 kB)
+- **Browser Visual Verification:** Verified across 6 viewports (320px, 360px, 390px, 430px, 768px, 1440px):
+  - `school_dashboard_p01_1791826271658.png` (P01 School Dashboard with active P02 banner)
+  - `p02_desktop_1440_1791826285647.png` & `p02_portions_desktop_1440_1791826955750.png` (P02 Portion Confirmation Desktop 1440px)
+  - `p02_portions_mobile_390_1791826959753.png` (P02 Portion Confirmation Mobile 390px)
+  - `k04_monitoring_desktop_1440_1791826985302.png` (K04 Portion Monitoring Desktop 1440px)
+  - `k04_monitoring_tablet_768_1791826990328.png` (K04 Portion Monitoring Tablet 768px)
+  - `k04_monitoring_mobile_390_1791826994806.png` (K04 Portion Monitoring Mobile 390px)
+  - `k04_monitoring_small_320_1791826999019.png` (K04 Portion Monitoring Small Mobile 320px)
 - **Delivery Gate Anti-Slop (Mode DURING):**
-  - G02 Nutrition Workspace: Calm Operational Editorial, Slate/Ocean Blue accent (`#285F80`), split dossier layout (komponen bahan di kiri, agregat gizi dan kontrol aktivasi di kanan)
+  - Task-First School Operations: Clean Luxury styling, Forest Green accent (`#1C6654`), split ledger layout (form porsi & kehadiran di kiri, ketentuan operasional & ledger 10 hari di kanan)
+  - Invariant Agregasi Terverifikasi: Sekolah pending TIDAK dihitung nol porsi; peringatan agregasi parsial aktif saat ada sekolah yang belum konfirmasi.
   - 0 em dashes (`—`) di seluruh Blade copy antarmuka
-  - Role-specific mobile bottom navigation aktif untuk Pengawas Gizi (Review Desk & Menu Gizi)
+  - Role-specific mobile bottom navigation aktif untuk PIC Sekolah (Penerimaan & Porsi) dan Kepala SPPG (Briefing, Sekolah, Pegawai, Porsi)
   - Bounding box target interaktif seluruh kontrol $\ge 44 \times 44$ CSS px
-  - Validasi ketat kelengkapan nutrisi sebelum aktivasi (penolakan jika ada nilai null atau tanpa sumber rujukan)
-  - Versioning immutable: menu aktif terkunci, perubahan menghasilkan draft versi baru ($v+1$) tanpa mengubah histori sebelumnya
-  - Jejak audit (`activity_logs`) tercatat pada setiap siklus hidup formulasi menu
+  - Validasi ketat cutoff H-1 16:00 WIB, pencegahan porsi melebihi siswa terdaftar tanpa alasan, dan pencatatan audit log lengkap
 - **Persiapan Dependensi PBI Berikutnya:**
-  - PBI-03 menyediakan versi menu yang valid dan terverifikasi sebagai input wajib bagi `production_plans` pada PBI-05.
-  - PBI-04 (Permintaan Porsi Harian Sekolah) siap dikerjakan sebagai backlog berikutnya.
+  - PBI-03 (Menu Aktif) dan PBI-04 (Porsi Terkonfirmasi Sekolah) kini telah siap penuh sebagai input resmi bagi modul Perencanaan Produksi Dapur (PBI-05).
+
 
