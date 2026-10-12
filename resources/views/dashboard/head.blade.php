@@ -10,7 +10,12 @@
             <p class="text-xs sm:text-sm text-[#53645B] mt-0.5">Monitoring koordinasi harian, kesiapan sekolah, dan agregasi porsi</p>
         </div>
 
-        <div class="flex items-center gap-2 text-xs">
+        <div class="flex flex-wrap items-center gap-2 text-xs">
+            <a href="{{ route('head.schools.index') }}" 
+               class="px-3 py-1.5 rounded-lg bg-[#1C6654] hover:bg-[#164D42] text-white font-semibold transition-colors flex items-center gap-1.5 min-h-[36px]">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                <span>Kelola Sekolah & PIC</span>
+            </a>
             <span class="px-2.5 py-1 rounded-md bg-[#EDF7F2] text-[#21684B] font-semibold border border-[#BCE2D0] flex items-center gap-1.5">
                 <span class="w-2 h-2 rounded-full bg-[#21684B]"></span>
                 <span>SPPG AKTIF</span>
@@ -24,16 +29,16 @@
     <!-- KPI Summary Grid -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
         <div class="bg-white rounded-xl border border-[#DCE5DD] p-4 subtle-shadow">
-            <span class="text-xs font-semibold uppercase tracking-wider text-[#53645B] block mb-1">Total Porsi Target</span>
+            <span class="text-xs font-semibold uppercase tracking-wider text-[#53645B] block mb-1">Total Siswa Terdaftar</span>
             <div class="flex items-baseline gap-2">
                 <span class="text-2xl sm:text-3xl font-bold text-[#172923] tabular-nums">{{ number_format($totalPortions) }}</span>
-                <span class="text-xs font-medium text-[#53645B]">porsi</span>
+                <span class="text-xs font-medium text-[#53645B]">siswa</span>
             </div>
-            <span class="text-[11px] text-[#21684B] font-medium block mt-1">3 sekolah terverifikasi</span>
+            <span class="text-[11px] text-[#21684B] font-medium block mt-1">Data Master 3 Sekolah</span>
         </div>
 
         <div class="bg-white rounded-xl border border-[#DCE5DD] p-4 subtle-shadow">
-            <span class="text-xs font-semibold uppercase tracking-wider text-[#53645B] block mb-1">Sekolah Dilayani</span>
+            <span class="text-xs font-semibold uppercase tracking-wider text-[#53645B] block mb-1">Sekolah Binaan</span>
             <div class="flex items-baseline gap-2">
                 <span class="text-2xl sm:text-3xl font-bold text-[#172923] tabular-nums">{{ $schools->count() }}</span>
                 <span class="text-xs font-medium text-[#53645B]">unit</span>
@@ -60,7 +65,13 @@
     </div>
 
     <!-- School Portion Distribution Table -->
-    <x-card title="Daftar Sekolah Penerima & Kuota Porsi" subtitle="Distribusi sasaran penerima manfaat terdaftar untuk layanan SPPG">
+    <x-card title="Daftar Sekolah Penerima & Data Pokok Siswa" subtitle="Jumlah penerima manfaat terdaftar (Master Data) untuk masing-masing sekolah binaan SPPG">
+        <x-slot:headerAction>
+            <a href="{{ route('head.schools.index') }}" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#1C6654] bg-[#EDF2ED] hover:bg-[#E2EBE2] border border-[#DCE5DD] rounded-lg transition-colors">
+                <span>Buka Manajemen Sekolah</span>
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </a>
+        </x-slot:headerAction>
         <div class="overflow-x-auto">
             <table class="w-full text-left text-xs sm:text-sm">
                 <thead>
@@ -68,7 +79,7 @@
                         <th class="py-3 px-3">Kode Sekolah</th>
                         <th class="py-3 px-3">Nama Sekolah</th>
                         <th class="py-3 px-3">Jenjang</th>
-                        <th class="py-3 px-3 text-right">Target Porsi</th>
+                        <th class="py-3 px-3 text-right">Penerima Terdaftar</th>
                         <th class="py-3 px-3">Portal Publik</th>
                         <th class="py-3 px-3 text-center">Akses Policy</th>
                     </tr>
@@ -87,7 +98,7 @@
                                 </span>
                             </td>
                             <td class="py-3 px-3 text-right font-bold text-[#172923] tabular-nums">
-                                {{ number_format($school->registered_beneficiaries) }}
+                                {{ number_format($school->registered_beneficiaries) }} <span class="text-xs font-normal text-[#53645B]">siswa</span>
                             </td>
                             <td class="py-3 px-3">
                                 <a href="{{ route('public.schools.show', $school->public_slug) }}" 
@@ -108,9 +119,9 @@
                 </tbody>
                 <tfoot>
                     <tr class="border-t-2 border-[#DCE5DD] font-bold text-[#172923] bg-[#F5F7F3]">
-                        <td colspan="3" class="py-3 px-3 text-right">TOTAL PORSI AGREGAT:</td>
-                        <td class="py-3 px-3 text-right tabular-nums text-base text-[#1C6654]">{{ number_format($totalPortions) }}</td>
-                        <td colspan="2" class="py-3 px-3 text-xs text-[#53645B] font-normal">Sesuai Kontrak Simulasi (1.026 porsi)</td>
+                        <td colspan="3" class="py-3 px-3 text-right">TOTAL SASARAN TERDAFTAR (DATA POKOK):</td>
+                        <td class="py-3 px-3 text-right tabular-nums text-base text-[#1C6654]">{{ number_format($totalPortions) }} siswa</td>
+                        <td colspan="2" class="py-3 px-3 text-xs text-[#53645B] font-normal">Kebutuhan porsi harian aktual dikonfirmasi per tanggal layanan oleh PIC pada PBI-04</td>
                     </tr>
                 </tfoot>
             </table>

@@ -1,125 +1,62 @@
-# HANDOFF-LOG — MBG-Track Sprint 0: Project Foundation
+# HANDOFF-LOG — MBG-Track Sprint 0 Audit & Sprint 1 (PBI-01) Handoff
 
-Log ini mencatat ringkasan status implementasi, pengujian yang telah dieksekusi, artefak yang dihasilkan, dan panduan untuk sprint berikutnya. Terletak di root proyek di luar direktori dokumentasi.
-
----
-
-## 1. Status Ringkas Sprint 0
-- **Fase:** Sprint 0 — Project Foundation
-- **Tanggal:** 12 Oktober 2026
-- **Status Akhir:** **DONE & VERIFIED**
-- **Test Suite Result:** **24 Tests Passed, 80 Assertions, 0 Failures**
-- **Visual Verification:** **PASS (Mobile 390px & Desktop 1440px via Browser Automation)**
-- **Integritas Dokumentasi:** **PASS (76 berkas utuh tanpa perubahan)**
+Log ini mencatat ringkasan status implementasi, pengujian yang telah dieksekusi, artefak yang dihasilkan, dan panduan untuk pengembangan berikutnya. Terletak di root proyek di luar direktori dokumentasi.
 
 ---
 
-## 2. Lingkungan & Versi Teknologi
-- **PHP:** 8.3.28 (cli) (ZTS Visual C++ 2019 x64)
-- **Composer:** 2.8.12
-- **Node.js:** v24.1.0
-- **npm:** 11.3.0
-- **MySQL:** 8.4.3 Community Server (Database: `mbg_track_dev`)
-- **Laravel Framework:** 13.35.0
-- **Tailwind CSS / Vite:** Vite 8.3.4, Tailwind CSS 4.0.0
-- **Repository Root:** `P:\Tugas PPL MBG`
+## 1. Status Terkini Proyek
+- **Fase Aktif:** Sprint 1 — PBI-01 (Manajemen Sekolah & PIC Sekolah) **COMPLETED & VERIFIED**
+- **Audit Sprint 0:** **COMPLETED — 10 Temuan & Verifikasi Selesai**
+- **Test Suite Result:** **39 Tests Passed, 303 Assertions, 0 Failures**
+- **Cryptographic Hash Test:** **76 Files Verified, 155 Assertions Passed**
+- **Browser Visual Verification:** **PASS (Mobile 320px, 360px, 390px, 430px, 768px, 1440px)**
+- **Aset Frontend:** Build Vite selesai dalam 742ms (`app-BMLo8nu6.css` 65.64 kB, `app-BvRk9kiK.js` 0.00 kB)
+- **Status Server:** MySQL 8.4.3 berjalan di `127.0.0.1:3306`, Laravel server berjalan di `http://127.0.0.1:8000`.
 
 ---
 
-## 3. Komponen & Berkas yang Dibuat
+## 2. Hasil Final Technical Audit Sprint 0
 
-### A. Konfigurasi & Lingkungan
-- `.env`: Dikonfigurasi untuk database MySQL `mbg_track_dev`, locale `id`.
-- `.gitignore`: Mengabaikan `.env`, `vendor`, `node_modules`, dan `/MBG-Track-Documentation/`.
-
-### B. Enums & Database
-- `app/Enums/UserRole.php`: Definisi 5 peran internal: `KEPALA_SPPG`, `PENGAWAS_GIZI`, `ASISTEN_LAPANGAN`, `KURIR`, `PIC_SEKOLAH`.
-- `app/Models/Sppg.php`: Model SPPG dengan relasi `schools` dan `users`.
-- `app/Models/School.php`: Model Sekolah dengan relasi `sppg` dan `picUsers`.
-- `app/Models/User.php`: Model Pengguna terintegrasi dengan peran, tenant scope, relasi SPPG & sekolah, serta helpers multi-tenant.
-- Migrations:
-  - `0001_01_01_000000_create_sppgs_table.php`
-  - `0001_01_01_000001_create_schools_table.php`
-  - `0001_01_01_000002_create_users_table.php`
-  - `0001_01_01_000003_create_cache_table.php`
-  - `0001_01_01_000004_create_jobs_table.php`
-- Seeders:
-  - `database/seeders/MbgTrackBaselineSeeder.php`: Membangun 1 SPPG (`SPPG-SUB-01`), 3 sekolah (`SCH-SDN-01`: 340, `SCH-SMPN-02`: 276, `SCH-SMAN-05`: 410 -> Total 1.026 porsi), 5 peran internal demo, 1 PIC isolasi uji, dan 1 akun nonaktif.
-
-### C. Keamanan & Authorization
-- `app/Http/Middleware/EnsureUserIsActive.php`: Memutus sesi dan menolak akses jika akun nonaktif.
-- `app/Http/Middleware/EnsureUserHasRole.php`: Mengembalikan HTTP 403 bila role tidak diizinkan.
-- `app/Policies/SchoolPolicy.php`: Mengisolasi data sekolah antar PIC sekolah dan menegakkan wewenang SPPG.
-- `app/Policies/SppgPolicy.php`: Mengisolasi tenant antar SPPG.
-- `app/Policies/UserPolicy.php`: Mengatur wewenang data pegawai.
-
-### D. Controllers & Routing
-- `app/Http/Controllers/Auth/LoginController.php`: Login rate-limited, update timestamp `last_login_at`, validasi status aktif, pengalihan dashboard per role, dan logout aman.
-- `app/Http/Controllers/Head/DashboardController.php`: Operations Briefing Kepala SPPG (`/head/dashboard`).
-- `app/Http/Controllers/Nutrition/DashboardController.php`: Review Desk Pengawas Gizi (`/nutrition/dashboard`).
-- `app/Http/Controllers/Production/DashboardController.php`: Production Runbook Asisten Lapangan (`/production/dashboard`).
-- `app/Http/Controllers/Driver/DashboardController.php`: Active Mission Kurir (`/driver/dashboard`).
-- `app/Http/Controllers/School/DashboardController.php`: Receipt Workflow PIC Sekolah (`/school/dashboard`).
-- `app/Http/Controllers/School/SchoolOverviewController.php`: Detail sekolah berpagar `SchoolPolicy` (`/schools/{school}`).
-- `app/Http/Controllers/Public/SchoolPublicController.php`: Portal transparansi publik whitelist tanpa bocoran privat (`/public/schools/{slug}`).
-- `routes/web.php`: Seluruh pemetaan rute dengan middleware `auth`, `active`, dan `role`.
-
-### E. Desain & Komponen Frontend
-- `resources/css/app.css`: Sistem token warna Calm Utility (`--color-canvas: #F5F7F3`, `--color-brand-700: #1C6654`, `--color-ink: #172923`, `--color-line: #DCE5DD`), font tabular nums, dan aturan reduced motion.
-- `resources/views/components/app-shell.blade.php`: Shell aplikasi adaptif mobile-first, indikator banner simulasi, header dengan profil dan logout.
-- `resources/views/components/role-badge.blade.php`: Badge peran berlabel jelas dan kontras tinggi.
-- `resources/views/components/card.blade.php`: Kartu informasi berbatas garis halus tanpa shadow berlebihan.
-- `resources/views/auth/login.blade.php`: Layar masuk clean luxury dengan preset satu ketuk untuk kemudahan evaluasi demo.
-- `resources/views/dashboard/head.blade.php`: Tampilan briefing Kepala SPPG dengan matriks 3 sekolah.
-- `resources/views/dashboard/nutrition.blade.php`: Tampilan review mutu & gizi.
-- `resources/views/dashboard/production.blade.php`: Tampilan runbook dapur.
-- `resources/views/dashboard/driver.blade.php`: Tampilan manifest multi-stop kurir dengan pesan keselamatan mengemudi.
-- `resources/views/dashboard/school.blade.php`: Tampilan penerimaan ompreng terisolasi PIC.
-- `resources/views/public/school.blade.php`: Tampilan publik transparansi tanpa data rahasia.
-
----
-
-## 4. Hasil Pengujian Nyata
-
-### A. PHPUnit Feature & Unit Tests
-Perintah: `php artisan test --testdox`
-Hasil: **24 tests, 80 assertions, 0 failures (Passed in 1.55s)**
-Cakupan:
-1. `AuthTest`: Render login, redirect root, login kelima role ke dashboard masing-masing, pembaruan `last_login_at`, penolakan akun nonaktif, penolakan password salah, dan logout.
-2. `AuthorizationTest`: Proteksi unauthenticated, penolakan akses lintas role dengan 403 (Driver membuka head dashboard, PIC membuka nutrition dashboard, Asisten membuka driver dashboard), pemisahan tenant (PIC SD A dapat melihat sekolahnya, tetapi ditolak 403 saat mencoba melihat SMP B), dan terminasi sesi pengguna yang dinonaktifkan.
-3. `BaselineDataTest`: Validasi 1 SPPG, 3 sekolah (340 + 276 + 410 = 1.026 porsi), 5 kategori role, dan kecocokan hash password.
-4. `PublicSchoolPortalTest`: Akses publik tanpa otentikasi, respon JSON hanya memuat field whitelist (bebas dari password, koordinat mentah, dan nomor HP), serta penanganan 404 untuk sekolah nonaktif/tidak terdaftar.
-
-### B. Pengujian Visual Browser (Playwright Subagent)
-- **Mobile Viewport (390x844):** Komposisi tombol, input tinggi 44px, banner pengujian simulasi, dan tata letak single-column terverifikasi responsif tanpa overflow.
-- **Desktop Viewport (1440x900):** Reflow grid metrik 4 kolom dan tabel distribusi porsi rapi dengan tipografi tabular-nums.
-- **Screenshot Artefak:**
-  - `login_mobile_1791813105740.png`
-  - `head_dashboard_mobile_1791813130405.png`
-  - `head_dashboard_desktop_1791813135250.png`
-- **Video Sesi Browser:** `login_verification_1791813092543.webp`
-
----
-
-## 5. Kredensial Demo untuk Pengujian Cepat
-
-Semua akun demo menggunakan kata sandi: `password`
-
-| Role | Email | Target Dashboard | Catatan |
+| No | Komponen Audit | Hasil Pengujian & Verifikasi Nyata | Status |
 |---|---|---|---|
-| **Kepala SPPG** | `kepala@mbgtrack.test` | `/head/dashboard` | Akses briefing 3 sekolah |
-| **Pengawas Gizi** | `gizi@mbgtrack.test` | `/nutrition/dashboard` | Akses review mutu |
-| **Asisten Lapangan** | `asisten@mbgtrack.test` | `/production/dashboard` | Akses tahapan dapur |
-| **Kurir** | `kurir@mbgtrack.test` | `/driver/dashboard` | Akses manifest stop |
-| **PIC SDN 01** | `pic.sdn01@mbgtrack.test` | `/school/dashboard` | Terisolasi di SDN 01 (340 porsi) |
-| **PIC SMPN 02** | `pic.smpn02@mbgtrack.test` | `/school/dashboard` | Terisolasi di SMPN 02 (276 porsi) |
-| **Akun Nonaktif** | `inactive@mbgtrack.test` | Ditolak `/login` | Status is_active = false |
-
-Portal Publik (Tanpa Login): `http://127.0.0.1:8000/public/schools/sdn-percobaan-01-surabaya`
+| 1 | **Audit Struktur Kode** | Seluruh migration, model, relationship, controller, middleware, policy, route, dan seeder diperiksa langsung. Relasi SPPG-Sekolah-User terhubung bidirectional dan teruji. | **VERIFIED** |
+| 2 | **Otorisasi Lima Role & Isolasi** | Uji otorisasi 5 peran internal (`KEPALA_SPPG`, `PENGAWAS_GIZI`, `ASISTEN_LAPANGAN`, `KURIR`, `PIC_SEKOLAH`), akun nonaktif terblokir (sesi dibatalkan), dan isolasi lintas SPPG & lintas sekolah diuji via automated test (`AuthorizationTest`, `SchoolManagementTest`). | **VERIFIED** |
+| 3 | **Proteksi Lingkungan Produksi** | Preset tombol demo login dan kredensial default dibungkus dengan guard `app()->isProduction()` dan `config('app.env') === 'production'`. Di lingkungan production, preset tidak dimuat dan tombol disembunyikan. Diuji dengan regression test `test_demo_presets_and_default_credentials_are_hidden_in_production`. | **FIXED & TESTED** |
+| 4 | **Pembedaan `registered_beneficiaries` vs Porsi Harian** | Label dan deskripsi antarmuka diperjelas sebagai "Data Pokok Siswa Terdaftar (Master Data)" distinct dari transaksi porsi harian (PBI-04). | **FIXED & VERIFIED** |
+| 5 | **Git Untracked Audit** | `.env` dan `MBG-Track-Documentation` diverifikasi via `git check-ignore` dan `git ls-files`. Keduanya 100% diabaikan dan tidak terlacak di Git. | **VERIFIED** |
+| 6 | **Integritas Dokumentasi (SHA-256)** | Dibuat baseline hash SHA-256 untuk seluruh 76 file di `MBG-Track-Documentation` (`tests/fixtures/documentation_sha256_manifest.json`) dan diverifikasi otomatis via `DocumentationIntegrityTest` (155 assertions, 0 drift). | **VERIFIED (HASHED)** |
+| 7 | **Responsive Viewport Audit** | Diaudit via browser aktual pada 6 resolusi (320px, 360px, 390px, 430px, 768px, 1440px). Rekaman WebP dan tangkapan layar tersimpan di artefak. | **VERIFIED** |
+| 8 | **Evaluasi Estetika (Clean Luxury)** | Desain menerapkan palet warna Alabaster `#F5F7F3`, Deep Forest `#172923`, Pine `#1C6654`, dan Gold Accent `#B78C56`. Tipografi Instrument Sans, padding lega, touch targets >=44px, anti-AI-slop. | **VERIFIED** |
+| 9 | **Regression Test & Build** | Test suite dieksekusi berulang: 39 tests passed, 303 assertions, 0 failures. Build Vite lulus tanpa error. | **VERIFIED** |
+| 10 | **Dokumentasi & Handoff** | Seluruh temuan, perbaikan, artefak, dan langkah berikutnya dicatat rapi di `DECISION-LOG.md` dan `HANDOFF-LOG.md`. | **VERIFIED** |
 
 ---
 
-## 6. Rekomendasi Langkah Selanjutnya (Sprint 1)
-1. **PBI-01 (Sekolah dan PIC):** Form manajemen CRUD sekolah oleh Kepala SPPG, penugasan PIC dinamis, validasi slug publik dan penonaktifan sekolah.
-2. **PBI-02 (Pegawai dan Hak Akses):** Manajemen pegawai oleh Kepala SPPG, pergantian peran, deaktivasi akun, serta audit log mutasi akun.
-3. **PBI-03 (Menu dan Gizi Terversi):** Skema `menus` dan `menu_items`, penegakan versi menu tidak dapat diedit saat aktif, dan approval mutu oleh Pengawas Gizi.
+## 3. Implementasi Sprint 1: PBI-01 (Sekolah dan PIC Sekolah)
+
+### A. Berkas yang Dibuat & Dimodifikasi
+1. **Form Requests:**
+   - `app/Http/Requests/StoreSchoolRequest.php`: Validasi kode sekolah unik, slug unik, nama, alamat, rentang latitude (-90..90) dan longitude (-180..180), jenjang pendidikan, non-negative beneficiaries.
+   - `app/Http/Requests/UpdateSchoolRequest.php`: Validasi update dengan unique rule ignore, validasi tenant SPPG, dan status aktif.
+2. **Domain Service:**
+   - `app/Services/SchoolManagementService.php`: Logika bisnis pembuatan sekolah dengan transaksi DB atomik, auto-generation unique slug, penugasan dan pelepasan PIC, serta soft active toggle.
+3. **Controller:**
+   - `app/Http/Controllers/Head/SchoolManagementController.php`: Method `index`, `create`, `store`, `show`, `edit`, `update`, `toggleActive`.
+4. **Antarmuka Blade (Page K02):**
+   - `resources/views/head/schools/index.blade.php`: Daftar sekolah dengan search bar, filter status (aktif/nonaktif), KPI summary, card view mobile (390px), tabel desktop (1440px), aksi detail/edit/toggle.
+   - `resources/views/head/schools/create.blade.php`: Formulir registrasi sekolah dengan step visual, helper text, inline error messages, touch target >=44px.
+   - `resources/views/head/schools/edit.blade.php`: Formulir edit sekolah dengan opsi pergantian PIC dan checkbox status non-destruktif.
+   - `resources/views/head/schools/show.blade.php`: Dossier detail sekolah (geografis, link Google Maps eksternal, link portal publik, detail profil PIC).
+5. **Testing Suite:**
+   - `tests/Feature/SchoolManagementTest.php`: 13 test cases komprehensif (63 assertions) menguji guest redirect, role 403, active status toggle, create/update/search, validasi input, auto slug, dan isolasi cross-SPPG.
+
+---
+
+## 4. Panduan Langkah Berikutnya (Sprint 1 Lanjutan)
+Sesuai instruksi dan pembatasan scope:
+1. PBI-01 telah selesai secara penuh dan teruji melalui 13 feature tests dan browser testing.
+2. Langkah selanjutnya adalah melanjutkan ke **PBI-02: Manajemen Akun & Hak Akses Staf SPPG (Page K03)** setelah laporan audit ini ditinjau.
+3. Seluruh pengerjaan tetap wajib mempertahankan prinsip:
+   - Folder `MBG-Track-Documentation` strictly read-only.
+   - Clean Luxury / Calm Utility mobile-first (390px baseline).
+   - Backend-driven multi-tenant security isolation.

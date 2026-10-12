@@ -32,12 +32,12 @@
 
     <!-- School Metrics -->
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <x-card title="Target Porsi Sekolah">
+        <x-card title="Siswa Terdaftar (Data Pokok)">
             <div class="flex items-baseline gap-2">
                 <span class="text-3xl font-bold text-[#1C6654] tabular-nums">{{ number_format($school->registered_beneficiaries) }}</span>
-                <span class="text-xs text-[#53645B]">porsi</span>
+                <span class="text-xs text-[#53645B]">siswa</span>
             </div>
-            <p class="text-xs text-[#53645B] mt-1">Siswa penerima terdaftar</p>
+            <p class="text-xs text-[#53645B] mt-1">Siswa penerima terdaftar. Kebutuhan porsi harian aktual dikonfirmasi per tanggal layanan (PBI-04).</p>
         </x-card>
 
         <x-card title="Mitra SPPG Penyedia">

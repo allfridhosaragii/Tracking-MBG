@@ -125,4 +125,17 @@ class AuthTest extends TestCase
         $response->assertRedirect('/login');
         $this->assertGuest();
     }
+
+    public function test_demo_presets_and_default_credentials_are_hidden_in_production(): void
+    {
+        config(['app.env' => 'production']);
+
+        $response = $this->get('/login');
+
+        $response->assertStatus(200);
+        $response->assertDontSee('Preset Akun Simulasi');
+        $response->assertDontSee('fillPreset');
+        $response->assertDontSee('value="kepala@mbgtrack.test"', false);
+        $response->assertDontSee('value="password"', false);
+    }
 }

@@ -18,7 +18,11 @@ class LoginController extends Controller
      */
     public function showLoginForm(): View
     {
-        return view('auth.login');
+        $isProduction = app()->isProduction() || config('app.env') === 'production';
+
+        return view('auth.login', [
+            'isProduction' => $isProduction,
+        ]);
     }
 
     /**

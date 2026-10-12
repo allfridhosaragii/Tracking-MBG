@@ -1,0 +1,382 @@
+[
+    {
+        "Path": "AGENTS.md",
+        "SHA256": "A2370D10E0CBB852EB8A2A97F673A107E94FB231A7F8B72DC00703A4E97FAFA0",
+        "SizeBytes": 4170
+    },
+    {
+        "Path": "CLAUDE.md",
+        "SHA256": "80976332D31697D99E50E52610EF526D4EEC89BF79C4E1B61A0DF19DA977DA1E",
+        "SizeBytes": 1908
+    },
+    {
+        "Path": "GEMINI.md",
+        "SHA256": "75304BEA7A3883A79F14EA398A929820A70DC048A32F5D8B1BFF76B492B8C281",
+        "SizeBytes": 1733
+    },
+    {
+        "Path": "README.md",
+        "SHA256": "BF7D2D5D99F98DC6F98EA1272CF1DA86FEA6E966C01143976487BE3A193F2289",
+        "SizeBytes": 5764
+    },
+    {
+        "Path": "docs/academic/PROPOSAL-MAPPING.md",
+        "SHA256": "5F595D7C9F402AD9C4FCCEB4B44241F0E66ACF789313A3BC7C98CD4906B4A2D0",
+        "SizeBytes": 4013
+    },
+    {
+        "Path": "docs/ai/AI-ROUTER.md",
+        "SHA256": "A14709DC23C59EA3BC92F65D4C28B7609ADB371AA2724AC1273B7C63200F5260",
+        "SizeBytes": 7944
+    },
+    {
+        "Path": "docs/ai/models/CHATGPT.md",
+        "SHA256": "646F014571A1701AB23305CEF5BF494460C6556969E7D48B5CCCAAA5CF765E5F",
+        "SizeBytes": 9036
+    },
+    {
+        "Path": "docs/ai/models/CLAUDE.md",
+        "SHA256": "67D68FE655CBF9727EE2C1C10EDF6C415929CC2235B51E1C75C77800DB801C78",
+        "SizeBytes": 9080
+    },
+    {
+        "Path": "docs/ai/models/DEEPSEEK.md",
+        "SHA256": "54207DEE34BA37E25B555EFA68AE5B82D154F20F14F441368D66DAEEFA2FC75F",
+        "SizeBytes": 8833
+    },
+    {
+        "Path": "docs/ai/models/GEMINI.md",
+        "SHA256": "D6207E916E9FB4AE411E073E7822E739EC1A82D3816A8B9AC49ACC0C9428DA1B",
+        "SizeBytes": 8968
+    },
+    {
+        "Path": "docs/ai/models/GLM.md",
+        "SHA256": "34B9091841D66F84B0A9288FEDE510FC8F793CF1AE1579CDF7EF5FDDBA89FD12",
+        "SizeBytes": 8350
+    },
+    {
+        "Path": "docs/ai/models/KIMI.md",
+        "SHA256": "61CE85304B8F11D90DD31F077B58F084AA60206FFA03D9FB15C9DDFE9E6F5CA1",
+        "SizeBytes": 8444
+    },
+    {
+        "Path": "docs/business/BUSINESS-FLOWS.md",
+        "SHA256": "03CD001FED17D9E70E8EDC4BBD8FAA11736D492AB6583BF926D8C6653EA0E242",
+        "SizeBytes": 5789
+    },
+    {
+        "Path": "docs/business/PAGE-FEATURE-SPEC.md",
+        "SHA256": "D53D6D5CF7EB8D14570E68407E57D6CF02A3509A7F26466280D7AD1C667ACE16",
+        "SizeBytes": 3793
+    },
+    {
+        "Path": "docs/business/ROLE-PERMISSION-MATRIX.md",
+        "SHA256": "387FEE2191CE513D7832765760BB3949B4E26640D19030E0E132D84B52F43900",
+        "SizeBytes": 5105
+    },
+    {
+        "Path": "docs/business/STATUS-WORKFLOWS.md",
+        "SHA256": "22D508884C0093AE9B4DB2BFD6315712957CD5E750317F1DA7E68B046D8BC0B1",
+        "SizeBytes": 7154
+    },
+    {
+        "Path": "docs/design/COMPONENT-SPEC.md",
+        "SHA256": "25F83B45A8C3EFC483483C4BDA0B7C7BAADF71F98BD34087086CE62D486E3906",
+        "SizeBytes": 4409
+    },
+    {
+        "Path": "docs/design/CREATIVE-DIRECTION.md",
+        "SHA256": "7EC19D1FB5DA045F6EC8F23FB80DB5D3B8700F8A9F714EEB7635B356D46823DE",
+        "SizeBytes": 5112
+    },
+    {
+        "Path": "docs/design/MOBILE-FIRST-GUIDELINES.md",
+        "SHA256": "77DCEA239071C58FDEB7725FE4A9EDCCAE429D089D07B8786705C228739EACC9",
+        "SizeBytes": 3939
+    },
+    {
+        "Path": "docs/design/MOTION-GUIDELINES.md",
+        "SHA256": "7ABA65273DE577F5ED77B7AD193BDE568A02FDC80E2E1257BB944EE83B6DCD84",
+        "SizeBytes": 3457
+    },
+    {
+        "Path": "docs/design/ROLE-EXPERIENCE.md",
+        "SHA256": "78C56CCF4F4C1199B2F01425F82C2B7F56B7650DDF9ABFA31CE3364273DFFDE2",
+        "SizeBytes": 3689
+    },
+    {
+        "Path": "docs/design/UI-DESIGN-SYSTEM.md",
+        "SHA256": "CB2D95BC4FB6DA4CE6BD232E0ED3386F8334DA9C9EC44CD0B6D1471E58BC8554",
+        "SizeBytes": 4812
+    },
+    {
+        "Path": "docs/design/UI-QUALITY-CHECKLIST.md",
+        "SHA256": "F2C09F48F15CD00BB92573B7063B2F9AF662DF6D9EAB60B3A4ED3BEE7FB81382",
+        "SizeBytes": 4252
+    },
+    {
+        "Path": "docs/pages/PAGE-REGISTRY.md",
+        "SHA256": "76253B4420C8C92639DF67F299247EED9F975AB5F1E7AA7D3C799BC70EBBD10B",
+        "SizeBytes": 8383
+    },
+    {
+        "Path": "docs/pages/asisten-lapangan/LOADING-CHECK.md",
+        "SHA256": "A2897C0C870065911FA5AA330BD6E6C8F9EC7CC0795593EC082ACC1B073F7504",
+        "SizeBytes": 10855
+    },
+    {
+        "Path": "docs/pages/asisten-lapangan/PRODUCTION-EXECUTION.md",
+        "SHA256": "7009D5CACD33A49CE8B40784E9E5D3D7614F0285640D1E2D1806E06A92474703",
+        "SizeBytes": 10825
+    },
+    {
+        "Path": "docs/pages/asisten-lapangan/WORK-TODAY.md",
+        "SHA256": "BC208C153E74C609D845FEDD9350020E8E9D3D083FBF09C90ED91E18F4349A01",
+        "SizeBytes": 10440
+    },
+    {
+        "Path": "docs/pages/cross-role/AUDIT-HISTORY.md",
+        "SHA256": "AF021741B3048EADBCB3B02682480A55FDC68D1E78A0EA453F2CAA95CD215188",
+        "SizeBytes": 10584
+    },
+    {
+        "Path": "docs/pages/cross-role/BATCH-DETAIL.md",
+        "SHA256": "4A0E198EE541BF431E39B4BECB6009D0AF2D1DA0150441BC2002CF676A1D10E7",
+        "SizeBytes": 10668
+    },
+    {
+        "Path": "docs/pages/cross-role/INCIDENT-DETAIL.md",
+        "SHA256": "50C2E1D1937A6D0F744BC62CDEC7D2A57E0DBEDC5AC8F12D98E84E1FE1B69E00",
+        "SizeBytes": 10925
+    },
+    {
+        "Path": "docs/pages/cross-role/TRIP-DETAIL.md",
+        "SHA256": "002B235F32D8E9CFAF86440C05E6A028E7A0792E6C29436E14CC61D2C29C62D8",
+        "SizeBytes": 10880
+    },
+    {
+        "Path": "docs/pages/driver/ACTIVE-TRIP.md",
+        "SHA256": "C7259CC99F6CB776A823E3F7B63DDDC24E20CEC768DA52E13CDB2ABF9674A61F",
+        "SizeBytes": 10973
+    },
+    {
+        "Path": "docs/pages/driver/MY-TRIPS.md",
+        "SHA256": "F61A30B865891F5C43CA71D427899A40B0808FF4007F53E9B5ADF3079232AC4B",
+        "SizeBytes": 10402
+    },
+    {
+        "Path": "docs/pages/driver/SCHOOL-HANDOVER.md",
+        "SHA256": "0037AC84E64940A434FF5BB48153FE103B82FA1713CFF010BFE0A312DF6A949A",
+        "SizeBytes": 10762
+    },
+    {
+        "Path": "docs/pages/driver/TRAY-PICKUP.md",
+        "SHA256": "BBDD95AB4A1D751AF99E7F3F8416F0682351DB983EF6FF5410DAD39A5400FEA4",
+        "SizeBytes": 10671
+    },
+    {
+        "Path": "docs/pages/driver/TRIP-PREPARATION.md",
+        "SHA256": "72EF21D163DD38F7C2F80EF88DF6C93E9CC78496BEB5693FDD6E7EBD269D94E8",
+        "SizeBytes": 10817
+    },
+    {
+        "Path": "docs/pages/kepala-sppg/DASHBOARD.md",
+        "SHA256": "33A5C8D413D4E848BF31179BB463F4A21B42D021B1CF06AB7A88F4C013A0B682",
+        "SizeBytes": 10981
+    },
+    {
+        "Path": "docs/pages/kepala-sppg/DISTRIBUTION-CONTROL.md",
+        "SHA256": "76FA2B7FA20355FA4A48ECC22F66824742FAF9EB03C11D251D77F918E42EC282",
+        "SizeBytes": 11028
+    },
+    {
+        "Path": "docs/pages/kepala-sppg/EMPLOYEE-MANAGEMENT.md",
+        "SHA256": "629EF4020353C2A0EA09251C0DC1A115D717FCF330855488C889AC804933E061",
+        "SizeBytes": 10547
+    },
+    {
+        "Path": "docs/pages/kepala-sppg/OPERATIONAL-REPORTS.md",
+        "SHA256": "7C921D4F4935A7E2FF22F3B973082BD9AA8B2804B7CBFFB38EA622B3AD127C4F",
+        "SizeBytes": 10664
+    },
+    {
+        "Path": "docs/pages/kepala-sppg/PRODUCTION-PLANNING.md",
+        "SHA256": "4F2B06B24DD3A112578C8183DE596B4CFF91664EC9DCEC4088EB0EB4F51E23E2",
+        "SizeBytes": 10849
+    },
+    {
+        "Path": "docs/pages/kepala-sppg/SCHOOL-MANAGEMENT.md",
+        "SHA256": "B393B4F24C4188C3429BCCCC866460E3AAD9478DFE8BE080DBCFAF30B1C5DE55",
+        "SizeBytes": 10753
+    },
+    {
+        "Path": "docs/pages/pengawas-gizi/MENU-MANAGEMENT.md",
+        "SHA256": "DE224440D0DE60CD6791795C4C1096314877B825FEB56B47E845D73253ABF816",
+        "SizeBytes": 10722
+    },
+    {
+        "Path": "docs/pages/pengawas-gizi/NUTRITION-DASHBOARD.md",
+        "SHA256": "75348FEA7C67357EA411ED58F77F5E5DE55AACEBE362027275B4ECAC61097747",
+        "SizeBytes": 10537
+    },
+    {
+        "Path": "docs/pages/pengawas-gizi/QUALITY-CONTROL.md",
+        "SHA256": "EDDB44177302E5118D701658050735E69AD4FEDA20F1729829164DB5AC95DDEF",
+        "SizeBytes": 10816
+    },
+    {
+        "Path": "docs/pages/pic-sekolah/DELIVERY-TRACKING.md",
+        "SHA256": "FBD093E57756305649BFED0D91FDE6C73A07847E5F97FD49B8EC39771F478305",
+        "SizeBytes": 10691
+    },
+    {
+        "Path": "docs/pages/pic-sekolah/FOOD-RECEIPT.md",
+        "SHA256": "C5DF5D49E6C142187C1E9842E9FE87BFC9F290696577B2E110F72A7BEB7FCA93",
+        "SizeBytes": 10854
+    },
+    {
+        "Path": "docs/pages/pic-sekolah/MEAL-DISTRIBUTION.md",
+        "SHA256": "71EA3230C0FF670678DF29B498B29A0FFAD5476685602007F53193F14BE64F2B",
+        "SizeBytes": 10794
+    },
+    {
+        "Path": "docs/pages/pic-sekolah/PORTION-CONFIRMATION.md",
+        "SHA256": "658352BCCE415495A27D8737999A6DF62A950205A85674A296A19069ED8FC03B",
+        "SizeBytes": 10568
+    },
+    {
+        "Path": "docs/pages/pic-sekolah/SCHOOL-TODAY.md",
+        "SHA256": "13F475101309007F60E78E71F97F8B0560DE1714019AAB5921F5FD10F31C8D74",
+        "SizeBytes": 10742
+    },
+    {
+        "Path": "docs/pages/pic-sekolah/TRAYS-READY.md",
+        "SHA256": "CE3C9321CE348DFDEA797DEDFFED88C93FD5790F6F049FF22792C4840CA6B126",
+        "SizeBytes": 10595
+    },
+    {
+        "Path": "docs/pages/public/DELIVERY-STATUS.md",
+        "SHA256": "35C0B05860914F7B9829C8C2D3FEA95E811627E1EF8AE0DC8F3D5489E452003E",
+        "SizeBytes": 10630
+    },
+    {
+        "Path": "docs/pages/public/MENU-NUTRITION.md",
+        "SHA256": "480C3C6EE5FE483ECE2403238F1D2FC1602D388F87B14D7F4FE572A593CA3913",
+        "SizeBytes": 10553
+    },
+    {
+        "Path": "docs/pages/public/SCHOOL-MBG-TODAY.md",
+        "SHA256": "29AD071617610FEBDD6B9FB5AE60A0BB21C96C650E34CDA4C423B9AD320CD020",
+        "SizeBytes": 10791
+    },
+    {
+        "Path": "docs/pages/public/SCHOOL-SEARCH.md",
+        "SHA256": "C0CBF32C4C913141D465A4B1F968ED39DEE5CC323238CD32E3CFA10BCBCF3371",
+        "SizeBytes": 10349
+    },
+    {
+        "Path": "docs/pages/shared/LOGIN.md",
+        "SHA256": "CDB290E700C9435CDA343D4EB263A2B3001953D3A2D2B6201D66D3DA82CA0D51",
+        "SizeBytes": 10680
+    },
+    {
+        "Path": "docs/pages/shared/MY-ACCOUNT.md",
+        "SHA256": "D8F2C6AAAE66D6BA4BE458EA1DE6D5B54A7E52FD8FC51B677049504D5B2EDB8F",
+        "SizeBytes": 10371
+    },
+    {
+        "Path": "docs/pages/shared/NOTIFICATIONS.md",
+        "SHA256": "F526D1414C08A886000633448C01DD7E8256AF170C526FACA15F2C49FF5098D9",
+        "SizeBytes": 10755
+    },
+    {
+        "Path": "docs/product/OFFICIAL-SOURCES-AND-ASSUMPTIONS.md",
+        "SHA256": "CF7160E510E81CD0296139382B494C97128B249322A49A103E39D60A655B0BF3",
+        "SizeBytes": 7457
+    },
+    {
+        "Path": "docs/product/PBI-BACKLOG.md",
+        "SHA256": "4BF11417E8197C12B73628B8D451A850AE98FA4DC5EF765DDF89725773BB3EB1",
+        "SizeBytes": 18274
+    },
+    {
+        "Path": "docs/product/PRODUCT-BRIEF.md",
+        "SHA256": "1538D7369E5B3834CAE224C1A4823D560B191F64BEBA0A1E0A14D877DD5F97A6",
+        "SizeBytes": 4600
+    },
+    {
+        "Path": "docs/product/REQUIREMENTS-AND-SCOPE.md",
+        "SHA256": "6CB2C4978731E947B826BD71136E1F855A38C48AB7A572C039A0A40B9DA4DB6D",
+        "SizeBytes": 4354
+    },
+    {
+        "Path": "docs/project/DECISION-LOG.md",
+        "SHA256": "5AC667E112C1E3B7535F67FFD8A576FB8BD78A34F3279917C60D898668117E22",
+        "SizeBytes": 3420
+    },
+    {
+        "Path": "docs/project/DEPLOYMENT-AND-DEMO.md",
+        "SHA256": "1834C1AF3BA0D9F58F6BEB42B53A3A7FF2EC5294F22FF996F78DD2EC60F57CE4",
+        "SizeBytes": 3805
+    },
+    {
+        "Path": "docs/project/HANDOFF-LOG.md",
+        "SHA256": "FA735F9892298D1F6A66C7AD84FB87BA33367672DDBEAD73D03391F8B606F929",
+        "SizeBytes": 2039
+    },
+    {
+        "Path": "docs/project/SPRINT-PLAN.md",
+        "SHA256": "5888E1C8F7AACA0890B65205C9D29C9A42331CFD4C1600B7144BAE9448222089",
+        "SizeBytes": 3075
+    },
+    {
+        "Path": "docs/quality/EDGE-CASES.md",
+        "SHA256": "6EE69112823141C30833397FECEBDBBA5289672C36F0BE108F5035B9F6619454",
+        "SizeBytes": 5299
+    },
+    {
+        "Path": "docs/quality/SECURITY-AND-NFR.md",
+        "SHA256": "0C3A6C62062D28F77315D14CD90DD06D9A790EA861029FACEA99E6FCD43EFB03",
+        "SizeBytes": 4761
+    },
+    {
+        "Path": "docs/quality/TEST-SCENARIOS.md",
+        "SHA256": "8D6ECB42ABECD657E0399D0FF9A5F85FB964629BDB1F0B2BC46633FE994A1852",
+        "SizeBytes": 5877
+    },
+    {
+        "Path": "docs/technical/API-CONTRACTS.md",
+        "SHA256": "8B1C8F4D556370A3106D5250DA52AF17402A1D0D14782C4878F89CE825727903",
+        "SizeBytes": 6583
+    },
+    {
+        "Path": "docs/technical/DATA-DICTIONARY.md",
+        "SHA256": "870B3F02D35A9F5A5673905D959D9BA0747D2105C15CDD94F86567C53CA64CD9",
+        "SizeBytes": 17885
+    },
+    {
+        "Path": "docs/technical/DATABASE-ERD.md",
+        "SHA256": "AC6247037140A7312694EAD2DF94D86D7951CD50DE0ACD4A1D7E50FF04B51E6B",
+        "SizeBytes": 6797
+    },
+    {
+        "Path": "docs/technical/GPS-MAPS-ETA.md",
+        "SHA256": "790EED0672D21B1C9B8A0564AEDC348A43A50C0FA6CCBC09FCD308D5D6BDD393",
+        "SizeBytes": 6257
+    },
+    {
+        "Path": "docs/technical/LARAVEL-ARCHITECTURE.md",
+        "SHA256": "F7D8F38C1F6B0920D6B9D1423C819F83CD7300150CE108EAE1B092B6261EC1D1",
+        "SizeBytes": 5856
+    },
+    {
+        "Path": "docs/technical/NOTIFICATION-RULES.md",
+        "SHA256": "11441346D97C913CF77666AF309D840F776B5F8270D2E1E1D0FDEF597191B465",
+        "SizeBytes": 4391
+    },
+    {
+        "Path": "docs/technical/PHOTO-EVIDENCE.md",
+        "SHA256": "A1DCBC7FF016CDE1973AE949EBE342AD855F8F57D26C6D3C26332C524DEC2844",
+        "SizeBytes": 5045
+    }
+]

@@ -31,6 +31,8 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout')->midd
 // Public School Transparency portal (No Auth required, sanitized whitelist)
 Route::get('/public/schools/{slug}', [SchoolPublicController::class, 'show'])->name('public.schools.show');
 
+use App\Http\Controllers\Head\SchoolManagementController;
+
 // Protected Routes by Role and Active status
 Route::middleware(['auth', 'active'])->group(function () {
     // 1. Kepala SPPG Module
@@ -39,6 +41,15 @@ Route::middleware(['auth', 'active'])->group(function () {
         ->middleware('role:KEPALA_SPPG')
         ->group(function () {
             Route::get('/dashboard', HeadDashboardController::class)->name('dashboard');
+            
+            // PBI-01: School & PIC Management (Page K02)
+            Route::get('/schools', [SchoolManagementController::class, 'index'])->name('schools.index');
+            Route::get('/schools/create', [SchoolManagementController::class, 'create'])->name('schools.create');
+            Route::post('/schools', [SchoolManagementController::class, 'store'])->name('schools.store');
+            Route::get('/schools/{school}', [SchoolManagementController::class, 'show'])->name('schools.show');
+            Route::get('/schools/{school}/edit', [SchoolManagementController::class, 'edit'])->name('schools.edit');
+            Route::put('/schools/{school}', [SchoolManagementController::class, 'update'])->name('schools.update');
+            Route::patch('/schools/{school}/toggle-active', [SchoolManagementController::class, 'toggleActive'])->name('schools.toggle-active');
         });
 
     // 2. Pengawas Gizi Module

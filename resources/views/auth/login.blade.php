@@ -24,7 +24,7 @@
                         <input type="email" 
                                name="email" 
                                id="email" 
-                               value="{{ old('email', 'kepala@mbgtrack.test') }}" 
+                               value="{{ old('email', ! ($isProduction ?? app()->isProduction()) ? 'kepala@mbgtrack.test' : '') }}" 
                                required 
                                autocomplete="email"
                                class="w-full h-11 px-3.5 rounded-xl border {{ $errors->has('email') ? 'border-[#9B3232] bg-[#FDF2F2]' : 'border-[#DCE5DD] bg-white' }} text-[#172923] text-sm focus:outline-none focus:ring-2 focus:ring-[#1C6654] focus:border-transparent transition-all placeholder:text-[#53645B]/60"
@@ -49,7 +49,7 @@
                         <input type="password" 
                                name="password" 
                                id="password" 
-                               value="password"
+                               value="{{ ! ($isProduction ?? app()->isProduction()) ? 'password' : '' }}"
                                required 
                                autocomplete="current-password"
                                class="w-full h-11 px-3.5 rounded-xl border {{ $errors->has('password') ? 'border-[#9B3232] bg-[#FDF2F2]' : 'border-[#DCE5DD] bg-white' }} text-[#172923] text-sm focus:outline-none focus:ring-2 focus:ring-[#1C6654] focus:border-transparent transition-all placeholder:text-[#53645B]/60"
@@ -77,51 +77,53 @@
                     </div>
                 </form>
 
-                <!-- Demo Simulation Quick Preset Switcher -->
-                <div class="mt-6 pt-5 border-t border-[#EDF2ED]">
-                    <div class="flex items-center justify-between mb-2.5">
-                        <span class="text-[11px] font-bold uppercase tracking-wider text-[#53645B]">Preset Akun Simulasi (Sprint 0)</span>
-                        <span class="text-[10px] bg-[#FAF4EB] text-[#885D1C] px-2 py-0.5 rounded font-medium border border-[#E8D7BE]">Demo Mode</span>
+                @if (! ($isProduction ?? app()->isProduction()))
+                    <!-- Demo Simulation Quick Preset Switcher (Disabled in Production) -->
+                    <div class="mt-6 pt-5 border-t border-[#EDF2ED]">
+                        <div class="flex items-center justify-between mb-2.5">
+                            <span class="text-[11px] font-bold uppercase tracking-wider text-[#53645B]">Preset Akun Simulasi (Dev Only)</span>
+                            <span class="text-[10px] bg-[#FAF4EB] text-[#885D1C] px-2 py-0.5 rounded font-medium border border-[#E8D7BE]">Demo Mode</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <button type="button" 
+                                    onclick="fillPreset('kepala@mbgtrack.test')" 
+                                    class="p-2 rounded-lg text-left border border-[#DCE5DD] hover:border-[#1C6654] hover:bg-[#EDF5F2] transition-colors cursor-pointer">
+                                <span class="font-semibold block text-[#172923] text-[11px]">Kepala SPPG</span>
+                                <span class="text-[10px] text-[#53645B] block truncate">kepala@mbgtrack.test</span>
+                            </button>
+                            <button type="button" 
+                                    onclick="fillPreset('gizi@mbgtrack.test')" 
+                                    class="p-2 rounded-lg text-left border border-[#DCE5DD] hover:border-[#1C6654] hover:bg-[#EDF5F2] transition-colors cursor-pointer">
+                                <span class="font-semibold block text-[#172923] text-[11px]">Pengawas Gizi</span>
+                                <span class="text-[10px] text-[#53645B] block truncate">gizi@mbgtrack.test</span>
+                            </button>
+                            <button type="button" 
+                                    onclick="fillPreset('asisten@mbgtrack.test')" 
+                                    class="p-2 rounded-lg text-left border border-[#DCE5DD] hover:border-[#1C6654] hover:bg-[#EDF5F2] transition-colors cursor-pointer">
+                                <span class="font-semibold block text-[#172923] text-[11px]">Asisten Lapangan</span>
+                                <span class="text-[10px] text-[#53645B] block truncate">asisten@mbgtrack.test</span>
+                            </button>
+                            <button type="button" 
+                                    onclick="fillPreset('kurir@mbgtrack.test')" 
+                                    class="p-2 rounded-lg text-left border border-[#DCE5DD] hover:border-[#1C6654] hover:bg-[#EDF5F2] transition-colors cursor-pointer">
+                                <span class="font-semibold block text-[#172923] text-[11px]">Kurir Pengantaran</span>
+                                <span class="text-[10px] text-[#53645B] block truncate">kurir@mbgtrack.test</span>
+                            </button>
+                            <button type="button" 
+                                    onclick="fillPreset('pic.sdn01@mbgtrack.test')" 
+                                    class="p-2 rounded-lg text-left border border-[#DCE5DD] hover:border-[#1C6654] hover:bg-[#EDF5F2] transition-colors cursor-pointer">
+                                <span class="font-semibold block text-[#172923] text-[11px]">PIC SDN Percobaan</span>
+                                <span class="text-[10px] text-[#53645B] block truncate">pic.sdn01@mbgtrack.test</span>
+                            </button>
+                            <button type="button" 
+                                    onclick="fillPreset('inactive@mbgtrack.test')" 
+                                    class="p-2 rounded-lg text-left border border-[#F5C2C2] hover:bg-[#FDF2F2] transition-colors cursor-pointer">
+                                <span class="font-semibold block text-[#9B3232] text-[11px]">Uji Akun Nonaktif</span>
+                                <span class="text-[10px] text-[#9B3232]/80 block truncate">inactive@mbgtrack.test</span>
+                            </button>
+                        </div>
                     </div>
-                    <div class="grid grid-cols-2 gap-2 text-xs">
-                        <button type="button" 
-                                onclick="fillPreset('kepala@mbgtrack.test')" 
-                                class="p-2 rounded-lg text-left border border-[#DCE5DD] hover:border-[#1C6654] hover:bg-[#EDF5F2] transition-colors cursor-pointer">
-                            <span class="font-semibold block text-[#172923] text-[11px]">Kepala SPPG</span>
-                            <span class="text-[10px] text-[#53645B] block truncate">kepala@mbgtrack.test</span>
-                        </button>
-                        <button type="button" 
-                                onclick="fillPreset('gizi@mbgtrack.test')" 
-                                class="p-2 rounded-lg text-left border border-[#DCE5DD] hover:border-[#1C6654] hover:bg-[#EDF5F2] transition-colors cursor-pointer">
-                            <span class="font-semibold block text-[#172923] text-[11px]">Pengawas Gizi</span>
-                            <span class="text-[10px] text-[#53645B] block truncate">gizi@mbgtrack.test</span>
-                        </button>
-                        <button type="button" 
-                                onclick="fillPreset('asisten@mbgtrack.test')" 
-                                class="p-2 rounded-lg text-left border border-[#DCE5DD] hover:border-[#1C6654] hover:bg-[#EDF5F2] transition-colors cursor-pointer">
-                            <span class="font-semibold block text-[#172923] text-[11px]">Asisten Lapangan</span>
-                            <span class="text-[10px] text-[#53645B] block truncate">asisten@mbgtrack.test</span>
-                        </button>
-                        <button type="button" 
-                                onclick="fillPreset('kurir@mbgtrack.test')" 
-                                class="p-2 rounded-lg text-left border border-[#DCE5DD] hover:border-[#1C6654] hover:bg-[#EDF5F2] transition-colors cursor-pointer">
-                            <span class="font-semibold block text-[#172923] text-[11px]">Kurir Pengantaran</span>
-                            <span class="text-[10px] text-[#53645B] block truncate">kurir@mbgtrack.test</span>
-                        </button>
-                        <button type="button" 
-                                onclick="fillPreset('pic.sdn01@mbgtrack.test')" 
-                                class="p-2 rounded-lg text-left border border-[#DCE5DD] hover:border-[#1C6654] hover:bg-[#EDF5F2] transition-colors cursor-pointer">
-                            <span class="font-semibold block text-[#172923] text-[11px]">PIC SDN Percobaan</span>
-                            <span class="text-[10px] text-[#53645B] block truncate">pic.sdn01@mbgtrack.test</span>
-                        </button>
-                        <button type="button" 
-                                onclick="fillPreset('inactive@mbgtrack.test')" 
-                                class="p-2 rounded-lg text-left border border-[#F5C2C2] hover:bg-[#FDF2F2] transition-colors cursor-pointer">
-                            <span class="font-semibold block text-[#9B3232] text-[11px]">Uji Akun Nonaktif</span>
-                            <span class="text-[10px] text-[#9B3232]/80 block truncate">inactive@mbgtrack.test</span>
-                        </button>
-                    </div>
-                </div>
+                @endif
             </div>
 
             <!-- Public Portal Link -->
@@ -138,13 +140,16 @@
         </div>
     </div>
 
-    <script>
-        function fillPreset(email) {
-            const emailInput = document.getElementById('email');
-            const passInput = document.getElementById('password');
-            emailInput.value = email;
-            passInput.value = 'password';
-            emailInput.focus();
-        }
-    </script>
+    @if (! ($isProduction ?? app()->isProduction()))
+        <script>
+            function fillPreset(email) {
+                const emailInput = document.getElementById('email');
+                const passInput = document.getElementById('password');
+                emailInput.value = email;
+                passInput.value = 'password';
+                emailInput.focus();
+            }
+        </script>
+    @endif
 </x-app-shell>
+
