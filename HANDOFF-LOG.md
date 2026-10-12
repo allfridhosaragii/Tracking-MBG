@@ -102,4 +102,19 @@ Log ini mencatat ringkasan status implementasi, pengujian yang telah dieksekusi,
 - **Persiapan Dependensi PBI Berikutnya:**
   - PBI-03 (Menu Aktif) dan PBI-04 (Porsi Terkonfirmasi Sekolah) kini telah siap penuh sebagai input resmi bagi modul Perencanaan Produksi Dapur (PBI-05).
 
+---
+
+## 6. Deployment Cloud (Vercel Serverless)
+
+- **Production URL:** `https://tracking-mbg.vercel.app`
+- **Login Portal:** `https://tracking-mbg.vercel.app/login`
+- **Public Transparency:** `https://tracking-mbg.vercel.app/public/schools/sdn-percobaan-01-surabaya`
+- **Konfigurasi Serverless & Fix Reverse Proxy:**
+  - **Trust Proxies:** Dikonfigurasi `$middleware->trustProxies(at: '*')` di `bootstrap/app.php` sehingga Laravel mengenali header edge reverse proxy Vercel (`X-Forwarded-Proto: https`).
+  - **HTTPS Scheme Enforcement:** `URL::forceScheme('https')` diaktifkan di `app/Providers/AppServiceProvider.php` untuk request `production` atau `HTTP_X_FORWARDED_PROTO === 'https'`.
+  - **CSP Auto-Upgrade:** `<meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">` ditambahkan di `resources/views/components/app-shell.blade.php`.
+  - **Serverless SQLite Ephemeral Storage:** `api/index.php` secara otomatis menyalin database starter `database/database.sqlite` (berisi skema lengkap, SPPG Perintis Surabaya, 3 sekolah binaan, 7 akun pengguna simulasi, menu gizi, dan porsi) ke `/tmp/database.sqlite` saat cold-start lambda.
+  - **Verifikasi Live Browser:** Berhasil login sebagai Kepala SPPG (`kepala@mbgtrack.test`) dan navigasi ke Dashboard Operasional dengan rendering visual penuh (Clean Luxury, Forest Green `#1C6654`, Warm Sage `#F5F7F3`, WCAG 2.2 AA).
+
+
 
