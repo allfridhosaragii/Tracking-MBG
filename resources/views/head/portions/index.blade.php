@@ -215,7 +215,7 @@
 
     <!-- Section 2: Confirmed Schools Breakdown -->
     <section aria-label="Rincian Sekolah Terkonfirmasi" class="mb-6">
-        <x-card title="Rincian Sekolah Terkonfirmasi &amp; Terkunci" subtitle="Daftar alokasi porsi yang sah dan siap dijadikan acuan persiapan dapur SPPG">
+        <x-card title="Rincian Sekolah Terkonfirmasi & Terkunci" subtitle="Daftar alokasi porsi yang sah dan siap dijadikan acuan persiapan dapur SPPG">
             @if(count($aggregate['confirmed_schools']) === 0)
                 <div class="p-6 text-center text-xs text-[#53645B] bg-[#FAFBF9] rounded-xl border border-[#DCE5DD]">
                     <p class="font-bold text-[#172923] text-sm">Belum Ada Sekolah Terkonfirmasi</p>

@@ -114,7 +114,7 @@
     </div>
 
     <!-- Operational Ledger: Daftar Sekolah Binaan (FINDING-03: Empty state handling) -->
-    <x-card title="Ledger Sekolah Binaan &amp; Data Pokok Penerima" subtitle="Distribusi sekolah dalam jangkauan pelayanan SPPG {{ $sppg->code }}">
+    <x-card title="Ledger Sekolah Binaan & Data Pokok Penerima" subtitle="Distribusi sekolah dalam jangkauan pelayanan SPPG {{ $sppg->code }}">
         <x-slot:headerAction>
             <a href="{{ route('head.schools.index') }}" 
                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#1C6654] bg-[#EDF2ED] hover:bg-[#E2EBE2] border border-[#DCE5DD] rounded-xl smooth-transition touch-target">
