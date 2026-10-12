@@ -3,7 +3,7 @@
         <!-- Identity Pill -->
         <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-[#EDF7F2] text-[#1B573E] border border-[#BCE2D0]">
             <span class="w-2 h-2 rounded-full bg-[#21684B]" aria-hidden="true"></span>
-            <span>PROGRAM MAKAN BERGIZI GRATIS (MBG) — BGN</span>
+            <span>PROGRAM MAKAN BERGIZI GRATIS (MBG) : BGN</span>
         </div>
 
         <!-- Hero Headline -->

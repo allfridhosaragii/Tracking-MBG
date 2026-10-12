@@ -19,9 +19,21 @@ class LoginController extends Controller
     public function showLoginForm(): View
     {
         $isProduction = app()->isProduction() || config('app.env') === 'production';
+        
+        $sampleSchoolSlug = null;
+        try {
+            $sampleSchoolSlug = \App\Models\School::query()
+                ->where('is_active', true)
+                ->whereNotNull('public_slug')
+                ->orderBy('id')
+                ->value('public_slug');
+        } catch (\Throwable) {
+            $sampleSchoolSlug = null;
+        }
 
         return view('auth.login', [
             'isProduction' => $isProduction,
+            'sampleSchoolSlug' => $sampleSchoolSlug,
         ]);
     }
 

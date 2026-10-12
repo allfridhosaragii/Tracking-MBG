@@ -26,7 +26,16 @@ class UpdateEmployeeRequest extends FormRequest
     public function rules(): array
     {
         $targetUser = $this->route('user') ?? $this->route('employee');
-        $targetId = $targetUser instanceof User ? $targetUser->id : $targetUser;
+        $targetId = $targetUser instanceof User ? $targetUser->id : (int) $targetUser;
+        $isSelf = $this->user() && (int) $this->user()->id === (int) $targetId;
+
+        $allowedRoles = $isSelf
+            ? [UserRole::KEPALA_SPPG->value]
+            : [
+                UserRole::PENGAWAS_GIZI->value,
+                UserRole::ASISTEN_LAPANGAN->value,
+                UserRole::KURIR->value,
+            ];
 
         return [
             'name' => ['required', 'string', 'max:180'],
@@ -41,12 +50,7 @@ class UpdateEmployeeRequest extends FormRequest
             'role' => [
                 'required',
                 'string',
-                Rule::in([
-                    UserRole::PENGAWAS_GIZI->value,
-                    UserRole::ASISTEN_LAPANGAN->value,
-                    UserRole::KURIR->value,
-                    UserRole::KEPALA_SPPG->value,
-                ]),
+                Rule::in($allowedRoles),
             ],
             'is_active' => ['sometimes', 'boolean'],
             'password' => ['nullable', 'string', 'min:8', 'confirmed'],

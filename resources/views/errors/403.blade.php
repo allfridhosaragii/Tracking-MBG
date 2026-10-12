@@ -3,7 +3,7 @@
         <!-- Error Status Badge -->
         <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-[#FDF2F2] text-[#9B3232] border border-[#F5C2C2] mb-4">
             <span class="w-2 h-2 rounded-full bg-[#9B3232]" aria-hidden="true"></span>
-            <span class="font-mono">KODE 403 — AKSES DITOLAK</span>
+            <span class="font-mono">KODE 403 : AKSES DITOLAK</span>
         </div>
 
         <h1 class="text-2xl sm:text-3xl font-bold text-[#172923] tracking-tight mb-2">

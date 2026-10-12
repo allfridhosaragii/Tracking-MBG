@@ -134,12 +134,14 @@
             </div>
 
             <!-- Transparency Link: Clean Luxury Context -->
-            <div class="mt-6 text-center text-xs text-[#53645B]">
-                Masyarakat dan wali murid dapat memantau menu tanpa login via
-                <a href="{{ route('public.schools.show', 'sdn-percobaan-01-surabaya') }}" class="font-semibold text-[#1C6654] hover:underline ml-1">
-                    Portal Transparansi Publik &rarr;
-                </a>
-            </div>
+            @if (! empty($sampleSchoolSlug))
+                <div class="mt-6 text-center text-xs text-[#53645B]">
+                    Masyarakat dan wali murid dapat memantau menu tanpa login via
+                    <a href="{{ route('public.schools.show', $sampleSchoolSlug) }}" class="font-semibold text-[#1C6654] hover:underline ml-1">
+                        Portal Transparansi Publik &rarr;
+                    </a>
+                </div>
+            @endif
 
         </div>
     </div>

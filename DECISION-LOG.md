@@ -100,3 +100,21 @@ File ini mencatat seluruh keputusan arsitektur, database, dan implementasi yang 
   6. Menyediakan suite pengujian lengkap `EmployeeManagementTest.php` (13 tests, 93 assertions) yang mencakup isolasi tenant, proteksi self-demote, blokade login akun nonaktif, dan verifikasi jejak audit.
 - **Konsekuensi:** PBI-02 terimplementasi secara end-to-end tanpa merusak fitur PBI-01 maupun modul existing lainnya. Regression suite lulus 100% (52 tests, 486 assertions, 0 errors).
 
+---
+
+## DEC-010: Anti-Slop Audit Findings (FINDING-01 s/d FINDING-08) & PBI-02 Security Hardening
+- **Tanggal:** 12 Oktober 2026
+- **Status:** APPROVED & IMPLEMENTED
+- **Konteks:** Perbaikan 8 temuan audit Anti-Slop Mode AFTER yang telah disetujui pengguna (em dash cleanup, mobile nav, empty/error state, bounding box touch targets, de-genericizing dashboards, kurir status informatif, dynamic public school slug, dan 320px layout reflow) serta audit keamanan khusus fitur PBI-02 Manajemen Pegawai.
+- **Keputusan:**
+  1. Membersihkan 100% karakter em dash (`—`) dari seluruh copy antarmuka Blade, digantikan dengan penataan tipografi baku (titik dua `:` atau penataan terstruktur).
+  2. Membangun navigasi mobile bawah (bottom navigation bar) yang benar-benar berfungsi, role-specific, safe-area aware (`pb-[env(safe-area-inset-bottom)]`), dengan indikator aktif (`aria-current="page"`), tanpa menutupi konten (`mb-24 md:mb-8` di `<main>`).
+  3. Mengubah kontrol aksi tabel manajemen sekolah dan pegawai agar strictly memiliki target interaktif minimal 44x44 CSS px (`min-h-[44px] min-w-[44px] inline-flex items-center justify-center`). Terukur via browser: Detail (56.4x44px), Edit (47.9x44px), Nonaktifkan (93.9x44px).
+  4. Menghilangkan ketergantungan hardcoded school slug pada halaman login (`/login`) dengan resolusi dinamis sekolah aktif pertama yang valid, mencegah link mati atau sekolah palsu.
+  5. Mengganti tombol kurir tiruan dan data trip simulasi dengan status siaga operasional informatif yang jujur, menegaskan bahwa penugasan rute beroperasi pada PBI-07 / PBI-08.
+  6. Mengimplementasikan honest empty states dan recovery actions pada dashboard Kepala SPPG dan Kurir, dilengkapi test fixtures otomatis pada test suite.
+  7. Mengeliminasi kesan dashboard generik dengan penataan visual hierarchy terarah, executive masthead, kurir purple theme, dan reflow responsif 320px tanpa font kerdil.
+  8. Memperketat keamanan PBI-02: mencegah eskalasi wewenang (privilege escalation) ke `KEPALA_SPPG` via FormRequest dan Service, memastikan tidak ada kata sandi/hash/token tersimpan di `activity_logs`, dan menambahkan security tests di `EmployeeManagementTest.php`.
+- **Konsekuensi:** Seluruh 8 temuan audit dan audit keamanan PBI-02 terselesaikan dengan bukti. Test suite lulus 100% (56 tests, 520 assertions, 0 errors).
+
+

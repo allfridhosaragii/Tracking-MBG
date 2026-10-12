@@ -1,4 +1,4 @@
-<x-app-shell title="Kelola Sekolah Binaan — Kepala SPPG">
+<x-app-shell title="Kelola Sekolah Binaan : Kepala SPPG">
     <!-- Header Navigation & Action -->
     <div class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-[#DCE5DD]">
         <div>
@@ -192,24 +192,27 @@
                                         </span>
                                     @endif
                                 </td>
-                                <td class="py-3.5 px-4 text-right">
-                                    <div class="inline-flex items-center gap-1">
+                                <td class="py-3 px-4 text-right whitespace-nowrap">
+                                    <div class="inline-flex items-center gap-1.5 justify-end">
                                         <a href="{{ route('head.schools.show', $school) }}" 
-                                           class="px-2.5 py-1 text-xs font-medium text-[#172923] bg-white border border-[#DCE5DD] rounded-lg hover:bg-[#F5F7F3] transition-colors"
-                                           title="Lihat Detail">
+                                           class="min-h-[44px] min-w-[44px] inline-flex items-center justify-center px-3 py-2 text-xs font-semibold text-[#172923] bg-white border border-[#DCE5DD] rounded-xl hover:bg-[#F5F7F3] focus:outline-none focus:ring-2 focus:ring-[#1C6654] smooth-transition touch-target"
+                                           title="Lihat Detail: {{ $school->name }}"
+                                           aria-label="Detail {{ $school->name }}">
                                             Detail
                                         </a>
                                         <a href="{{ route('head.schools.edit', $school) }}" 
-                                           class="px-2.5 py-1 text-xs font-semibold text-[#1C6654] bg-[#EDF2ED] border border-[#DCE5DD] rounded-lg hover:bg-[#E2EBE2] transition-colors"
-                                           title="Edit Sekolah">
+                                           class="min-h-[44px] min-w-[44px] inline-flex items-center justify-center px-3 py-2 text-xs font-semibold text-[#1C6654] bg-[#EDF2ED] border border-[#DCE5DD] rounded-xl hover:bg-[#E2EBE2] focus:outline-none focus:ring-2 focus:ring-[#1C6654] smooth-transition touch-target"
+                                           title="Edit Sekolah: {{ $school->name }}"
+                                           aria-label="Edit {{ $school->name }}">
                                             Edit
                                         </a>
                                         <form method="POST" action="{{ route('head.schools.toggle-active', $school) }}" class="inline" onsubmit="return confirm('Apakah Anda yakin ingin mengubah status aktif sekolah ini?')">
                                             @csrf
                                             @method('PATCH')
                                             <button type="submit" 
-                                                    class="px-2.5 py-1 text-xs font-medium {{ $school->is_active ? 'text-[#9B3232] hover:bg-[#FDF2F2]' : 'text-[#21684B] hover:bg-[#EDF7F2]' }} rounded-lg transition-colors cursor-pointer"
-                                                    title="{{ $school->is_active ? 'Nonaktifkan Sekolah' : 'Aktifkan Sekolah' }}">
+                                                    class="min-h-[44px] min-w-[44px] inline-flex items-center justify-center px-3 py-2 text-xs font-semibold {{ $school->is_active ? 'text-[#9B3232] bg-[#FDF2F2] hover:bg-[#FBE8E8] border border-[#F5C2C2]' : 'text-[#21684B] bg-[#EDF7F2] hover:bg-[#DCF0E6] border border-[#BCE2D0]' }} rounded-xl smooth-transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#1C6654] touch-target"
+                                                    title="{{ $school->is_active ? 'Nonaktifkan Sekolah' : 'Aktifkan Sekolah' }}"
+                                                    aria-label="{{ $school->is_active ? 'Nonaktifkan' : 'Aktifkan' }} {{ $school->name }}">
                                                 {{ $school->is_active ? 'Nonaktifkan' : 'Aktifkan' }}
                                             </button>
                                         </form>

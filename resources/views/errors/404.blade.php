@@ -3,7 +3,7 @@
         <!-- Error Status Badge -->
         <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-[#FAF4EB] text-[#885D1C] border border-[#E8D7BE] mb-4">
             <span class="w-2 h-2 rounded-full bg-[#885D1C]" aria-hidden="true"></span>
-            <span class="font-mono">KODE 404 — TIDAK DITEMUKAN</span>
+            <span class="font-mono">KODE 404 : TIDAK DITEMUKAN</span>
         </div>
 
         <h1 class="text-2xl sm:text-3xl font-bold text-[#172923] tracking-tight mb-2">

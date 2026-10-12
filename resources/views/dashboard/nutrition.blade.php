@@ -1,4 +1,4 @@
-<x-app-shell title="Review Desk — Pengawas Gizi">
+<x-app-shell title="Review Desk : Pengawas Gizi">
     <!-- Header Review Desk -->
     <header class="mb-6 pb-4 border-b border-[#DCE5DD]">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -13,7 +13,7 @@
                         <span>Desk Verifikasi Aktif</span>
                     </span>
                 </div>
-                <h1 class="text-xl sm:text-2xl font-bold text-[#172923] tracking-tight">Review Desk — Standar Mutu &amp; Gizi</h1>
+                <h1 class="text-xl sm:text-2xl font-bold text-[#172923] tracking-tight">Review Desk : Standar Mutu &amp; Gizi</h1>
                 <p class="text-xs sm:text-sm text-[#53645B] mt-0.5">Evaluasi komposisi nutrisi, pemeriksaan organoleptik batch, dan otorisasi keamanan pangan</p>
             </div>
 

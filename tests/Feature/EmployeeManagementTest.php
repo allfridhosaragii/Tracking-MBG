@@ -390,4 +390,71 @@ class EmployeeManagementTest extends TestCase
         ]);
         $responseNewLogin->assertRedirect('/driver/dashboard');
     }
+
+    public function test_privilege_escalation_cannot_promote_other_employee_to_kepala_sppg(): void
+    {
+        $head = User::where('email', 'kepala@mbgtrack.test')->first();
+        $driver = User::where('email', 'kurir@mbgtrack.test')->first();
+
+        // Attempting to elevate courier to KEPALA_SPPG must fail validation
+        $response = $this->actingAs($head)->put("/head/employees/{$driver->id}", [
+            'name' => 'Dedi Kurir',
+            'email' => $driver->email,
+            'role' => UserRole::KEPALA_SPPG->value,
+        ]);
+
+        $response->assertSessionHasErrors(['role']);
+
+        $driver->refresh();
+        $this->assertEquals(UserRole::KURIR, $driver->role);
+    }
+
+    public function test_sensitive_data_leak_prevention_no_password_or_hash_in_activity_logs(): void
+    {
+        $head = User::where('email', 'kepala@mbgtrack.test')->first();
+        $secretPassword = 'superSecretPassword2026!';
+
+        // 1. Create employee
+        $this->actingAs($head)->post('/head/employees', [
+            'name' => 'Audit Test Staff',
+            'email' => 'audit.staff@mbgtrack.test',
+            'role' => UserRole::KURIR->value,
+            'password' => $secretPassword,
+            'password_confirmation' => $secretPassword,
+        ]);
+
+        $staff = User::where('email', 'audit.staff@mbgtrack.test')->first();
+        $this->assertNotNull($staff);
+
+        // 2. Reset password
+        $this->actingAs($head)->post("/head/employees/{$staff->id}/reset-password", [
+            'password' => 'newSecretPassword2026!',
+            'password_confirmation' => 'newSecretPassword2026!',
+        ]);
+
+        // Check all activity logs related to this staff
+        $logs = ActivityLog::where('auditable_id', $staff->id)->get();
+        $this->assertNotEmpty($logs);
+
+        foreach ($logs as $log) {
+            $jsonOld = json_encode($log->old_values ?? []);
+            $jsonNew = json_encode($log->new_values ?? []);
+            $jsonMeta = json_encode($log->metadata ?? []);
+
+            // Assert raw password never leaked
+            $this->assertStringNotContainsString('superSecretPassword2026!', $jsonOld);
+            $this->assertStringNotContainsString('superSecretPassword2026!', $jsonNew);
+            $this->assertStringNotContainsString('superSecretPassword2026!', $jsonMeta);
+            $this->assertStringNotContainsString('newSecretPassword2026!', $jsonOld);
+            $this->assertStringNotContainsString('newSecretPassword2026!', $jsonNew);
+            $this->assertStringNotContainsString('newSecretPassword2026!', $jsonMeta);
+
+            // Assert password hash never leaked in logs
+            $this->assertStringNotContainsString('$2y$', $jsonOld);
+            $this->assertStringNotContainsString('$2y$', $jsonNew);
+            $this->assertStringNotContainsString('$2y$', $jsonMeta);
+            $this->assertArrayNotHasKey('password', $log->old_values ?? []);
+            $this->assertArrayNotHasKey('password', $log->new_values ?? []);
+        }
+    }
 }

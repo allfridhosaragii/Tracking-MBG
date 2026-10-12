@@ -1,4 +1,4 @@
-<x-app-shell title="Portal Transparansi — {{ $school->name }}">
+<x-app-shell title="Portal Transparansi : {{ $school->name }}">
     <div class="max-w-4xl mx-auto py-4 sm:py-8 space-y-6">
         <!-- Public Trust Header / Editorial Presentation -->
         <header class="bg-white rounded-2xl border border-[#DCE5DD] p-6 sm:p-8 subtle-shadow">

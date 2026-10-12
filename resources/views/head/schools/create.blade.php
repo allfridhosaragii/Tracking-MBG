@@ -1,4 +1,4 @@
-<x-app-shell title="Tambah Sekolah Binaan — Kepala SPPG">
+<x-app-shell title="Tambah Sekolah Binaan : Kepala SPPG">
     <!-- Breadcrumb & Title -->
     <div class="mb-6 pb-4 border-b border-[#DCE5DD]">
         <div class="flex items-center gap-2 mb-2">

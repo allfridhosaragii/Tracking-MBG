@@ -68,7 +68,14 @@ class EmployeeManagementService
                 ]);
             }
 
-            // Aturan 2: Kurir yang sedang menjalankan trip aktif tidak boleh diubah rolenya
+            // Aturan 2: Tidak boleh mempromosikan pegawai menjadi Kepala SPPG (pencegahan eskalasi wewenang)
+            if ($employee->id !== $actor->id && $newRole === UserRole::KEPALA_SPPG->value) {
+                throw ValidationException::withMessages([
+                    'role' => 'Tidak diizinkan mempromosikan staf operasional menjadi Kepala SPPG melalui antarmuka pegawai.',
+                ]);
+            }
+
+            // Aturan 3: Kurir yang sedang menjalankan trip aktif tidak boleh diubah rolenya
             if ($currentRole === UserRole::KURIR->value && $newRole !== UserRole::KURIR->value && $employee->hasActiveTrips()) {
                 throw ValidationException::withMessages([
                     'role' => 'Kurir sedang dalam penugasan pengiriman aktif. Selesaikan atau alihkan pengiriman sebelum mengubah role.',

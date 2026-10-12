@@ -9,7 +9,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ $title }} — MBG-Track</title>
+    <title>{{ $title }} : MBG-Track</title>
 
     <!-- Preload / Fonts -->
     <link rel="preconnect" href="https://fonts.bunny.net">
@@ -120,7 +120,7 @@
     </header>
 
     <!-- Main Content Area -->
-    <main id="main-content" class="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 mb-12 sm:mb-6 focus:outline-none" tabindex="-1">
+    <main id="main-content" class="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 mb-24 md:mb-8 focus:outline-none" tabindex="-1">
         @if (session('status'))
             <div role="status" class="mb-6 p-4 rounded-xl bg-[#EDF7F2] border border-[#BCE2D0] text-[#1B573E] text-xs sm:text-sm flex items-start gap-3 subtle-shadow">
                 <svg class="w-5 h-5 mt-0.5 shrink-0 text-[#21684B]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -143,7 +143,7 @@
     </main>
 
     <!-- Footer -->
-    <footer class="bg-white border-t border-[#DCE5DD] py-4 text-center text-xs text-[#53645B] mt-auto">
+    <footer class="bg-white border-t border-[#DCE5DD] py-4 text-center text-xs text-[#53645B] mt-auto hidden md:block">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2.5">
             <div>
                 &copy; {{ date('Y') }} MBG-Track : Calm Utility Operational Monitoring
@@ -157,6 +157,95 @@
             </div>
         </div>
     </footer>
+
+    @auth
+        <!-- Mobile Role-Specific Bottom Navigation (Viewport < 768px) -->
+        <nav aria-label="Navigasi Mobile Internal" 
+             class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-[#DCE5DD] shadow-lg pb-[env(safe-area-inset-bottom,0px)]">
+            <div class="max-w-md mx-auto px-2 flex items-center justify-around h-16">
+                @if ($roleEnum === \App\Enums\UserRole::KEPALA_SPPG)
+                    <!-- Briefing Operasional -->
+                    <a href="{{ route('head.dashboard') }}" 
+                       @if(request()->routeIs('head.dashboard')) aria-current="page" @endif
+                       class="flex flex-col items-center justify-center flex-1 h-full py-1 text-center touch-target smooth-transition {{ request()->routeIs('head.dashboard') ? 'text-[#1C6654] font-bold' : 'text-[#53645B] hover:text-[#172923]' }}">
+                        <svg class="w-5 h-5 mb-0.5 {{ request()->routeIs('head.dashboard') ? 'text-[#1C6654]' : 'text-[#708177]' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                        </svg>
+                        <span class="text-[10px] leading-tight">Briefing</span>
+                        @if(request()->routeIs('head.dashboard'))
+                            <span class="w-1.5 h-1.5 rounded-full bg-[#1C6654] mt-0.5" aria-hidden="true"></span>
+                        @endif
+                    </a>
+
+                    <!-- Sekolah & PIC -->
+                    <a href="{{ route('head.schools.index') }}" 
+                       @if(request()->routeIs('head.schools.*')) aria-current="page" @endif
+                       class="flex flex-col items-center justify-center flex-1 h-full py-1 text-center touch-target smooth-transition {{ request()->routeIs('head.schools.*') ? 'text-[#1C6654] font-bold' : 'text-[#53645B] hover:text-[#172923]' }}">
+                        <svg class="w-5 h-5 mb-0.5 {{ request()->routeIs('head.schools.*') ? 'text-[#1C6654]' : 'text-[#708177]' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                        </svg>
+                        <span class="text-[10px] leading-tight">Sekolah</span>
+                        @if(request()->routeIs('head.schools.*'))
+                            <span class="w-1.5 h-1.5 rounded-full bg-[#1C6654] mt-0.5" aria-hidden="true"></span>
+                        @endif
+                    </a>
+
+                    <!-- Pegawai & Role (K03) -->
+                    <a href="{{ route('head.employees.index') }}" 
+                       @if(request()->routeIs('head.employees.*')) aria-current="page" @endif
+                       class="flex flex-col items-center justify-center flex-1 h-full py-1 text-center touch-target smooth-transition {{ request()->routeIs('head.employees.*') ? 'text-[#1C6654] font-bold' : 'text-[#53645B] hover:text-[#172923]' }}">
+                        <svg class="w-5 h-5 mb-0.5 {{ request()->routeIs('head.employees.*') ? 'text-[#1C6654]' : 'text-[#708177]' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+                        </svg>
+                        <span class="text-[10px] leading-tight">Pegawai</span>
+                        @if(request()->routeIs('head.employees.*'))
+                            <span class="w-1.5 h-1.5 rounded-full bg-[#1C6654] mt-0.5" aria-hidden="true"></span>
+                        @endif
+                    </a>
+                @elseif ($roleEnum === \App\Enums\UserRole::PENGAWAS_GIZI)
+                    <a href="{{ route('nutrition.dashboard') }}" 
+                       @if(request()->routeIs('nutrition.dashboard')) aria-current="page" @endif
+                       class="flex flex-col items-center justify-center flex-1 h-full py-1 text-center touch-target smooth-transition text-[#285F80] font-bold">
+                        <svg class="w-5 h-5 mb-0.5 text-[#285F80]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <span class="text-[10px] leading-tight">Review Desk Gizi</span>
+                        <span class="w-1.5 h-1.5 rounded-full bg-[#285F80] mt-0.5" aria-hidden="true"></span>
+                    </a>
+                @elseif ($roleEnum === \App\Enums\UserRole::ASISTEN_LAPANGAN)
+                    <a href="{{ route('production.dashboard') }}" 
+                       @if(request()->routeIs('production.dashboard')) aria-current="page" @endif
+                       class="flex flex-col items-center justify-center flex-1 h-full py-1 text-center touch-target smooth-transition text-[#885D1C] font-bold">
+                        <svg class="w-5 h-5 mb-0.5 text-[#885D1C]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                        </svg>
+                        <span class="text-[10px] leading-tight">Runbook Produksi</span>
+                        <span class="w-1.5 h-1.5 rounded-full bg-[#885D1C] mt-0.5" aria-hidden="true"></span>
+                    </a>
+                @elseif ($roleEnum === \App\Enums\UserRole::KURIR)
+                    <a href="{{ route('driver.dashboard') }}" 
+                       @if(request()->routeIs('driver.dashboard')) aria-current="page" @endif
+                       class="flex flex-col items-center justify-center flex-1 h-full py-1 text-center touch-target smooth-transition text-[#55327A] font-bold">
+                        <svg class="w-5 h-5 mb-0.5 text-[#55327A]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                        </svg>
+                        <span class="text-[10px] leading-tight">Mission Kurir</span>
+                        <span class="w-1.5 h-1.5 rounded-full bg-[#55327A] mt-0.5" aria-hidden="true"></span>
+                    </a>
+                @elseif ($roleEnum === \App\Enums\UserRole::PIC_SEKOLAH)
+                    <a href="{{ route('school.dashboard') }}" 
+                       @if(request()->routeIs('school.dashboard')) aria-current="page" @endif
+                       class="flex flex-col items-center justify-center flex-1 h-full py-1 text-center touch-target smooth-transition text-[#21684B] font-bold">
+                        <svg class="w-5 h-5 mb-0.5 text-[#21684B]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                        <span class="text-[10px] leading-tight">Penerimaan Sekolah</span>
+                        <span class="w-1.5 h-1.5 rounded-full bg-[#21684B] mt-0.5" aria-hidden="true"></span>
+                    </a>
+                @endif
+            </div>
+        </nav>
+    @endauth
 
 </body>
 </html>

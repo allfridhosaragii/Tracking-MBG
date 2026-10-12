@@ -1,4 +1,4 @@
-<x-app-shell title="Receipt Workflow — PIC Sekolah">
+<x-app-shell title="Receipt Workflow : PIC Sekolah">
     <!-- Header & Unit Identity -->
     <header class="mb-5 pb-4 border-b border-[#DCE5DD]">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -10,7 +10,7 @@
                         Jenjang {{ $school->education_level }}
                     </span>
                 </div>
-                <h1 class="text-xl sm:text-2xl font-bold text-[#172923] tracking-tight">Receipt Workflow — {{ $school->name }}</h1>
+                <h1 class="text-xl sm:text-2xl font-bold text-[#172923] tracking-tight">Receipt Workflow : {{ $school->name }}</h1>
                 <p class="text-xs sm:text-sm text-[#53645B] mt-0.5">Penanggung Jawab Distribusi: <strong>{{ $user->name }}</strong></p>
             </div>
 

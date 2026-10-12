@@ -1,4 +1,4 @@
-<x-app-shell title="Detail Profil Sekolah — {{ $school->name }}">
+<x-app-shell title="Detail Profil Sekolah : {{ $school->name }}">
     <!-- Breadcrumb & Header -->
     <header class="mb-6 pb-4 border-b border-[#DCE5DD]">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

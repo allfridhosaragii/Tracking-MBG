@@ -59,4 +59,55 @@ class BaselineDataTest extends TestCase
         $kepala = User::where('email', 'kepala@mbgtrack.test')->first();
         $this->assertTrue(Hash::check('password', $kepala->password));
     }
+
+    public function test_head_dashboard_renders_honest_empty_state_when_no_schools_exist(): void
+    {
+        $emptySppg = Sppg::create([
+            'code' => 'SPPG-EMPTY-01',
+            'name' => 'SPPG Tanpa Sekolah',
+            'address' => 'Jl. Uji Coba No. 9',
+            'is_active' => true,
+        ]);
+
+        $head = User::create([
+            'sppg_id' => $emptySppg->id,
+            'name' => 'Kepala SPPG Baru',
+            'email' => 'kepala.empty@mbgtrack.test',
+            'password' => Hash::make('password'),
+            'role' => UserRole::KEPALA_SPPG->value,
+            'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($head)->get('/head/dashboard');
+
+        $response->assertStatus(200);
+        $response->assertSee('Belum Ada Sekolah Binaan Terdaftar');
+        $response->assertSee('+ Daftarkan Sekolah Binaan Pertama');
+    }
+
+    public function test_driver_dashboard_renders_honest_empty_state_when_no_schools_exist(): void
+    {
+        $emptySppg = Sppg::create([
+            'code' => 'SPPG-EMPTY-02',
+            'name' => 'SPPG Armada Baru',
+            'address' => 'Jl. Armada No. 10',
+            'is_active' => true,
+        ]);
+
+        $driver = User::create([
+            'sppg_id' => $emptySppg->id,
+            'name' => 'Kurir Baru',
+            'email' => 'kurir.empty@mbgtrack.test',
+            'password' => Hash::make('password'),
+            'role' => UserRole::KURIR->value,
+            'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($driver)->get('/driver/dashboard');
+
+        $response->assertStatus(200);
+        $response->assertSee('Belum Ada Titik Sekolah Terdaftar');
+        $response->assertSee('PANGKALAN STANDBY');
+        $response->assertDontSee('Konfirmasi Tiba di Lokasi');
+    }
 }

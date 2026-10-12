@@ -1,4 +1,4 @@
-<x-app-shell title="Production Runbook — Asisten Lapangan">
+<x-app-shell title="Production Runbook : Asisten Lapangan">
     <!-- Header Asisten Lapangan -->
     <header class="mb-6 pb-4 border-b border-[#DCE5DD]">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
