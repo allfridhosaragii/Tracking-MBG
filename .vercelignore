@@ -1,0 +1,8 @@
+/vendor
+/node_modules
+.env
+/MBG-Track-Documentation-v4-RepoFirst
+.git
+.agents
+.anti-slop-upstream
+tests
