@@ -87,7 +87,7 @@
                     </div>
                 </form>
 
-                @if (! ($isProduction ?? app()->isProduction()))
+                @if (! $isProduction)
                     <!-- Demo Simulation Quick Preset Switcher (Disabled in Production) -->
                     <div class="mt-6 pt-5 border-t border-[#EDF2ED]">
                         <div class="flex items-center justify-between mb-2.5">
@@ -146,7 +146,7 @@
         </div>
     </div>
 
-    @if (! ($isProduction ?? app()->isProduction()))
+    @if (! $isProduction)
         <script>
             function fillPreset(email) {
                 const emailInput = document.getElementById('email');

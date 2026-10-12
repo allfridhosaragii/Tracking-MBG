@@ -14,11 +14,11 @@ use Illuminate\View\View;
 class LoginController extends Controller
 {
     /**
-     * Show the application login form.
      */
     public function showLoginForm(): View
     {
-        $isProduction = app()->isProduction() || config('app.env') === 'production';
+        $enablePresets = filter_var(env('ENABLE_DEMO_PRESETS', false), FILTER_VALIDATE_BOOLEAN);
+        $isProduction = (app()->isProduction() || config('app.env') === 'production') && ! $enablePresets;
         
         $sampleSchoolSlug = null;
         try {
