@@ -5,50 +5,95 @@
 @source '../views/**/*.blade.php';
 
 :root {
+    /* Calm Utility Semantic Color Tokens */
     --color-canvas: #F5F7F3;
     --color-surface: #FFFFFF;
     --color-surface-muted: #EDF2ED;
+    --color-surface-subtle: #FAFBF9;
     --color-ink: #172923;
     --color-ink-muted: #53645B;
     --color-line: #DCE5DD;
+    --color-line-light: #E7ECE8;
+    
+    /* Primary Brand: Deep Pine */
     --color-brand-700: #1C6654;
     --color-brand-800: #164D42;
+    --color-brand-900: #123B33;
+    --color-brand-50: #EDF7F2;
+    --color-brand-100: #DCF0E6;
+    
+    /* Editorial Accent: Warm Gold (Used sparingly for non-status moments) */
     --color-accent-warm: #B78C56;
+    --color-accent-warm-light: #F9F5EE;
+    
+    /* Semantic Status (Text label + high-contrast pairs) */
     --color-success-dark: #21684B;
+    --color-success-bg: #EDF7F2;
+    --color-success-border: #BCE2D0;
+    
     --color-warning-dark: #885D1C;
+    --color-warning-bg: #FEF7EC;
+    --color-warning-border: #F7D7A3;
+    
     --color-danger-dark: #9B3232;
+    --color-danger-bg: #FDF2F2;
+    --color-danger-border: #F5C2C2;
+    
     --color-info-dark: #285F80;
+    --color-info-bg: #F0F6FA;
+    --color-info-border: #C2DBE8;
 }
 
 body {
     background-color: var(--color-canvas);
     color: var(--color-ink);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
 
-/* Tabular Numbers for Metrics & KPIs */
+/* Tabular Numbers for Metrics, KPIs, Portions & Time */
 .tabular-nums {
     font-variant-numeric: tabular-nums;
 }
 
-/* Subtle, Restrained Elevation */
+/* Subtle, Restrained Elevation (Clean Luxury) */
 .panel-border {
     border: 1px solid var(--color-line);
 }
 
 .subtle-shadow {
-    box-shadow: 0 1px 3px rgba(23, 41, 35, 0.04), 0 1px 2px rgba(23, 41, 35, 0.02);
+    box-shadow: 0 1px 3px rgba(23, 41, 35, 0.03), 0 1px 2px rgba(23, 41, 35, 0.02);
 }
 
 .floating-shadow {
-    box-shadow: 0 10px 25px -3px rgba(23, 41, 35, 0.07), 0 4px 10px -2px rgba(23, 41, 35, 0.03);
+    box-shadow: 0 10px 25px -3px rgba(23, 41, 35, 0.06), 0 4px 10px -2px rgba(23, 41, 35, 0.02);
+}
+
+/* Journey Line Motif: Segmented progress connector for multi-step logistics */
+.journey-line {
+    position: relative;
+}
+.journey-line::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 1.125rem;
+    width: 2px;
+    background: repeating-linear-gradient(to bottom, var(--color-brand-700) 0, var(--color-brand-700) 8px, transparent 8px, transparent 12px);
+    z-index: 0;
 }
 
 /* Micro Transitions */
 .smooth-transition {
     transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Minimum Accessible Touch Target (WCAG 2.2 AA: >= 44x44px) */
+.touch-target {
+    min-height: 44px;
+    min-width: 44px;
 }
 
 /* Accessibility: Respect Reduced Motion */

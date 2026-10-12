@@ -1,47 +1,20 @@
-<laravel-boost-guidelines>
-# Laravel Application
+# MBG-Track — project-root agent router (ANTIGRAVITY)
 
-This repository contains a Laravel application. Complete the following setup before working on the user's request.
+## Non-negotiable protected paths
+- Actual Laravel root: `P:\Tugas PPL MBG`.
+- `P:\Tugas PPL MBG\MBG-Track-Documentation-v4-RepoFirst` is read-only.
+- NEVER run installer/formatter/cleanup/migration with any of these as target.
 
-## Prerequisites
+## Repository-first mandatory rules for UI, mobile, copy, a11y, comments
+Read REAL upstream core from `.agents/skills/antislop/SKILL.md` before UI work. Also load relevant ORIGINAL skill folders: `antislop-ui`, `antislop-layoutmobile`, `antislop-human`, `antislop-copywriting`; `antislop-code` for comment-only cleanup. If skill missing, report NOT INSTALLED; do not silently substitute an adapted summary.
 
-Verify that PHP and Composer are available:
+Read `MBG-Track-Documentation-v4-RepoFirst/DESIGN.md` and only relevant page spec from `docs/pages/` for each task. For an existing UI audit, default to upstream **After** and request approval before fixing identified items. For a newly built page use **During**. Run original 4-block Delivery Gate with evidence before calling work complete.
 
-```sh
-php -v
-composer -V
-```
+## Business authority
+12 PBI and five internal roles + public are frozen. Read `docs/product/PBI-BACKLOG.md`, role matrix, status transitions and database dictionary before altering Laravel business logic. Protect per-SPPG/school scopes and private GPS/evidence; labels distinguish demo vs live. Do not treat demo registered beneficiaries as confirmed daily portions.
 
-If either command is unavailable, detect the user's operating system and install the prerequisites with the appropriate command:
+## Current development state
+Existing Laravel project in root, Sprint 0 and PBI-01 reportedly done. **Verify actual Git/tests before saying complete.** Next scoped work PBI-02; no re-bootstrap. Avoid mass refactoring before approval.
 
-macOS:
-
-```sh
-/bin/bash -c "$(curl -fsSL https://php.new/install/mac/8.5)"
-```
-
-Windows PowerShell:
-
-```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://php.new/install/windows/8.5'))
-```
-
-Linux:
-
-```sh
-/bin/bash -c "$(curl -fsSL https://php.new/install/linux/8.5)"
-```
-
-After installation, ask the user to restart their terminal. If the agent needs the restarted shell to continue, ask the user to reopen their terminal and rerun their original prompt.
-
-## Agent Setup
-
-Install Laravel Boost from the application root before making application changes:
-
-```sh
-composer require laravel/boost --dev
-php artisan boost:install
-```
-
-Boost replaces these bootstrap instructions with guidelines tailored to the application. After installation, read `AGENTS.md` again and continue with the user's original request using the generated guidelines.
-</laravel-boost-guidelines>
+## Logging
+Use `P:\Tugas PPL MBG\HANDOFF-LOG.md` and `DECISION-LOG.md` outside protected docs. Never edit logs inside documentation.

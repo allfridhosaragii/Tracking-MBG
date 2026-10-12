@@ -263,18 +263,18 @@
 
                         <div class="flex items-center justify-between gap-2 pt-1">
                             <a href="{{ route('head.schools.show', $school) }}" 
-                               class="flex-1 py-2 text-center text-xs font-medium text-[#172923] bg-white border border-[#DCE5DD] rounded-lg hover:bg-[#F5F7F3] min-h-[38px] flex items-center justify-center">
+                               class="flex-1 py-2.5 text-center text-xs font-semibold text-[#172923] bg-white border border-[#DCE5DD] rounded-xl hover:bg-[#F5F7F3] min-h-[44px] flex items-center justify-center touch-target smooth-transition">
                                 Detail
                             </a>
                             <a href="{{ route('head.schools.edit', $school) }}" 
-                               class="flex-1 py-2 text-center text-xs font-semibold text-[#1C6654] bg-[#EDF2ED] border border-[#DCE5DD] rounded-lg hover:bg-[#E2EBE2] min-h-[38px] flex items-center justify-center">
+                               class="flex-1 py-2.5 text-center text-xs font-semibold text-[#1C6654] bg-[#EDF2ED] border border-[#DCE5DD] rounded-xl hover:bg-[#E2EBE2] min-h-[44px] flex items-center justify-center touch-target smooth-transition">
                                 Edit
                             </a>
                             <form method="POST" action="{{ route('head.schools.toggle-active', $school) }}" class="inline" onsubmit="return confirm('Ubah status aktif sekolah ini?')">
                                 @csrf
                                 @method('PATCH')
                                 <button type="submit" 
-                                        class="px-3 py-2 text-xs font-medium {{ $school->is_active ? 'text-[#9B3232] bg-[#FDF2F2]' : 'text-[#21684B] bg-[#EDF7F2]' }} rounded-lg min-h-[38px] cursor-pointer">
+                                        class="px-3.5 py-2.5 text-xs font-semibold {{ $school->is_active ? 'text-[#9B3232] bg-[#FDF2F2] border border-[#F5C2C2]' : 'text-[#21684B] bg-[#EDF7F2] border border-[#BCE2D0]' }} rounded-xl min-h-[44px] cursor-pointer touch-target smooth-transition">
                                     {{ $school->is_active ? 'Nonaktifkan' : 'Aktifkan' }}
                                 </button>
                             </form>
