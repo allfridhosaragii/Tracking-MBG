@@ -17,7 +17,14 @@
                 <p class="text-xs sm:text-sm text-[#53645B] mt-0.5">Evaluasi komposisi nutrisi, pemeriksaan organoleptik batch, dan otorisasi keamanan pangan</p>
             </div>
 
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="{{ route('nutrition.menus.index') }}" 
+                   class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#285F80] hover:bg-[#1E4861] text-white text-xs font-semibold shadow-xs smooth-transition touch-target">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                    </svg>
+                    <span>Katalog Menu &amp; Gizi</span>
+                </a>
                 <span class="px-3 py-2 rounded-xl bg-white border border-[#DCE5DD] text-xs font-medium text-[#172923] subtle-shadow">
                     Total Sasaran: <strong class="tabular-nums font-bold text-[#1C6654]">{{ number_format($totalBeneficiaries) }}</strong> siswa
                 </span>
@@ -117,6 +124,68 @@
                 Seluruh menu diverifikasi sesuai pedoman gizi seimbang nasional.
             </div>
         </div>
+    </div>
+
+    <!-- Menu & Nutrition Registry Module (PBI-03 Integration) -->
+    <div class="mb-6 bg-white rounded-2xl border border-[#DCE5DD] p-4 sm:p-6 subtle-shadow space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#EDF2ED]">
+            <div>
+                <h2 class="text-xs sm:text-sm font-bold uppercase tracking-wider text-[#172923]">Katalog Formulasi Menu &amp; Status Gizi</h2>
+                <p class="text-xs text-[#53645B] mt-0.5">Daftar resep aktif untuk rencana produksi serta draft yang sedang disusun</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <a href="{{ route('nutrition.menus.create') }}" 
+                   class="px-3 py-1.5 text-xs font-semibold text-[#285F80] hover:text-[#1E4861] bg-[#EDF2ED] hover:bg-[#E2EBE5] rounded-xl smooth-transition touch-target">
+                    + Racik Draft Baru
+                </a>
+                <a href="{{ route('nutrition.menus.index') }}" 
+                   class="px-3 py-1.5 text-xs font-semibold text-white bg-[#285F80] hover:bg-[#1E4861] rounded-xl shadow-xs smooth-transition touch-target">
+                    Lihat Semua ({{ $activeMenus->count() }} Aktif, {{ $draftMenusCount }} Draft)
+                </a>
+            </div>
+        </div>
+
+        @if ($activeMenus->isEmpty())
+            <div class="py-6 text-center text-xs text-[#53645B] bg-[#FAFBF9] rounded-xl border border-[#DCE5DD] p-4">
+                <p class="font-medium text-[#172923]">Belum ada menu berstatus aktif di SPPG ini.</p>
+                <p class="mt-1">Mulai racik draft menu baru dan lengkapi nilai gizi per komponen untuk mengaktifkan rujukan produksi.</p>
+                <div class="mt-3">
+                    <a href="{{ route('nutrition.menus.create') }}" class="text-xs font-bold text-[#285F80] hover:underline">
+                        Mulai Racik Menu &rarr;
+                    </a>
+                </div>
+            </div>
+        @else
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                @foreach ($activeMenus as $activeMenu)
+                    <div class="p-3.5 rounded-xl bg-[#FAFBF9] border border-[#DCE5DD] hover:border-[#285F80] smooth-transition flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between gap-2 mb-1.5">
+                                <span class="font-mono text-[11px] font-bold text-[#285F80] bg-[#EDF2ED] px-2 py-0.5 rounded">
+                                    {{ $activeMenu->menu_code }} v{{ $activeMenu->version }}
+                                </span>
+                                <span class="text-[10px] font-semibold text-[#1B573E] bg-[#EDF7F2] px-2 py-0.5 rounded-full border border-[#BCE2D0]">
+                                    Aktif
+                                </span>
+                            </div>
+                            <h3 class="text-xs sm:text-sm font-bold text-[#172923] leading-snug">
+                                {{ $activeMenu->name }}
+                            </h3>
+                            <div class="mt-2 text-xs text-[#53645B] space-y-0.5">
+                                <p><strong class="text-[#172923]">{{ number_format($activeMenu->totalEnergy(), 0) }} kkal</strong> / porsi</p>
+                                <p class="text-[11px]">P: {{ number_format($activeMenu->totalProtein(), 1) }}g • K: {{ number_format($activeMenu->totalCarbohydrates(), 1) }}g • L: {{ number_format($activeMenu->totalFat(), 1) }}g</p>
+                            </div>
+                        </div>
+                        <div class="pt-3 mt-3 border-t border-[#EDF2ED] flex items-center justify-between">
+                            <span class="text-[11px] text-[#53645B]">{{ $activeMenu->items->count() }} komponen</span>
+                            <a href="{{ route('nutrition.menus.show', $activeMenu) }}" class="text-xs font-semibold text-[#285F80] hover:underline">
+                                Dossier &rarr;
+                            </a>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        @endif
     </div>
 
     <!-- School Distribution Ledger for Nutritionist -->

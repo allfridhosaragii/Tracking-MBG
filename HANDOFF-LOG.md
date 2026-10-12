@@ -67,33 +67,31 @@ Log ini mencatat ringkasan status implementasi, pengujian yang telah dieksekusi,
 | PBI | Modul | Page ID | Status | Test Coverage |
 |---|---|---|---|---|
 | **PBI-01** | Profil & PIC Sekolah Binaan | `K02` | **DONE & VERIFIED** | 13 tests, 63 assertions |
-| **PBI-02** | Akun Pegawai & Pembagian Role SPPG | `K03` | **DONE & VERIFIED** | 13 tests, 93 assertions |
-| **PBI-03** | Menu dan Kandungan Gizi | `G02` | Scoped Next | Ready for implementation |
+| **PBI-02** | Akun Pegawai & Pembagian Role SPPG | `K03` | **DONE & VERIFIED** | 15 tests, 120 assertions |
+| **PBI-03** | Menu dan Kandungan Gizi | `G02` | **DONE & VERIFIED** | 17 tests, 77 assertions |
+| **PBI-04** | Permintaan Porsi Harian Sekolah | `S01` / `S02` | Scoped Next | Ready for next sprint |
 
 ---
 
-## 5. Ringkasan Pengujian Akhir & Status Audit Anti-Slop
-- **Total Test Suite:** **56 tests, 520 assertions, 0 errors, 100% PASS**
+## 5. Ringkasan Pengujian Akhir & Status PBI-03
+- **Total Test Suite:** **73 tests, 597 assertions, 0 errors, 100% PASS**
   - PBI-01: 13 tests, 63 assertions
   - PBI-02 & Security Audit: 15 tests, 120 assertions
+  - PBI-03 Menu & Nutrition Management: 17 tests, 77 assertions
   - Anti-Slop Empty State Tests: 3 tests, 23 assertions
   - Auth, Policy & Tenant Isolation: 24 tests, 68 assertions
   - Cryptographic Documentation Integrity: 1 test, 245 assertions
-- **Vite Production Bundle:** Compiled in 4.37s without errors (CSS 60.44 kB / gzip 11.33 kB)
+- **Vite Production Bundle:** Compiled in 4.77s without errors (CSS 62.86 kB / gzip 11.79 kB)
 - **Browser Visual Verification:** Verified across 6 viewports (320px, 360px, 390px, 430px, 768px, 1440px)
-- **Delivery Gate Anti-Slop (Mode AFTER):**
-  - FINDING-01: 0 em dashes (`—`) di seluruh Blade copy antarmuka
-  - FINDING-02: Role-specific mobile bottom navigation aktif, safe area aware, tidak menutupi konten
-  - FINDING-03: Honest empty/error states dengan automated test fixtures
-  - FINDING-04: Bounding box target interaktif tombol aksi tabel $\ge 44 \times 44$ CSS px
-  - FINDING-05: De-genericized dashboards, surface/tonal depth, clear focal point
-  - FINDING-06: Tombol kurir diganti kartu status operasional informatif jujur
-  - FINDING-07: Hardcoded school slug dihilangkan; resolusi dinamis sekolah aktif
-  - FINDING-08: Responsif di 320px tanpa pemotongan judul atau font kerdil
-- **PBI-02 Security Audit:**
-  - Privilege escalation ke KEPALA_SPPG dicegah (422 Unprocessable)
-  - Zero password/hash/secret leakage di `activity_logs`
-  - Cross-tenant tampering dicegah (403 Forbidden)
-  - Courier active trips guard diproteksi `Schema::hasTable`
-- **Catatan Pengembangan:** PBI-03 belum dieksekusi pada sesi ini sesuai instruksi batasan pengguna.
+- **Delivery Gate Anti-Slop (Mode DURING):**
+  - G02 Nutrition Workspace: Calm Operational Editorial, Slate/Ocean Blue accent (`#285F80`), split dossier layout (komponen bahan di kiri, agregat gizi dan kontrol aktivasi di kanan)
+  - 0 em dashes (`—`) di seluruh Blade copy antarmuka
+  - Role-specific mobile bottom navigation aktif untuk Pengawas Gizi (Review Desk & Menu Gizi)
+  - Bounding box target interaktif seluruh kontrol $\ge 44 \times 44$ CSS px
+  - Validasi ketat kelengkapan nutrisi sebelum aktivasi (penolakan jika ada nilai null atau tanpa sumber rujukan)
+  - Versioning immutable: menu aktif terkunci, perubahan menghasilkan draft versi baru ($v+1$) tanpa mengubah histori sebelumnya
+  - Jejak audit (`activity_logs`) tercatat pada setiap siklus hidup formulasi menu
+- **Persiapan Dependensi PBI Berikutnya:**
+  - PBI-03 menyediakan versi menu yang valid dan terverifikasi sebagai input wajib bagi `production_plans` pada PBI-05.
+  - PBI-04 (Permintaan Porsi Harian Sekolah) siap dikerjakan sebagai backlog berikutnya.
 

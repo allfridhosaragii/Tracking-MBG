@@ -72,6 +72,10 @@
                                    class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('nutrition.dashboard') ? 'bg-[#EDF2ED] text-[#285F80]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
                                     Review Desk Gizi
                                 </a>
+                                <a href="{{ route('nutrition.menus.index') }}" 
+                                   class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('nutrition.menus.*') ? 'bg-[#EDF2ED] text-[#285F80]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
+                                    Menu &amp; Gizi
+                                </a>
                             @elseif ($roleEnum === \App\Enums\UserRole::ASISTEN_LAPANGAN)
                                 <a href="{{ route('production.dashboard') }}" 
                                    class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('production.dashboard') ? 'bg-[#EDF2ED] text-[#885D1C]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
@@ -205,12 +209,26 @@
                 @elseif ($roleEnum === \App\Enums\UserRole::PENGAWAS_GIZI)
                     <a href="{{ route('nutrition.dashboard') }}" 
                        @if(request()->routeIs('nutrition.dashboard')) aria-current="page" @endif
-                       class="flex flex-col items-center justify-center flex-1 h-full py-1 text-center touch-target smooth-transition text-[#285F80] font-bold">
-                        <svg class="w-5 h-5 mb-0.5 text-[#285F80]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                       class="flex flex-col items-center justify-center flex-1 h-full py-1 text-center touch-target smooth-transition {{ request()->routeIs('nutrition.dashboard') ? 'text-[#285F80] font-bold' : 'text-[#53645B] hover:text-[#172923]' }}">
+                        <svg class="w-5 h-5 mb-0.5 {{ request()->routeIs('nutrition.dashboard') ? 'text-[#285F80]' : 'text-[#708177]' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                         </svg>
-                        <span class="text-[10px] leading-tight">Review Desk Gizi</span>
-                        <span class="w-1.5 h-1.5 rounded-full bg-[#285F80] mt-0.5" aria-hidden="true"></span>
+                        <span class="text-[10px] leading-tight">Desk Gizi</span>
+                        @if(request()->routeIs('nutrition.dashboard'))
+                            <span class="w-1.5 h-1.5 rounded-full bg-[#285F80] mt-0.5" aria-hidden="true"></span>
+                        @endif
+                    </a>
+
+                    <a href="{{ route('nutrition.menus.index') }}" 
+                       @if(request()->routeIs('nutrition.menus.*')) aria-current="page" @endif
+                       class="flex flex-col items-center justify-center flex-1 h-full py-1 text-center touch-target smooth-transition {{ request()->routeIs('nutrition.menus.*') ? 'text-[#285F80] font-bold' : 'text-[#53645B] hover:text-[#172923]' }}">
+                        <svg class="w-5 h-5 mb-0.5 {{ request()->routeIs('nutrition.menus.*') ? 'text-[#285F80]' : 'text-[#708177]' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                        </svg>
+                        <span class="text-[10px] leading-tight">Menu &amp; Gizi</span>
+                        @if(request()->routeIs('nutrition.menus.*'))
+                            <span class="w-1.5 h-1.5 rounded-full bg-[#285F80] mt-0.5" aria-hidden="true"></span>
+                        @endif
                     </a>
                 @elseif ($roleEnum === \App\Enums\UserRole::ASISTEN_LAPANGAN)
                     <a href="{{ route('production.dashboard') }}" 

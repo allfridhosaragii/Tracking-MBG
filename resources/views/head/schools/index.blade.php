@@ -27,8 +27,8 @@
         </div>
     </div>
 
-    <!-- Metric Summary Cards -->
-    <div class="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6">
+    <!-- Metric Summary Cards (Responsive reflow for 320px-1440px) -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6">
         <div class="bg-white rounded-xl border border-[#DCE5DD] p-4 subtle-shadow">
             <span class="text-xs font-semibold uppercase tracking-wider text-[#53645B] block mb-1">Sekolah Aktif</span>
             <div class="flex items-baseline gap-2">
@@ -47,7 +47,7 @@
             <span class="text-[11px] text-[#53645B] block mt-1">Master Data Pokok Siswa</span>
         </div>
 
-        <div class="col-span-2 lg:col-span-1 bg-white rounded-xl border border-[#DCE5DD] p-4 subtle-shadow">
+        <div class="col-span-1 sm:col-span-2 lg:col-span-1 bg-white rounded-xl border border-[#DCE5DD] p-4 subtle-shadow">
             <span class="text-xs font-semibold uppercase tracking-wider text-[#53645B] block mb-1">Integritas Historis</span>
             <div class="flex items-baseline gap-2">
                 <span class="text-xl sm:text-2xl font-bold text-[#172923]">Non-Destruktif</span>
@@ -72,7 +72,7 @@
                        class="w-full pl-10 pr-4 py-2.5 text-xs sm:text-sm rounded-lg border border-[#DCE5DD] bg-[#F5F7F3] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1C6654] focus:border-transparent min-h-[44px]">
             </div>
 
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2">
                 <select name="status" 
                         onchange="this.form.submit()"
                         class="px-3 py-2.5 text-xs sm:text-sm rounded-lg border border-[#DCE5DD] bg-[#F5F7F3] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1C6654] text-[#172923] min-h-[44px]">

@@ -38,4 +38,9 @@ class Sppg extends Model
     {
         return $this->hasMany(User::class);
     }
+
+    public function menus(): HasMany
+    {
+        return $this->hasMany(Menu::class);
+    }
 }

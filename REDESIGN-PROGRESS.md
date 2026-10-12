@@ -61,3 +61,32 @@ Berdasarkan pemeriksaan mendalam terhadap 11 artefak PBI-02:
 - **Block 2: Visual & Ergonomics:** Viewport 390px baseline (tested 320px, 360px, 430px, 1440px), interactive touch target bounding box terukur $\ge 44 \times 44$ CSS px.
 - **Block 3: Code & Copy Hygiene:** Bahasa Indonesia baku, 0 em dashes (`—`) di seluruh Blade copy, komentar esensial terpelihara.
 - **Block 4: Automated Verification:** 56 automated backend tests passed, Vite production build lulus, browser recording & screenshot verifikasi tersimpan.
+
+---
+
+## 5. Implementasi & Verifikasi PBI-03: Menu dan Kandungan Gizi (Halaman G02)
+- **Status:** **DONE & FULLY VERIFIED**
+- **Mode:** `ANTISLOP MODE: DURING (Session Override)`
+- **Role Pengakses:** `PENGAWAS_GIZI` (dan monitor oleh `KEPALA_SPPG`)
+- **Route Utama:** `/nutrition/menus` (Index, Create, Show Dossier, Edit, Items Store/Destroy, Activate, New-Version)
+- **Desain & Dials:** *Calm Operational Editorial*, Slate / Ocean Blue (`#285F80`), ENERGY 1 / RHYTHM 2 / MOTION 1.
+- **Artefak Database & Backend:**
+  - Migration: `2026_10_12_000004_create_menus_and_menu_items_tables.php` (Tabel `menus`, `menu_items`, index unik `['sppg_id', 'menu_code', 'version']`)
+  - Enums: `App\Enums\MenuStatus` (`DRAFT`, `ACTIVE`, `ARCHIVED`)
+  - Models: `App\Models\Menu`, `App\Models\MenuItem`
+  - Service: `App\Services\MenuManagementService`
+  - Policy: `App\Policies\MenuPolicy`
+  - Requests: `StoreMenuRequest`, `UpdateMenuDraftRequest`, `StoreMenuItemRequest`
+  - Controller: `App\Http\Controllers\Nutrition\MenuManagementController`
+- **Aturan Bisnis & Integritas:**
+  - Perhitungan nutrisi (Energi kkal, Protein, Karbohidrat, Lemak, Serat) dilakukan presisi di backend Laravel dari komponen bahan.
+  - Nilai nutrisi null tidak disamakan dengan 0; menu dengan komponen belum lengkap dilarang diaktifkan (`isComplete() == false`).
+  - Aktivasi menu memicu pengarsipan otomatis versi aktif lama dengan kode yang sama (`status -> ARCHIVED`).
+  - Menu aktif bersifat immutable; revisi resep menghasilkan draft versi baru ($v+1$) melalui pencabangan transaksional yang menduplikasi komponen tanpa merusak histori masa lalu.
+  - Jejak audit dicatat pada `activity_logs` untuk seluruh mutasi (draft dibuat, diedit, komponen ditambah/dihapus, aktivasi, dan pencabangan versi).
+- **Hasil Pengujian & Verifikasi:**
+  - Total Test Suite: **73 tests, 597 assertions, 100% PASS** (17 tests khusus `MenuManagementTest`)
+  - Frontend Build: `npm run build` sukses (4.77s)
+  - Browser Audit: Diuji pada 320px, 360px, 390px, 430px, 768px, 1440px tanpa horizontal scroll.
+  - Zero em dashes (`—`) di seluruh antarmuka G02.
+

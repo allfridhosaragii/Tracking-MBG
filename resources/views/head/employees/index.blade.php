@@ -27,8 +27,8 @@
             </div>
         </div>
 
-        <!-- Metrics Ribbon (Real Scoped Aggregation) -->
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+        <!-- Metrics Ribbon (Real Scoped Aggregation with 320px reflow) -->
+        <div class="grid grid-cols-1 min-[380px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
             <div class="bg-white p-3.5 sm:p-4 rounded-xl border border-[#DCE5DD] subtle-shadow">
                 <div class="text-[11px] font-medium text-[#53645B] uppercase tracking-wider">Total Pegawai</div>
                 <div class="mt-1 text-lg sm:text-2xl font-bold text-[#172923]">{{ $totalStaff }}</div>
@@ -49,7 +49,7 @@
                 <div class="mt-1 text-lg sm:text-2xl font-bold text-[#885D1C]">{{ $totalProduction }}</div>
                 <div class="mt-0.5 text-[11px] text-[#53645B]">Runbook &amp; porsi</div>
             </div>
-            <div class="bg-white p-3.5 sm:p-4 rounded-xl border border-[#DCE5DD] subtle-shadow col-span-2 sm:col-span-1">
+            <div class="bg-white p-3.5 sm:p-4 rounded-xl border border-[#DCE5DD] subtle-shadow col-span-1 min-[380px]:col-span-2 sm:col-span-1">
                 <div class="text-[11px] font-medium text-[#55327A] uppercase tracking-wider">Kurir</div>
                 <div class="mt-1 text-lg sm:text-2xl font-bold text-[#55327A]">{{ $totalDrivers }}</div>
                 <div class="mt-0.5 text-[11px] text-[#53645B]">Distribusi multi-stop</div>

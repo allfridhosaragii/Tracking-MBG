@@ -3,7 +3,10 @@
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Driver\DashboardController as DriverDashboardController;
 use App\Http\Controllers\Head\DashboardController as HeadDashboardController;
+use App\Http\Controllers\Head\EmployeeManagementController;
+use App\Http\Controllers\Head\SchoolManagementController;
 use App\Http\Controllers\Nutrition\DashboardController as NutritionDashboardController;
+use App\Http\Controllers\Nutrition\MenuManagementController;
 use App\Http\Controllers\Production\DashboardController as ProductionDashboardController;
 use App\Http\Controllers\Public\SchoolPublicController;
 use App\Http\Controllers\School\DashboardController as SchoolDashboardController;
@@ -30,9 +33,6 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout')->midd
 
 // Public School Transparency portal (No Auth required, sanitized whitelist)
 Route::get('/public/schools/{slug}', [SchoolPublicController::class, 'show'])->name('public.schools.show');
-
-use App\Http\Controllers\Head\EmployeeManagementController;
-use App\Http\Controllers\Head\SchoolManagementController;
 
 // Protected Routes by Role and Active status
 Route::middleware(['auth', 'active'])->group(function () {
@@ -69,6 +69,18 @@ Route::middleware(['auth', 'active'])->group(function () {
         ->middleware('role:PENGAWAS_GIZI')
         ->group(function () {
             Route::get('/dashboard', NutritionDashboardController::class)->name('dashboard');
+
+            // PBI-03: Menu & Nutrition Management (Page G02)
+            Route::get('/menus', [MenuManagementController::class, 'index'])->name('menus.index');
+            Route::get('/menus/create', [MenuManagementController::class, 'create'])->name('menus.create');
+            Route::post('/menus', [MenuManagementController::class, 'store'])->name('menus.store');
+            Route::get('/menus/{menu}', [MenuManagementController::class, 'show'])->name('menus.show');
+            Route::get('/menus/{menu}/edit', [MenuManagementController::class, 'edit'])->name('menus.edit');
+            Route::put('/menus/{menu}', [MenuManagementController::class, 'update'])->name('menus.update');
+            Route::post('/menus/{menu}/items', [MenuManagementController::class, 'addItem'])->name('menus.items.store');
+            Route::delete('/menus/{menu}/items/{item}', [MenuManagementController::class, 'deleteItem'])->name('menus.items.destroy');
+            Route::patch('/menus/{menu}/activate', [MenuManagementController::class, 'activate'])->name('menus.activate');
+            Route::post('/menus/{menu}/new-version', [MenuManagementController::class, 'newVersion'])->name('menus.new-version');
         });
 
     // 3. Asisten Lapangan Module

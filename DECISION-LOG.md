@@ -117,4 +117,20 @@ File ini mencatat seluruh keputusan arsitektur, database, dan implementasi yang 
   8. Memperketat keamanan PBI-02: mencegah eskalasi wewenang (privilege escalation) ke `KEPALA_SPPG` via FormRequest dan Service, memastikan tidak ada kata sandi/hash/token tersimpan di `activity_logs`, dan menambahkan security tests di `EmployeeManagementTest.php`.
 - **Konsekuensi:** Seluruh 8 temuan audit dan audit keamanan PBI-02 terselesaikan dengan bukti. Test suite lulus 100% (56 tests, 520 assertions, 0 errors).
 
+---
+
+## DEC-011: Implementasi Resmi PBI-03 — Katalog Racikan Menu, Komposisi Gizi & Versioning Immutable (Halaman G02)
+- **Tanggal:** 12 Oktober 2026
+- **Status:** APPROVED & IMPLEMENTED
+- **Konteks:** Implementasi menyeluruh PBI-03 (Menu dan Kandungan Gizi) berdasarkan kontrak `PBI-BACKLOG.md`, spesifikasi halaman G02 `MENU-MANAGEMENT.md`, integrasi G01 `NUTRITION-DASHBOARD.md`, dan data dictionary resmi.
+- **Keputusan:**
+  1. **Skema Database Resmi:** Membuat migration `2026_10_12_000004_create_menus_and_menu_items_tables.php` yang mendefinisikan tabel `menus` dan `menu_items` dengan tipe data presisi (`decimal(9,2)` untuk berat, `decimal(10,2)` untuk energi dan makronutrien), relasi cascade, serta unique constraint per-SPPG `['sppg_id', 'menu_code', 'version']`.
+  2. **Backed Enum & State Machine:** Membuat enum `MenuStatus` (`DRAFT`, `ACTIVE`, `ARCHIVED`) dengan label bahasa Indonesia baku dan styling badge semantik yang konsisten.
+  3. **Domain Service & Versioning:** Membangun `MenuManagementService` yang mengelola siklus hidup menu: pembuatan draft inisial, penambahan komponen bahan dengan validasi gramasi $> 0$, kalkulasi makronutrien backend tanpa angka rekaan, pencegahan aktivasi pada menu belum lengkap / tanpa sumber rujukan gizi resmi, aktivasi transaksional yang mengarsipkan versi aktif lama, serta pencabangan versi baru ($v+1$) yang menduplikasi komponen tanpa mengubah histori versi aktif yang telah digunakan.
+  4. **Keamanan & Isolasi Tenant:** Menegakkan otorisasi `PENGAWAS_GIZI` dan scoping tenant via `MenuPolicy` (`viewAny`, `view`, `create`, `update`, `delete`, `activate`, `createNewVersion`) dan FormRequests (`StoreMenuRequest`, `UpdateMenuDraftRequest`, `StoreMenuItemRequest`). Request dari role lain atau lintas SPPG ditolak dengan HTTP 403.
+  5. **UI/UX Editorial Workspace (G02):** Membangun 4 template Blade (`index`, `create`, `show`, `edit`) dengan bahasa desain *Calm Operational Editorial*, aksen Ocean Blue (`#285F80`), split dossier layout pada desktop (komponen bahan di kiri, ringkasan profil gizi dan kontrol aktivasi di kanan), zero horizontal scroll pada 320px–1440px, touch target $\ge 44 \times 44$ px, dan 0 karakter em dash (`—`).
+  6. **Integrasi Modul G01 Review Desk:** Menghubungkan dashboard G01 dengan agregat menu aktif SPPG yang nyata dan navigasi dua arah pada header serta bottom navigation bar.
+  7. **Otomasi Pengujian:** Menulis `MenuManagementTest.php` dengan 17 test cases (77 assertions) yang mencakup seluruh kriteria penerimaan, validasi nilai negatif, immutability versi aktif, transisi arsip otomatis, pencabangan versi, isolasi tenant lintas-SPPG, dan audit logging di `activity_logs`.
+- **Konsekuensi:** PBI-03 terimplementasi secara lengkap dan aman. Seluruh test suite aplikasi lulus 100% (73 tests, 597 assertions, 0 errors). Frontend asset ter-build bersih via Vite.
+
 

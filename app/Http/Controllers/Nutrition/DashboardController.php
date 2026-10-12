@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Nutrition;
 
 use App\Http\Controllers\Controller;
+use App\Models\Menu;
 use App\Models\School;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -23,11 +24,24 @@ class DashboardController extends Controller
 
         $totalBeneficiaries = $schools->sum('registered_beneficiaries');
 
+        $activeMenus = Menu::forSppg((int) $user->sppg_id)
+            ->active()
+            ->with('items')
+            ->orderByDesc('updated_at')
+            ->take(5)
+            ->get();
+
+        $draftMenusCount = Menu::forSppg((int) $user->sppg_id)
+            ->draft()
+            ->count();
+
         return view('dashboard.nutrition', [
             'user' => $user,
             'sppg' => $sppg,
             'schools' => $schools,
             'totalBeneficiaries' => $totalBeneficiaries,
+            'activeMenus' => $activeMenus,
+            'draftMenusCount' => $draftMenusCount,
         ]);
     }
 }
