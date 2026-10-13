@@ -223,6 +223,7 @@
             // Client Geolocation Telemetry Logic
             const telemetryUrl = '{{ route('driver.trips.telemetry', $trip) }}';
             const telemetryStopUrl = '{{ route('driver.trips.telemetry.stop', $trip) }}';
+            const telemetryStatusUrl = '{{ route('driver.trips.telemetry.status', $trip) }}';
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
             const statusText = document.getElementById('gps-status-text');
             const statusDetail = document.getElementById('gps-status-detail');
@@ -233,21 +234,133 @@
 
             let watchId = null;
             let lastSentTime = 0;
+            let currentSessionId = 0;
+            let isSyncingStop = false;
 
-            function notifyStopServer() {
+            function setButtonState(mode) {
+                if (mode === 'active') {
+                    btnGpsLabel.textContent = 'Hentikan Berbagi Lokasi';
+                    btnToggleGps.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-rose-700 text-white hover:bg-rose-800 transition-colors flex items-center gap-2 shadow-xs touch-target cursor-pointer';
+                    btnToggleGps.disabled = false;
+                } else if (mode === 'syncing') {
+                    btnGpsLabel.textContent = 'Menyinkronkan...';
+                    btnToggleGps.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-amber-600 text-white opacity-80 transition-colors flex items-center gap-2 shadow-xs touch-target cursor-wait';
+                    btnToggleGps.disabled = true;
+                } else if (mode === 'retry_sync') {
+                    btnGpsLabel.textContent = 'Coba Sinkronkan Ulang';
+                    btnToggleGps.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-amber-600 text-white hover:bg-amber-700 transition-colors flex items-center gap-2 shadow-xs touch-target cursor-pointer';
+                    btnToggleGps.disabled = false;
+                } else {
+                    btnGpsLabel.textContent = 'Mulai Bagikan Lokasi';
+                    btnToggleGps.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-[#1C6654] text-white hover:bg-[#154E40] transition-colors flex items-center gap-2 shadow-xs touch-target cursor-pointer';
+                    btnToggleGps.disabled = false;
+                }
+            }
+
+            function syncStopToServer(stoppedAtIso, sessionId, retryCount = 0) {
+                isSyncingStop = true;
+                setButtonState('syncing');
+
+                statusText.textContent = 'Sensor Dimatikan (Menyinkronkan...)';
+                statusText.className = 'text-xs font-semibold px-2 py-0.5 rounded border bg-amber-50 text-amber-800 border-amber-200';
+                statusDetail.textContent = 'Pengambilan GPS lokal telah dihentikan demi privasi. Sedang menyinkronkan status penghentian ke server...';
+                indicatorDot.className = 'w-3.5 h-3.5 rounded-full bg-amber-400 animate-pulse shrink-0';
+
                 fetch(telemetryStopUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': csrfToken
+                    },
+                    body: JSON.stringify({
+                        stopped_at: stoppedAtIso,
+                        session_id: sessionId
+                    })
+                })
+                .then(async (res) => {
+                    const contentType = res.headers.get('content-type') || '';
+                    if (!res.ok || !contentType.includes('application/json')) {
+                        throw new Error(`Server returned HTTP ${res.status}`);
                     }
-                }).catch(err => {
+                    return res.json();
+                })
+                .then((data) => {
+                    isSyncingStop = false;
+                    // If kurir started a NEW session while stop was pending, do not overwrite UI
+                    if (watchId !== null) return;
+
+                    if (data.success) {
+                        statusText.textContent = 'Berbagi Lokasi Dihentikan (Terkonfirmasi Server)';
+                        statusText.className = 'text-xs font-semibold px-2 py-0.5 rounded border bg-slate-100 text-slate-700 border-slate-300';
+                        statusDetail.textContent = 'Pelacakan dihentikan oleh kurir dan telah dikonfirmasi oleh server SPPG.';
+                        indicatorDot.className = 'w-3.5 h-3.5 rounded-full bg-slate-400 shrink-0';
+                        if (accuracyDisplay) accuracyDisplay.textContent = '';
+                        setButtonState('idle');
+                    } else {
+                        throw new Error(data.message || 'Server did not acknowledge stop.');
+                    }
+                })
+                .catch((err) => {
                     console.warn('Gagal sinkronisasi penghentian GPS ke server:', err);
+                    if (watchId !== null) {
+                        isSyncingStop = false;
+                        return;
+                    }
+
+                    // Status reconciliation before reporting permanent failure
+                    reconcileServerStopStatus(stoppedAtIso, sessionId, retryCount);
                 });
             }
 
+            function reconcileServerStopStatus(stoppedAtIso, sessionId, retryCount) {
+                statusText.textContent = 'Sensor Dimatikan (Memeriksa Ulang Status...)';
+                statusText.className = 'text-xs font-semibold px-2 py-0.5 rounded border bg-amber-50 text-amber-800 border-amber-200';
+                statusDetail.textContent = 'Sensor GPS lokal mati. Memeriksa ulang rekonsiliasi status ke server SPPG...';
+
+                fetch(telemetryStatusUrl, {
+                    headers: { 'Accept': 'application/json' }
+                })
+                .then(async (res) => {
+                    if (!res.ok) throw new Error(`Reconciliation HTTP ${res.status}`);
+                    return res.json();
+                })
+                .then((statusData) => {
+                    isSyncingStop = false;
+                    if (watchId !== null) return;
+
+                    if (statusData.is_stopped || statusData.tracking_status === 'SHARING_STOPPED') {
+                        statusText.textContent = 'Berbagi Lokasi Dihentikan (Terekonsiliasi Server)';
+                        statusText.className = 'text-xs font-semibold px-2 py-0.5 rounded border bg-slate-100 text-slate-700 border-slate-300';
+                        statusDetail.textContent = 'Pelacakan dihentikan oleh kurir dan berhasil terekonsiliasi dengan server SPPG.';
+                        indicatorDot.className = 'w-3.5 h-3.5 rounded-full bg-slate-400 shrink-0';
+                        if (accuracyDisplay) accuracyDisplay.textContent = '';
+                        setButtonState('idle');
+                    } else if (retryCount < 1) {
+                        setTimeout(() => syncStopToServer(stoppedAtIso, sessionId, retryCount + 1), 1500);
+                    } else {
+                        showSyncFailureState(stoppedAtIso, sessionId);
+                    }
+                })
+                .catch(() => {
+                    isSyncingStop = false;
+                    if (watchId !== null) return;
+                    showSyncFailureState(stoppedAtIso, sessionId);
+                });
+            }
+
+            function showSyncFailureState(stoppedAtIso, sessionId) {
+                statusText.textContent = 'Sensor Dimatikan (Sinkronisasi Gagal)';
+                statusText.className = 'text-xs font-semibold px-2 py-0.5 rounded border bg-rose-50 text-rose-700 border-rose-200';
+                statusDetail.textContent = 'Sensor GPS ponsel tetap mati demi privasi. Sambungan server bermasalah. Klik untuk coba sinkronkan ulang.';
+                indicatorDot.className = 'w-3.5 h-3.5 rounded-full bg-rose-400 shrink-0';
+                setButtonState('retry_sync');
+
+                btnToggleGps._lastFailedStop = { stoppedAtIso, sessionId };
+            }
+
             function sendLocation(pos) {
+                const sendingSessionId = currentSessionId;
                 const now = Date.now();
                 // Throttle: Send at most once every 10 seconds to save battery and bandwidth
                 if (now - lastSentTime < 10000) return;
@@ -259,7 +372,8 @@
                     accuracy: pos.coords.accuracy,
                     speed: pos.coords.speed,
                     heading: pos.coords.heading,
-                    recorded_at: new Date(pos.timestamp).toISOString()
+                    recorded_at: new Date(pos.timestamp).toISOString(),
+                    session_id: sendingSessionId
                 };
 
                 fetch(telemetryUrl, {
@@ -271,8 +385,21 @@
                     },
                     body: JSON.stringify(payload)
                 })
-                .then(res => res.json())
+                .then(async (res) => {
+                    const contentType = res.headers.get('content-type') || '';
+                    if (!res.ok || !contentType.includes('application/json')) {
+                        throw new Error(`HTTP ${res.status}`);
+                    }
+                    return res.json();
+                })
                 .then(data => {
+                    // Stale response protection: Ignore if session changed or stopped
+                    if (sendingSessionId !== currentSessionId || watchId === null) {
+                        return;
+                    }
+                    if (data.tracking_status === 'SHARING_STOPPED' || data.is_stale_telemetry) {
+                        return;
+                    }
                     if (data.success) {
                         statusText.textContent = 'Terhubung (GPS Aktif)';
                         statusText.className = 'text-xs font-semibold px-2 py-0.5 rounded border bg-emerald-50 text-emerald-700 border-emerald-200';
@@ -281,6 +408,7 @@
                         if (accuracyDisplay) {
                             accuracyDisplay.textContent = 'Akurasi: ±' + Math.round(pos.coords.accuracy) + 'm';
                         }
+                        setButtonState('active');
                     }
                 })
                 .catch(err => {
@@ -313,6 +441,7 @@
                     return;
                 }
 
+                currentSessionId = Date.now();
                 statusText.textContent = 'Meminta Izin Lokasi...';
                 statusText.className = 'text-xs font-semibold px-2 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200';
                 statusDetail.textContent = 'Harap izinkan akses lokasi pada dialog peramban.';
@@ -331,27 +460,43 @@
                         timeout: 20000
                     }
                 );
+
+                setButtonState('active');
             }
 
             function stopTracking(notify = true) {
+                const stoppedSessionId = currentSessionId;
+                const stoppedAtIso = new Date().toISOString();
+
+                // 1. Immediate local hardware sensor shutdown for privacy
                 if (watchId !== null) {
                     navigator.geolocation.clearWatch(watchId);
                     watchId = null;
                 }
-                btnGpsLabel.textContent = 'Mulai Bagikan Lokasi';
-                btnToggleGps.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-[#1C6654] text-white hover:bg-[#154E40] transition-colors flex items-center gap-2 shadow-xs touch-target cursor-pointer';
-                statusText.textContent = 'Berbagi Lokasi Dihentikan';
-                statusText.className = 'text-xs font-semibold px-2 py-0.5 rounded border bg-slate-100 text-slate-700 border-slate-300';
-                statusDetail.textContent = 'Pelacakan dihentikan oleh kurir. Klik "Mulai Bagikan Lokasi" untuk mengaktifkan kembali.';
-                indicatorDot.className = 'w-3.5 h-3.5 rounded-full bg-slate-400 shrink-0';
-                if (accuracyDisplay) accuracyDisplay.textContent = '';
+                currentSessionId = 0; // Invalidate current session
 
                 if (notify) {
-                    notifyStopServer();
+                    syncStopToServer(stoppedAtIso, stoppedSessionId, 0);
+                } else {
+                    setButtonState('idle');
+                    statusText.textContent = 'Berbagi Lokasi Dihentikan';
+                    statusText.className = 'text-xs font-semibold px-2 py-0.5 rounded border bg-slate-100 text-slate-700 border-slate-300';
+                    statusDetail.textContent = 'Pelacakan dihentikan oleh kurir.';
+                    indicatorDot.className = 'w-3.5 h-3.5 rounded-full bg-slate-400 shrink-0';
+                    if (accuracyDisplay) accuracyDisplay.textContent = '';
                 }
             }
 
             btnToggleGps?.addEventListener('click', function() {
+                if (isSyncingStop) return;
+
+                if (btnToggleGps._lastFailedStop) {
+                    const failed = btnToggleGps._lastFailedStop;
+                    btnToggleGps._lastFailedStop = null;
+                    syncStopToServer(failed.stoppedAtIso, failed.sessionId, 0);
+                    return;
+                }
+
                 if (watchId !== null) {
                     stopTracking(true);
                 } else {
@@ -365,7 +510,10 @@
                     navigator.geolocation.clearWatch(watchId);
                     watchId = null;
                     if (navigator.sendBeacon) {
-                        const blob = new Blob([JSON.stringify({ _token: csrfToken })], { type: 'application/json' });
+                        const blob = new Blob([JSON.stringify({ 
+                            _token: csrfToken,
+                            stopped_at: new Date().toISOString()
+                        })], { type: 'application/json' });
                         navigator.sendBeacon(telemetryStopUrl, blob);
                     }
                 }

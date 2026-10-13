@@ -804,5 +804,123 @@ class Pbi09GpsTrackingTest extends TestCase
         $response->assertStatus(200);
         $this->assertEquals($laterTime->toIso8601String(), $response->json('last_updated'));
     }
+
+    /**
+     * Requirement G: Stop telemetry acknowledgement and status reconciliation endpoint.
+     */
+    public function test_stop_telemetry_acknowledgement_and_status_reconciliation(): void
+    {
+        $this->inProgressTrip->update([
+            'tracking_status' => 'ONLINE',
+            'tracking_started_at' => Carbon::now()->subMinutes(5),
+            'tracking_ended_at' => null,
+        ]);
+
+        $stopResponse = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.stop', $this->inProgressTrip), [
+                'stopped_at' => Carbon::now()->toIso8601String(),
+                'session_id' => 123456,
+            ]);
+
+        $stopResponse->assertStatus(200);
+        $stopResponse->assertJson([
+            'success' => true,
+            'tracking_status' => 'SHARING_STOPPED',
+            'is_stale_stop' => false,
+        ]);
+
+        $this->inProgressTrip->refresh();
+        $this->assertEquals('SHARING_STOPPED', $this->inProgressTrip->tracking_status);
+        $this->assertNotNull($this->inProgressTrip->tracking_ended_at);
+
+        // Status reconciliation endpoint
+        $statusResponse = $this->actingAs($this->driverA)
+            ->getJson(route('driver.trips.telemetry.status', $this->inProgressTrip));
+
+        $statusResponse->assertStatus(200);
+        $statusResponse->assertJson([
+            'success' => true,
+            'tracking_status' => 'SHARING_STOPPED',
+            'is_stopped' => true,
+            'is_online' => false,
+        ]);
+    }
+
+    /**
+     * Requirement H: Out-of-order stale stop request arriving after a newer session started is ignored.
+     */
+    public function test_stale_out_of_order_stop_request_does_not_override_newer_active_session(): void
+    {
+        $olderStopTime = Carbon::now()->subMinutes(2);
+        $newerStartTime = Carbon::now()->subMinute();
+
+        $this->inProgressTrip->update([
+            'tracking_status' => 'ONLINE',
+            'tracking_started_at' => $newerStartTime,
+            'tracking_ended_at' => null,
+        ]);
+
+        // Simulating delayed stop request from the older session
+        $response = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.stop', $this->inProgressTrip), [
+                'stopped_at' => $olderStopTime->toIso8601String(),
+                'session_id' => 10001,
+            ]);
+
+        $response->assertStatus(200);
+        $response->assertJson([
+            'success' => true,
+            'tracking_status' => 'ONLINE',
+            'is_stale_stop' => true,
+        ]);
+
+        $this->inProgressTrip->refresh();
+        // Crucial: Trip must remain ONLINE because the active session started AFTER the client clicked stop in the old session
+        $this->assertEquals('ONLINE', $this->inProgressTrip->tracking_status);
+        $this->assertNull($this->inProgressTrip->tracking_ended_at);
+    }
+
+    /**
+     * Requirement I: Delayed telemetry arriving after stop does not revive ONLINE status.
+     */
+    public function test_delayed_telemetry_arriving_after_stop_does_not_revive_online_status(): void
+    {
+        $stopTime = Carbon::now()->subMinutes(2);
+        $this->inProgressTrip->update([
+            'last_latitude' => -7.250445,
+            'last_longitude' => 112.768845,
+            'last_location_at' => $stopTime->copy()->subMinutes(2),
+            'tracking_status' => 'SHARING_STOPPED',
+            'tracking_ended_at' => $stopTime,
+        ]);
+
+        // Telemetry recorded BEFORE the stop event arriving delayed
+        $delayedRecordedAt = $stopTime->copy()->subSeconds(30);
+
+        $response = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
+                'latitude' => -7.251000,
+                'longitude' => 112.769000,
+                'accuracy' => 15.0,
+                'recorded_at' => $delayedRecordedAt->toIso8601String(),
+            ]);
+
+        $response->assertStatus(200);
+        $response->assertJson([
+            'success' => true,
+            'tracking_status' => 'SHARING_STOPPED',
+            'is_stale_telemetry' => true,
+        ]);
+
+        $this->inProgressTrip->refresh();
+        $this->assertEquals('SHARING_STOPPED', $this->inProgressTrip->tracking_status);
+        $this->assertEquals($stopTime->toIso8601String(), $this->inProgressTrip->tracking_ended_at->toIso8601String());
+        // Verify location was saved for audit trail
+        $this->assertDatabaseHas('gps_locations', [
+            'trip_id' => $this->inProgressTrip->id,
+            'latitude' => -7.251000,
+            'longitude' => 112.769000,
+        ]);
+    }
 }
 

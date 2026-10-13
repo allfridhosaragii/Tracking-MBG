@@ -148,6 +148,7 @@ Route::middleware(['auth', 'active'])->group(function () {
             Route::get('/trips/{trip}/active', [DriverTripController::class, 'active'])->name('trips.active');
             Route::post('/trips/{trip}/telemetry', [DriverTripController::class, 'telemetry'])->name('trips.telemetry');
             Route::post('/trips/{trip}/telemetry/stop', [DriverTripController::class, 'stopTelemetry'])->name('trips.telemetry.stop');
+            Route::get('/trips/{trip}/telemetry/status', [DriverTripController::class, 'telemetryStatus'])->name('trips.telemetry.status');
             Route::post('/trips/{trip}/stops/{stop}/arrive', [DriverTripController::class, 'arrive'])->name('trips.stops.arrive');
         });
 

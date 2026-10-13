@@ -1,4 +1,4 @@
-import { Map, Marker, Popup, NavigationControl, LngLatBounds, setWorkerUrl } from 'maplibre-gl';
+import { Map as MapLibreMap, Marker, Popup, NavigationControl, LngLatBounds, setWorkerUrl } from 'maplibre-gl';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -103,8 +103,8 @@ function createDriverPopupContent(tel) {
 
 /**
  * MBG-Track Smart Dispatch Map Component (MapLibre GL JS + OpenFreeMap)
- * Supports keyed marker lifecycle (smooth updates without full marker destruction),
- * popup state retention during live polling, and honest fallback geometry indication.
+ * Uses MapLibreMap for geographic rendering and native JavaScript Map for keyed collections.
+ * Supports smooth keyed marker lifecycle, retained popup states, and graceful fallback indication.
  */
 export function initDispatchMap(containerId, options = {}) {
     const container = document.getElementById(containerId);
@@ -135,11 +135,13 @@ export function initDispatchMap(containerId, options = {}) {
 
     let map = null;
     let sppgMarker = null;
-    const schoolMarkers = new Map(); // key -> { marker, popup, element, data }
+    // Native ES6 JavaScript Map for keyed school markers collection (avoids constructor collision)
+    const schoolMarkers = new Map();
     let driverMarker = null;
     let driverElement = null;
     let driverPopup = null;
     let lastDriverCoords = null;
+    let driverAnimFrameId = null;
     let isInitialRender = true;
     let pollTimer = null;
 
@@ -147,7 +149,7 @@ export function initDispatchMap(containerId, options = {}) {
     const defaultZoom = 12;
 
     try {
-        map = new Map({
+        map = new MapLibreMap({
             container: containerId,
             style: 'https://tiles.openfreemap.org/styles/liberty',
             center: defaultCenter,
@@ -204,7 +206,7 @@ export function initDispatchMap(containerId, options = {}) {
             hasPoints = true;
         }
 
-        // 2. Keyed School Markers (Retained across updates to prevent popup closing and flicker)
+        // 2. Keyed School Markers (Preserved across updates to maintain popup states)
         if (Array.isArray(data.stops)) {
             const currentStopKeys = new Set();
 
@@ -307,9 +309,45 @@ export function initDispatchMap(containerId, options = {}) {
                 driverElement.title = `Kurir: ${tel.label || 'Posisi Armada'}`;
 
                 // Smooth position update without DOM recreation
-                if (!lastDriverCoords || lastDriverCoords[0] !== newCoords[0] || lastDriverCoords[1] !== newCoords[1]) {
-                    driverMarker.setLngLat(newCoords);
+                if (!lastDriverCoords || (lastDriverCoords[0] === newCoords[0] && lastDriverCoords[1] === newCoords[1])) {
+                    // No movement
+                } else {
+                    const startLng = lastDriverCoords[0];
+                    const startLat = lastDriverCoords[1];
+                    const targetLng = newCoords[0];
+                    const targetLat = newCoords[1];
                     lastDriverCoords = newCoords;
+
+                    const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                    if (prefersReduced) {
+                        driverMarker.setLngLat(newCoords);
+                    } else {
+                        // Frame-paced visual interpolation
+                        const duration = 400;
+                        const startTime = performance.now();
+
+                        if (driverAnimFrameId) {
+                            cancelAnimationFrame(driverAnimFrameId);
+                            driverAnimFrameId = null;
+                        }
+
+                        function step(currentTime) {
+                            const elapsed = currentTime - startTime;
+                            const progress = Math.min(elapsed / duration, 1);
+                            const ease = 1 - (1 - progress) * (1 - progress);
+                            const curLng = startLng + (targetLng - startLng) * ease;
+                            const curLat = startLat + (targetLat - startLat) * ease;
+                            driverMarker.setLngLat([curLng, curLat]);
+
+                            if (progress < 1) {
+                                driverAnimFrameId = requestAnimationFrame(step);
+                            } else {
+                                driverAnimFrameId = null;
+                            }
+                        }
+
+                        driverAnimFrameId = requestAnimationFrame(step);
+                    }
                 }
 
                 // Update popup text while keeping it open if user opened it
@@ -320,6 +358,10 @@ export function initDispatchMap(containerId, options = {}) {
             bounds.extend(newCoords);
             hasPoints = true;
         } else if (driverMarker) {
+            if (driverAnimFrameId) {
+                cancelAnimationFrame(driverAnimFrameId);
+                driverAnimFrameId = null;
+            }
             driverMarker.remove();
             driverMarker = null;
             driverElement = null;
@@ -524,6 +566,13 @@ export function initDispatchMap(containerId, options = {}) {
         }
     });
 
+    const handleVisibilityChange = () => {
+        if (!document.hidden && pollInterval && pollInterval > 0) {
+            fetchAndRender();
+        }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return {
         map,
         updateData: renderMapData,
@@ -531,6 +580,11 @@ export function initDispatchMap(containerId, options = {}) {
         stopPolling,
         destroy: () => {
             stopPolling();
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            if (driverAnimFrameId) {
+                cancelAnimationFrame(driverAnimFrameId);
+                driverAnimFrameId = null;
+            }
             if (sppgMarker) {
                 sppgMarker.remove();
                 sppgMarker = null;
@@ -547,4 +601,4 @@ export function initDispatchMap(containerId, options = {}) {
 }
 
 window.initDispatchMap = initDispatchMap;
-window.maplibregl = { Map, Marker, Popup, NavigationControl, LngLatBounds };
+window.maplibregl = { Map: MapLibreMap, Marker, Popup, NavigationControl, LngLatBounds };

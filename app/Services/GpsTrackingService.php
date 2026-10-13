@@ -170,7 +170,11 @@ class GpsTrackingService
             // Only update latest trip location cache if this telemetry point is newer than existing latest
             $isNewer = $lockedTrip->last_location_at === null || $recordedAt->gt($lockedTrip->last_location_at);
 
-            if ($isNewer) {
+            // Race condition guard: If telemetry was recorded at or before an explicit stop event,
+            // it must not revive tracking_status to ONLINE or clear tracking_ended_at.
+            $isAfterStop = $lockedTrip->tracking_ended_at === null || $recordedAt->gt($lockedTrip->tracking_ended_at);
+
+            if ($isNewer && $isAfterStop) {
                 $lockedTrip->update([
                     'last_latitude' => $lat,
                     'last_longitude' => $lng,
@@ -179,6 +183,14 @@ class GpsTrackingService
                     'tracking_status' => 'ONLINE',
                     'tracking_started_at' => $lockedTrip->tracking_started_at ?: $now,
                     'tracking_ended_at' => null,
+                ]);
+            } elseif ($isNewer) {
+                // Update coordinates for audit trail, but maintain SHARING_STOPPED status
+                $lockedTrip->update([
+                    'last_latitude' => $lat,
+                    'last_longitude' => $lng,
+                    'last_accuracy_m' => $accuracy,
+                    'last_location_at' => $recordedAt,
                 ]);
             }
 
@@ -317,10 +329,12 @@ class GpsTrackingService
     /**
      * Stop driver GPS telemetry sharing explicitly (Gate C).
      * Synchronizes stopped tracking state to server while preserving last known location.
+     * Enforces out-of-order race condition guard: If a newer tracking session has started after
+     * the client stopped this session, the stale stop request is ignored to protect active sharing.
      */
-    public function stopDriverTracking(Trip $trip, User $driver): Trip
+    public function stopDriverTracking(Trip $trip, User $driver, ?string $clientStoppedAt = null, ?int $sessionId = null): Trip
     {
-        return DB::transaction(function () use ($trip, $driver) {
+        return DB::transaction(function () use ($trip, $driver, $clientStoppedAt, $sessionId) {
             $lockedTrip = Trip::where('id', $trip->id)
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -338,10 +352,17 @@ class GpsTrackingService
             }
 
             $now = Carbon::now();
+            $stoppedAt = $clientStoppedAt ? Carbon::parse($clientStoppedAt) : $now;
+
+            // Race condition check: If a newer session has started AFTER client initiated this stop
+            if ($lockedTrip->tracking_started_at !== null && $lockedTrip->tracking_started_at->gt($stoppedAt)) {
+                // Return trip as-is without reverting tracking_status to SHARING_STOPPED
+                return $lockedTrip;
+            }
 
             $lockedTrip->update([
                 'tracking_status' => 'SHARING_STOPPED',
-                'tracking_ended_at' => $now,
+                'tracking_ended_at' => $stoppedAt,
             ]);
 
             ActivityLog::record(
@@ -350,8 +371,9 @@ class GpsTrackingService
                 actor: $driver,
                 newValues: [
                     'tracking_status' => 'SHARING_STOPPED',
-                    'tracking_ended_at' => $now->toIso8601String(),
+                    'tracking_ended_at' => $stoppedAt->toIso8601String(),
                     'last_location_at' => $lockedTrip->last_location_at?->toIso8601String(),
+                    'session_id' => $sessionId,
                 ]
             );
 

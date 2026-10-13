@@ -34,6 +34,12 @@
                     <span class="w-2 h-2 rounded-full bg-[#1B573E]"></span>
                     <span>Portal Publik Resmi</span>
                 </span>
+                <span id="public-live-indicator" class="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium bg-white text-[#53645B] border border-[#DCE5DD]">
+                    <span>Pembaruan:</span>
+                    <span id="public-last-updated" class="font-mono font-bold text-[#1C6654]">
+                        {{ $trip->updated_at ? $trip->updated_at->format('H:i:s') . ' WIB' : 'Sinkron' }}
+                    </span>
+                </span>
             </div>
         </div>
     </header>
@@ -83,11 +89,11 @@
                 </div>
                 <div>
                     <span class="text-[11px] font-semibold text-[#53645B] block uppercase tracking-wider">Tahapan Operasional Terkini:</span>
-                    <span class="text-sm font-bold text-[#172923]">{{ $stageText }}</span>
+                    <span id="public-stage-text" class="text-sm font-bold text-[#172923]">{{ $stageText }}</span>
                 </div>
             </div>
 
-            <span class="text-xs font-bold px-3 py-1 rounded-full border {{ $trip->status->badgeClass() }} shrink-0">
+            <span id="public-trip-status" class="text-xs font-bold px-3 py-1 rounded-full border {{ $trip->status->badgeClass() }} shrink-0">
                 {{ $trip->status->label() }}
             </span>
         </div>
@@ -160,13 +166,13 @@
                                             <span class="text-[10px] text-[#53645B]">{{ $stop->school->education_level }}</span>
                                         </div>
                                     </div>
-                                    <span class="text-[10px] px-2 py-0.5 rounded border {{ $stop->status->badgeClass() }}">
+                                    <span id="stop-badge-{{ $stop->sequence_number }}" class="text-[10px] px-2 py-0.5 rounded border {{ $stop->status->badgeClass() }}">
                                         {{ $stop->status->label() }}
                                     </span>
                                 </div>
                                 <div class="mt-2 pt-2 border-t border-[#E8EEE9] flex justify-between text-[11px]">
                                     <span class="text-[#708177]">Status:</span>
-                                    <span class="font-medium text-[#172923]">{{ $publicStopLabel }}</span>
+                                    <span id="stop-stage-text-{{ $stop->sequence_number }}" class="font-medium text-[#172923]">{{ $publicStopLabel }}</span>
                                 </div>
                             </div>
                         @endforeach
@@ -188,7 +194,38 @@
         document.addEventListener('DOMContentLoaded', function() {
             if (window.initDispatchMap) {
                 window.initDispatchMap('public-delivery-map', {
-                    dataUrl: '{{ route('public.trips.map-data', $trip->trip_code) }}'
+                    dataUrl: '{{ route('public.trips.map-data', $trip->trip_code) }}',
+                    pollInterval: 15000,
+                    onTelemetryUpdate: function(data) {
+                        if (!data) return;
+
+                        if (data.last_updated) {
+                            const dt = new Date(data.last_updated);
+                            const timeStr = dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' WIB';
+                            const lastUpdatedEl = document.getElementById('public-last-updated');
+                            if (lastUpdatedEl) lastUpdatedEl.textContent = timeStr;
+                        }
+
+                        if (data.delivery_stage) {
+                            const stageEl = document.getElementById('public-stage-text');
+                            if (stageEl) stageEl.textContent = data.delivery_stage;
+                        }
+
+                        if (data.status_label) {
+                            const statusEl = document.getElementById('public-trip-status');
+                            if (statusEl) statusEl.textContent = data.status_label;
+                        }
+
+                        if (Array.isArray(data.stops)) {
+                            data.stops.forEach(function(s) {
+                                const stageEl = document.getElementById('stop-stage-text-' + s.sequence_number);
+                                if (stageEl && s.stage) stageEl.textContent = s.stage;
+
+                                const badgeEl = document.getElementById('stop-badge-' + s.sequence_number);
+                                if (badgeEl && s.status_label) badgeEl.textContent = s.status_label;
+                            });
+                        }
+                    }
                 });
             }
         });

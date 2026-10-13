@@ -178,9 +178,13 @@ class DriverTripController extends Controller
         $trackingService = app(\App\Services\GpsTrackingService::class);
         $gpsPoint = $trackingService->recordDriverLocation($trip, $request->user(), $request->all());
 
+        $refreshedTrip = $trip->fresh();
+        $isStaleAfterStop = $refreshedTrip->tracking_status === 'SHARING_STOPPED';
+
         return response()->json([
             'success' => true,
-            'tracking_status' => 'ONLINE',
+            'tracking_status' => $refreshedTrip->tracking_status ?? 'ONLINE',
+            'is_stale_telemetry' => $isStaleAfterStop,
             'latitude' => $gpsPoint->latitude,
             'longitude' => $gpsPoint->longitude,
             'accuracy_m' => $gpsPoint->accuracy_m,
@@ -190,21 +194,52 @@ class DriverTripController extends Controller
 
     /**
      * Driver explicitly stops GPS telemetry sharing (Gate C).
+     * Supports client session sequencing and stopped_at timestamp to prevent race conditions.
      */
     public function stopTelemetry(Request $request, Trip $trip): \Illuminate\Http\JsonResponse
     {
         Gate::authorize('recordTelemetry', $trip);
 
         $trackingService = app(\App\Services\GpsTrackingService::class);
-        $updatedTrip = $trackingService->stopDriverTracking($trip, $request->user());
+        $stoppedAt = $request->input('stopped_at');
+        $sessionId = $request->input('session_id') ? (int) $request->input('session_id') : null;
+
+        $updatedTrip = $trackingService->stopDriverTracking($trip, $request->user(), $stoppedAt, $sessionId);
+
+        $isStaleIgnored = $updatedTrip->tracking_status !== 'SHARING_STOPPED';
 
         return response()->json([
             'success' => true,
-            'message' => 'Berbagi lokasi GPS telah berhasil dihentikan oleh kurir.',
-            'tracking_status' => 'SHARING_STOPPED',
+            'message' => $isStaleIgnored
+                ? 'Permintaan penghentian lama diabaikan karena sesi pelacakan baru telah aktif.'
+                : 'Berbagi lokasi GPS telah berhasil dihentikan oleh kurir.',
+            'tracking_status' => $updatedTrip->tracking_status,
+            'is_stale_stop' => $isStaleIgnored,
             'tracking_ended_at' => $updatedTrip->tracking_ended_at?->toIso8601String(),
             'last_latitude' => (float) $updatedTrip->last_latitude,
             'last_longitude' => (float) $updatedTrip->last_longitude,
+        ], 200);
+    }
+
+    /**
+     * Driver telemetry status reconciliation endpoint.
+     */
+    public function telemetryStatus(Request $request, Trip $trip): \Illuminate\Http\JsonResponse
+    {
+        Gate::authorize('recordTelemetry', $trip);
+
+        $trackingService = app(\App\Services\GpsTrackingService::class);
+        $trackingStatus = $trackingService->getDriverTrackingStatus($trip);
+
+        return response()->json([
+            'success' => true,
+            'tracking_status' => $trackingStatus['status'],
+            'is_stopped' => $trackingStatus['is_stopped'] ?? false,
+            'is_online' => $trackingStatus['is_online'] ?? false,
+            'is_stale' => $trackingStatus['is_stale'] ?? false,
+            'label' => $trackingStatus['label'],
+            'badge_class' => $trackingStatus['badge_class'],
+            'last_location_at' => $trackingStatus['last_location_at'],
         ], 200);
     }
 
