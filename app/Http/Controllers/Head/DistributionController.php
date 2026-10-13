@@ -63,4 +63,32 @@ class DistributionController extends Controller
             ->route('head.distribution.index', ['service_date' => $trip->service_date->toDateString()])
             ->with('success', "Perjalanan {$trip->trip_code} telah dibatalkan dan alokasi makanan dikembalikan ke status siap muat.");
     }
+
+    /**
+     * Verify physical loading for a trip (Pre-departure Gate).
+     */
+    public function verifyLoading(\App\Http\Requests\VerifyLoadingRequest $request, Trip $trip): RedirectResponse
+    {
+        Gate::authorize('verifyLoading', $trip);
+
+        $this->tripDispatchService->verifyLoading($trip, $request->validated(), $request->user());
+
+        return redirect()
+            ->back()
+            ->with('success', "Kuantitas fisik muatan perjalanan {$trip->trip_code} berhasil diverifikasi.");
+    }
+
+    /**
+     * Authorize pre-departure dispatch for a trip (Kepala SPPG Gate).
+     */
+    public function approveDispatch(\App\Http\Requests\ApproveDispatchRequest $request, Trip $trip): RedirectResponse
+    {
+        Gate::authorize('approveDispatch', $trip);
+
+        $this->tripDispatchService->approveDispatch($trip, $request->user(), $request->input('notes'));
+
+        return redirect()
+            ->back()
+            ->with('success', "Otorisasi pengiriman {$trip->trip_code} berhasil diterbitkan. Status perjalanan kini SIAP BERANGKAT (READY).");
+    }
 }

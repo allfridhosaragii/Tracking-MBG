@@ -28,6 +28,17 @@ class Trip extends Model
         'vehicle_check_passed',
         'vehicle_checked_at',
         'vehicle_check_notes',
+        'loading_verified',
+        'loading_verified_at',
+        'loading_verified_by',
+        'loading_notes',
+        'dispatch_approved',
+        'dispatch_approved_at',
+        'dispatch_approved_by',
+        'dispatch_notes',
+        'route_geometry',
+        'total_distance_m',
+        'estimated_duration_s',
         'tracking_status',
         'tracking_started_at',
         'tracking_ended_at',
@@ -45,6 +56,12 @@ class Trip extends Model
         'completed_at' => 'datetime',
         'vehicle_checked_at' => 'datetime',
         'vehicle_check_passed' => 'boolean',
+        'loading_verified' => 'boolean',
+        'loading_verified_at' => 'datetime',
+        'dispatch_approved' => 'boolean',
+        'dispatch_approved_at' => 'datetime',
+        'total_distance_m' => 'integer',
+        'estimated_duration_s' => 'integer',
         'tracking_started_at' => 'datetime',
         'tracking_ended_at' => 'datetime',
         'last_location_at' => 'datetime',
@@ -58,6 +75,16 @@ class Trip extends Model
     public function driver(): BelongsTo
     {
         return $this->belongsTo(User::class, 'driver_id');
+    }
+
+    public function loadingVerifiedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'loading_verified_by');
+    }
+
+    public function dispatchApprovedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'dispatch_approved_by');
     }
 
     public function vehicle(): BelongsTo
@@ -92,11 +119,11 @@ class Trip extends Model
 
     public function getTotalLoadedPortionsAttribute(): int
     {
-        return (int) $this->deliveryItems()->sum('loaded_portions');
+        return (int) $this->deliveryItems()->sum('delivery_items.loaded_portions');
     }
 
     public function getTotalPlannedPortionsAttribute(): int
     {
-        return (int) $this->deliveryItems()->sum('planned_portions');
+        return (int) $this->deliveryItems()->sum('delivery_items.planned_portions');
     }
 }

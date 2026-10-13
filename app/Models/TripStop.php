@@ -17,6 +17,8 @@ class TripStop extends Model
         'school_id',
         'stop_type',
         'sequence_number',
+        'planned_portions',
+        'loaded_portions',
         'planned_arrival_at',
         'estimated_arrival_at',
         'eta_updated_at',
@@ -29,6 +31,8 @@ class TripStop extends Model
 
     protected $casts = [
         'status' => TripStopStatus::class,
+        'planned_portions' => 'integer',
+        'loaded_portions' => 'integer',
         'planned_arrival_at' => 'datetime',
         'estimated_arrival_at' => 'datetime',
         'eta_updated_at' => 'datetime',

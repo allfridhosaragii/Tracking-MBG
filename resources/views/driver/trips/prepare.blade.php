@@ -183,8 +183,49 @@
             <div class="p-5 rounded-2xl bg-white border border-[#DCE5DD]">
                 <h2 class="text-base font-bold text-[#172923] mb-1">Mulai Perjalanan Pengantaran</h2>
                 <p class="text-xs text-[#53645B] mb-4">
-                    Setelah muatan selesai dinaikkan ke armada dan pemeriksaan kendaraan lolos, Anda dapat meresmikan awal perjalanan.
+                    Seluruh 4 gerbang verifikasi wajib dipenuhi sebelum perjalanan dapat diresmikan.
                 </p>
+
+                <!-- Status 4-Block Dispatch Gate Kurir -->
+                <div class="mb-4 p-3.5 rounded-xl bg-[#FAFBF9] border border-[#E8EEE9] space-y-2 text-xs">
+                    <span class="font-bold text-[#172923] block text-[11px] uppercase tracking-wider">
+                        Verifikasi Persyaratan Keberangkatan:
+                    </span>
+                    <div class="grid grid-cols-2 gap-2 text-[11px]">
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-3.5 h-3.5 rounded-full flex items-center justify-center bg-[#EDF7F2] text-[#1B573E] font-bold text-[9px]">1</span>
+                            <span class="text-[#53645B]">QC Makanan:</span>
+                            <span class="font-bold text-[#1B573E]">RELEASED</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-3.5 h-3.5 rounded-full flex items-center justify-center {{ $trip->loading_verified ? 'bg-[#EDF7F2] text-[#1B573E]' : 'bg-[#FDF2F2] text-[#9B3232]' }} font-bold text-[9px]">2</span>
+                            <span class="text-[#53645B]">Muatan Fisik:</span>
+                            @if ($trip->loading_verified)
+                                <span class="font-bold text-[#1B573E]">Diverifikasi</span>
+                            @else
+                                <span class="font-bold text-[#9B3232]">Menunggu Muat</span>
+                            @endif
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-3.5 h-3.5 rounded-full flex items-center justify-center {{ $trip->vehicle_check_passed ? 'bg-[#EDF7F2] text-[#1B573E]' : 'bg-[#FDF2F2] text-[#9B3232]' }} font-bold text-[9px]">3</span>
+                            <span class="text-[#53645B]">Cek Armada:</span>
+                            @if ($trip->vehicle_check_passed)
+                                <span class="font-bold text-[#1B573E]">Laik Jalan</span>
+                            @else
+                                <span class="font-bold text-[#9B3232]">Belum Laik</span>
+                            @endif
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-3.5 h-3.5 rounded-full flex items-center justify-center {{ $trip->dispatch_approved ? 'bg-[#EDF7F2] text-[#1B573E]' : 'bg-[#FDF2F2] text-[#9B3232]' }} font-bold text-[9px]">4</span>
+                            <span class="text-[#53645B]">Izin Kepala SPPG:</span>
+                            @if ($trip->dispatch_approved)
+                                <span class="font-bold text-[#1B573E]">Disetujui</span>
+                            @else
+                                <span class="font-bold text-[#9B3232]">Menunggu Izin</span>
+                            @endif
+                        </div>
+                    </div>
+                </div>
 
                 @if ($trip->status->value === 'IN_PROGRESS')
                     <div class="p-4 rounded-xl bg-[#EDF7F2] border border-[#BCE2D0] text-[#1B573E] text-xs">
@@ -201,37 +242,65 @@
                         </div>
                     </div>
                 @elseif ($trip->status->value === 'READY')
-                    <form method="POST" action="{{ route('driver.trips.start', $trip) }}" onsubmit="return confirm('Apakah Anda yakin muatan telah selesai dinaikkan dan siap memulai perjalanan pengantaran?')">
-                        @csrf
-                        <div class="p-4 rounded-xl bg-[#FAFBF9] border border-[#BCE2D0] mb-4 text-xs text-[#53645B]">
-                            <span class="font-bold text-[#1B573E] block mb-1">Kondisi Siap Berangkat (READY):</span>
-                            Semua persyaratan operasional terpenuhi. Menekan tombol di bawah akan mencatat waktu mulai resmi dan mengaktifkan status menuju sekolah pertama.
+                    <div class="space-y-3">
+                        <div class="p-3.5 rounded-xl bg-[#EDF7F2] border border-[#BCE2D0] text-xs text-[#1B573E]">
+                            <span class="font-bold block mb-1">Seluruh Gerbang Terpenuhi (READY)</span>
+                            Muatan dan armada telah diverifikasi secara sah. Geser slider ke kanan untuk mencatat keberangkatan resmi dan membuka navigasi menuju sekolah pertama.
                         </div>
 
-                        <button type="submit" 
-                                class="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-[#1C6654] hover:bg-[#164D42] text-white text-sm font-bold shadow-xs transition-colors touch-target cursor-pointer">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                            </svg>
-                            <span>Mulai Perjalanan Pengantaran Sekarang</span>
-                        </button>
-                    </form>
+                        <!-- Swipe-to-Depart Interactive Slider -->
+                        <div id="driver-swipe-slider" 
+                             class="relative w-full h-14 bg-[#FAFBF9] border-2 border-[#DCE5DD] rounded-2xl overflow-hidden flex items-center select-none p-1"
+                             data-action-url="{{ route('driver.trips.start', $trip) }}">
+                            <div class="swipe-fill absolute left-0 top-0 bottom-0 bg-[#EDF7F2] rounded-2xl transition-all pointer-events-none" style="width: 0px;"></div>
+                            <div class="swipe-label w-full text-center text-xs font-bold text-[#1C6654] pointer-events-none z-1">
+                                Geser untuk mulai perjalanan &rarr;
+                            </div>
+                            <div class="swipe-thumb absolute left-1 top-1 bottom-1 w-12 bg-[#1C6654] text-white rounded-xl shadow-md flex items-center justify-center cursor-grab active:cursor-grabbing z-2 transition-transform">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 5l7 7-7 7M5 5l7 7-7 7"/>
+                                </svg>
+                            </div>
+                            <button type="button" class="swipe-accessible-btn sr-only focus:not-sr-only focus:absolute focus:z-10 focus:p-2 focus:bg-white focus:text-[#1C6654] focus:rounded-xl">
+                                Mulai Perjalanan (Aksesibilitas)
+                            </button>
+                        </div>
+                    </div>
                 @else
                     <div class="p-4 rounded-xl bg-[#FAFBF9] border border-[#DCE5DD] text-xs text-[#53645B]">
-                        <span class="font-bold text-[#172923] block mb-1">Tombol Mulai Belum Aktif</span>
-                        Lakukan dan simpan checklist pemeriksaan armada dengan hasil <strong>Armada Laik Jalan</strong> terlebih dahulu untuk membuka izin keberangkatan.
+                        <span class="font-bold text-[#172923] block mb-1">Keberangkatan Belum Siap (Locked)</span>
+                        Pastikan pemeriksaan armada tersimpan laik jalan, muatan fisik diverifikasi, dan Kepala SPPG telah mengesahkan izin keberangkatan.
                     </div>
                 @endif
             </div>
         </div>
 
-        <!-- Kolom Kanan (5 Kolom): Manifes Muatan & Rute Sekolah -->
+        <!-- Kolom Kanan (5 Kolom): Peta Navigasi, Manifes Muatan & Rute Sekolah -->
         <div class="lg:col-span-5 space-y-4">
+            <!-- Peta Navigasi & Urutan Stop -->
+            <div class="p-5 rounded-2xl bg-white border border-[#DCE5DD]">
+                <div class="flex items-center justify-between pb-3 border-b border-[#DCE5DD] mb-3">
+                    <h2 class="text-base font-bold text-[#172923]">Peta Rute Pengantaran</h2>
+                    @if ($trip->total_distance_m)
+                        <span class="text-xs font-mono font-bold text-[#1C6654]">
+                            {{ round($trip->total_distance_m / 1000, 1) }} km
+                        </span>
+                    @endif
+                </div>
+
+                <div id="driver-route-map" class="w-full h-64 sm:h-72 rounded-xl overflow-hidden border border-[#DCE5DD] bg-slate-100 mb-3"></div>
+
+                <div class="text-[11px] text-[#53645B] flex justify-between">
+                    <span>{{ $trip->stops->count() }} Perhentian Sekolah</span>
+                    <span>Durasi OSRM: ~{{ round(($trip->estimated_duration_s ?? 0) / 60) }} menit</span>
+                </div>
+            </div>
+
             <div class="p-5 rounded-2xl bg-white border border-[#DCE5DD]">
                 <div class="flex items-center justify-between pb-3 border-b border-[#DCE5DD] mb-4">
                     <h2 class="text-base font-bold text-[#172923]">Manifes Rute &amp; Muatan</h2>
                     <span class="text-xs font-bold text-[#1C6654] bg-[#EDF7F2] px-2 py-0.5 rounded border border-[#BCE2D0]">
-                        Total: {{ $trip->total_loaded_portions }} Porsi
+                        Total: {{ $trip->total_loaded_portions ?: $trip->stops->sum('planned_portions') }} Porsi
                     </span>
                 </div>
 
@@ -256,7 +325,7 @@
                             <!-- Rincian Alokasi Paket di Stop -->
                             <div class="mt-3 pt-2 border-t border-[#E8EEE9] space-y-1.5">
                                 <span class="text-[10px] font-semibold text-[#53645B] block uppercase tracking-wider">
-                                    Paket Makanan yang Dimuat:
+                                    Paket Makanan:
                                 </span>
                                 @foreach ($stop->deliveryItems as $item)
                                     <div class="flex items-center justify-between text-[11px] pl-2 border-l-2 border-[#1C6654]">
@@ -265,7 +334,11 @@
                                             <span class="text-[#708177]">({{ $item->foodBatch->recipeMenu?->name ?? 'Menu' }})</span>
                                         </span>
                                         <span class="font-bold text-[#1B573E]">
-                                            {{ $item->loaded_portions ?? $item->released_portions }} Porsi
+                                            @if ($item->loaded_portions !== null)
+                                                {{ $item->loaded_portions }} Porsi (Dimuat)
+                                            @else
+                                                {{ $item->planned_portions }} Porsi (Rencana)
+                                            @endif
                                         </span>
                                     </div>
                                 @endforeach
@@ -276,4 +349,18 @@
             </div>
         </div>
     </div>
+
+    <!-- Script Inisialisasi Map & Swipe Slider -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.initDispatchMap) {
+                window.initDispatchMap('driver-route-map', {
+                    dataUrl: '{{ route('trips.map-data', $trip) }}'
+                });
+            }
+            if (window.initSwipeToDepart) {
+                window.initSwipeToDepart('driver-swipe-slider');
+            }
+        });
+    </script>
 </x-app-shell>

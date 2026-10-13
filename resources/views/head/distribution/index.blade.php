@@ -236,12 +236,12 @@
                                                         <span class="text-[#708177]">({{ $item->foodBatch->recipeMenu?->name ?? 'Menu' }})</span>
                                                     </div>
                                                     <div class="flex items-center gap-2">
-                                                        <span>Muat:</span>
+                                                        <span>Rencana Muat:</span>
                                                         <input type="hidden" name="stops[{{ $seq - 1 }}][items][{{ $itemIdx }}][delivery_item_id]" value="{{ $item->id }}">
                                                         <input type="number" 
-                                                               name="stops[{{ $seq - 1 }}][items][{{ $itemIdx }}][loaded_portions]" 
-                                                               value="{{ $item->released_portions ?? $item->planned_portions }}"
-                                                               max="{{ $item->released_portions ?? $item->planned_portions }}"
+                                                               name="stops[{{ $seq - 1 }}][items][{{ $itemIdx }}][planned_portions]" 
+                                                               value="{{ $item->released_portions }}"
+                                                               max="{{ $item->released_portions }}"
                                                                min="1"
                                                                required
                                                                class="w-20 px-2 py-1 text-xs font-bold text-right text-[#172923] bg-white border border-[#DCE5DD] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1C6654]">
@@ -263,7 +263,7 @@
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                                 </svg>
-                                <span>Terbitkan Penugasan Perjalanan</span>
+                                <span>Rencanakan Penugasan Perjalanan</span>
                             </button>
                         </div>
                     </form>
@@ -271,11 +271,11 @@
             </div>
         </div>
 
-        <!-- Kolom Kanan (5 Kolom): Daftar Perjalanan Aktif & Terjadwal Hari Ini -->
+        <!-- Kolom Kanan (5 Kolom): Daftar Perjalanan Aktif & Kontrol Dispatch Gate -->
         <div class="lg:col-span-5 space-y-4">
             <div class="p-5 rounded-2xl bg-white border border-[#DCE5DD]">
                 <div class="flex items-center justify-between pb-3 border-b border-[#DCE5DD] mb-4">
-                    <h2 class="text-base font-bold text-[#172923]">Perjalanan Hari Ini</h2>
+                    <h2 class="text-base font-bold text-[#172923]">Monitoring Perjalanan &amp; Dispatch Gate</h2>
                     <span class="text-xs text-[#53645B] font-mono">{{ $trips->count() }} Terdaftar</span>
                 </div>
 
@@ -286,14 +286,59 @@
                         </p>
                     </div>
                 @else
+                    @php
+                        $selectedTripId = (int) request('trip_id', $trips->first()?->id);
+                        $selectedTrip = $trips->firstWhere('id', $selectedTripId) ?? $trips->first();
+                    @endphp
+
+                    <!-- Tab Pilihan Trip untuk Peta Kontrol -->
+                    @if ($trips->count() > 1)
+                        <div class="flex items-center gap-2 overflow-x-auto pb-2 mb-3">
+                            @foreach ($trips as $t)
+                                <a href="{{ route('head.distribution.index', ['service_date' => $service_date, 'trip_id' => $t->id]) }}" 
+                                   class="px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap border transition-colors touch-target {{ $t->id === $selectedTrip->id ? 'bg-[#1C6654] text-white border-[#1C6654]' : 'bg-[#FAFBF9] text-[#53645B] border-[#DCE5DD] hover:bg-white' }}">
+                                    {{ $t->trip_code }} ({{ $t->driver->name }})
+                                </a>
+                            @endforeach
+                        </div>
+                    @endif
+
+                    <!-- Dispatch Control Map Container -->
+                    <div class="mb-4">
+                        <div class="flex items-center justify-between mb-1.5">
+                            <span class="text-xs font-bold text-[#172923] flex items-center gap-1.5">
+                                <svg class="w-4 h-4 text-[#1C6654]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+                                </svg>
+                                <span>Peta Rute Multi-Sekolah: {{ $selectedTrip->trip_code }}</span>
+                            </span>
+                            @if ($selectedTrip->total_distance_m)
+                                <span class="text-[11px] text-[#53645B] font-mono">
+                                    {{ round($selectedTrip->total_distance_m / 1000, 1) }} km | ~{{ round($selectedTrip->estimated_duration_s / 60) }} mnt
+                                </span>
+                            @endif
+                        </div>
+                        <div id="dispatch-control-map" 
+                             class="w-full h-64 sm:h-72 rounded-xl overflow-hidden border border-[#DCE5DD] bg-slate-100">
+                        </div>
+                        <p class="text-[10px] text-[#708177] mt-1">
+                            Peta berbasis OpenFreeMap &amp; OSRM. Jalur rute jalan dihitung antar perhentian sekolah.
+                        </p>
+                    </div>
+
                     <div class="space-y-4">
                         @foreach ($trips as $trip)
-                            <div class="p-4 rounded-xl bg-[#FAFBF9] border border-[#DCE5DD] hover:border-[#BCE2D0] transition-colors">
+                            <div class="p-4 rounded-xl {{ $trip->id === $selectedTrip->id ? 'bg-white border-2 border-[#1C6654]' : 'bg-[#FAFBF9] border border-[#DCE5DD]' }} transition-colors">
                                 <div class="flex items-start justify-between gap-2 mb-2">
                                     <div>
-                                        <span class="text-xs font-mono font-bold text-[#172923] block">{{ $trip->trip_code }}</span>
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-xs font-mono font-bold text-[#172923] block">{{ $trip->trip_code }}</span>
+                                            @if ($trip->id === $selectedTrip->id)
+                                                <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-[#1C6654] text-white">Aktif di Peta</span>
+                                            @endif
+                                        </div>
                                         <span class="text-[11px] text-[#53645B]">
-                                            Kurir: <strong>{{ $trip->driver->name }}</strong> : {{ $trip->vehicle->plate_number }}
+                                            Kurir: <strong>{{ $trip->driver->name }}</strong> : {{ $trip->vehicle->plate_number }} (Kapasitas: {{ $trip->vehicle->capacity_portions ?? 'N/A' }})
                                         </span>
                                     </div>
                                     <span class="text-[10px] font-bold px-2 py-0.5 rounded border {{ $trip->status->badgeClass() }}">
@@ -301,11 +346,106 @@
                                     </span>
                                 </div>
 
+                                <!-- 4-Block Dispatch Gate Status -->
+                                <div class="my-3 p-3 rounded-lg bg-[#FAFBF9] border border-[#E8EEE9] space-y-2 text-xs">
+                                    <span class="font-bold text-[#172923] block text-[11px] uppercase tracking-wider">
+                                        Status Gerbang Keberangkatan (Dispatch Gate):
+                                    </span>
+                                    <div class="grid grid-cols-2 gap-2 text-[11px]">
+                                        <!-- Gate 1: Mutu QC -->
+                                        <div class="flex items-center gap-1.5">
+                                            <span class="w-3.5 h-3.5 rounded-full flex items-center justify-center bg-[#EDF7F2] text-[#1B573E] font-bold text-[9px]">1</span>
+                                            <span class="text-[#53645B]">QC Makanan:</span>
+                                            <span class="font-bold text-[#1B573E]">RELEASED</span>
+                                        </div>
+
+                                        <!-- Gate 2: Verifikasi Muatan Fisik -->
+                                        <div class="flex items-center gap-1.5">
+                                            <span class="w-3.5 h-3.5 rounded-full flex items-center justify-center {{ $trip->loading_verified ? 'bg-[#EDF7F2] text-[#1B573E]' : 'bg-[#FDF2F2] text-[#9B3232]' }} font-bold text-[9px]">2</span>
+                                            <span class="text-[#53645B]">Fisik Muatan:</span>
+                                            @if ($trip->loading_verified)
+                                                <span class="font-bold text-[#1B573E]">Terverifikasi</span>
+                                            @else
+                                                <span class="font-bold text-[#9B3232]">Belum Muat</span>
+                                            @endif
+                                        </div>
+
+                                        <!-- Gate 3: Kelaikan Kendaraan -->
+                                        <div class="flex items-center gap-1.5">
+                                            <span class="w-3.5 h-3.5 rounded-full flex items-center justify-center {{ $trip->vehicle_check_passed ? 'bg-[#EDF7F2] text-[#1B573E]' : 'bg-[#FAFBF9] text-[#708177]' }} font-bold text-[9px]">3</span>
+                                            <span class="text-[#53645B]">Kelaikan Armada:</span>
+                                            @if ($trip->vehicle_check_passed)
+                                                <span class="font-bold text-[#1B573E]">Laik Jalan</span>
+                                            @else
+                                                <span class="font-bold text-[#708177]">Menunggu Kurir</span>
+                                            @endif
+                                        </div>
+
+                                        <!-- Gate 4: Otorisasi Kepala SPPG -->
+                                        <div class="flex items-center gap-1.5">
+                                            <span class="w-3.5 h-3.5 rounded-full flex items-center justify-center {{ $trip->dispatch_approved ? 'bg-[#EDF7F2] text-[#1B573E]' : 'bg-[#FAFBF9] text-[#708177]' }} font-bold text-[9px]">4</span>
+                                            <span class="text-[#53645B]">Izin Dispatch:</span>
+                                            @if ($trip->dispatch_approved)
+                                                <span class="font-bold text-[#1B573E]">Disahkan</span>
+                                            @else
+                                                <span class="font-bold text-[#708177]">Menunggu Izin</span>
+                                            @endif
+                                        </div>
+                                    </div>
+
+                                    <!-- Aksi Verifikasi Fisik Muatan -->
+                                    @if (! $trip->loading_verified && in_array($trip->status->value, ['ASSIGNED', 'VEHICLE_CHECKED']))
+                                        <div class="mt-2 pt-2 border-t border-[#E8EEE9]">
+                                            <form method="POST" action="{{ route('head.distribution.trips.verify-loading', $trip) }}" class="space-y-2">
+                                                @csrf
+                                                <div class="text-[11px] font-bold text-[#172923]">Form Verifikasi Muatan Fisik:</div>
+                                                @foreach ($trip->stops as $stop)
+                                                    @foreach ($stop->deliveryItems as $item)
+                                                        <div class="flex items-center justify-between text-[11px]">
+                                                            <span class="truncate max-w-[150px]">{{ $stop->school->name }} ({{ $item->foodBatch->batch_code }}):</span>
+                                                            <div class="flex items-center gap-1">
+                                                                <input type="number" 
+                                                                       name="items[{{ $item->id }}]" 
+                                                                       value="{{ $item->planned_portions ?: $item->released_portions }}" 
+                                                                       max="{{ $item->released_portions }}" 
+                                                                       min="1" 
+                                                                       required 
+                                                                       class="w-16 px-1.5 py-0.5 text-xs text-right font-bold border border-[#DCE5DD] rounded">
+                                                                <span class="text-[10px] text-[#708177]">/ {{ $item->released_portions }}</span>
+                                                            </div>
+                                                        </div>
+                                                    @endforeach
+                                                @endforeach
+                                                <div class="flex justify-end pt-1">
+                                                    <button type="submit" 
+                                                            class="px-3 py-1.5 rounded-lg bg-[#285F80] hover:bg-[#1E4861] text-white text-[11px] font-bold transition-colors touch-target cursor-pointer">
+                                                        Sahkan Verifikasi Muatan Fisik
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    @endif
+
+                                    <!-- Aksi Otorisasi Keberangkatan oleh Kepala SPPG -->
+                                    @if ($trip->loading_verified && $trip->vehicle_check_passed && ! $trip->dispatch_approved && in_array($trip->status->value, ['ASSIGNED', 'VEHICLE_CHECKED']))
+                                        <div class="mt-2 pt-2 border-t border-[#E8EEE9] flex items-center justify-between">
+                                            <span class="text-[11px] text-[#1B573E] font-semibold">Syarat terpenuhi. Siap disahkan:</span>
+                                            <form method="POST" action="{{ route('head.distribution.trips.approve-dispatch', $trip) }}">
+                                                @csrf
+                                                <button type="submit" 
+                                                        class="px-3 py-1.5 rounded-lg bg-[#1C6654] hover:bg-[#164D42] text-white text-[11px] font-bold shadow-2xs transition-colors touch-target cursor-pointer">
+                                                    Sahkan Keberangkatan (READY)
+                                                </button>
+                                            </form>
+                                        </div>
+                                    @endif
+                                </div>
+
                                 <!-- Ringkasan Stop Rute -->
                                 <div class="mt-3 pt-2 border-t border-[#E8EEE9] space-y-1.5">
                                     <div class="text-[11px] font-semibold text-[#53645B] flex justify-between">
                                         <span>Rute Perhentian ({{ $trip->stops->count() }} Sekolah):</span>
-                                        <span class="font-bold text-[#172923]">{{ $trip->total_loaded_portions }} Porsi</span>
+                                        <span class="font-bold text-[#172923]">{{ $trip->total_loaded_portions ?: $trip->stops->sum('planned_portions') }} Porsi</span>
                                     </div>
                                     <div class="space-y-1">
                                         @foreach ($trip->stops as $stop)
@@ -325,7 +465,7 @@
                                 <div class="mt-4 pt-2 border-t border-[#E8EEE9] flex items-center justify-between gap-2">
                                     <a href="{{ route('trips.show', $trip) }}" 
                                        class="text-xs font-bold text-[#1C6654] hover:underline flex items-center gap-1 touch-target">
-                                        <span>Buka Detail (C03)</span>
+                                        <span>Buka Detail &amp; Rute (C03)</span>
                                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
                                         </svg>
@@ -346,6 +486,18 @@
                             </div>
                         @endforeach
                     </div>
+
+                    @if ($selectedTrip)
+                        <script>
+                            document.addEventListener('DOMContentLoaded', function() {
+                                if (window.initDispatchMap) {
+                                    window.initDispatchMap('dispatch-control-map', {
+                                        dataUrl: '{{ route('trips.map-data', $selectedTrip) }}'
+                                    });
+                                }
+                            });
+                        </script>
+                    @endif
                 @endif
             </div>
         </div>

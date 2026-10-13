@@ -29,7 +29,8 @@ class CreateTripRequest extends FormRequest
             'stops.*.planned_arrival_at' => ['nullable', 'date'],
             'stops.*.items' => ['required', 'array', 'min:1'],
             'stops.*.items.*.delivery_item_id' => ['required', 'integer', 'exists:delivery_items,id'],
-            'stops.*.items.*.loaded_portions' => ['required', 'integer', 'min:1'],
+            'stops.*.items.*.planned_portions' => ['nullable', 'integer', 'min:1'],
+            'stops.*.items.*.loaded_portions' => ['nullable', 'integer', 'min:1'],
         ];
     }
 

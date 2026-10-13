@@ -64,6 +64,22 @@
         </div>
     </header>
 
+    <!-- Peta Rute Perjalanan Multi-Sekolah -->
+    <div class="mb-6 p-5 rounded-2xl bg-white border border-[#DCE5DD]">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-[#DCE5DD] mb-3 gap-2">
+            <div>
+                <h2 class="text-base font-bold text-[#172923]">Peta Rute Perjalanan &amp; Titik Lokasi Sekolah</h2>
+                <p class="text-xs text-[#53645B]">Visualisasi jalur navigasi OSRM dan urutan perhentian resmi dari SPPG ke sekolah tujuan.</p>
+            </div>
+            @if ($trip->total_distance_m)
+                <span class="text-xs font-mono font-bold text-[#1C6654] bg-[#EDF7F2] px-2.5 py-1 rounded-lg border border-[#BCE2D0] shrink-0">
+                    Jarak: {{ round($trip->total_distance_m / 1000, 1) }} km | Estimasi: ~{{ round(($trip->estimated_duration_s ?? 0) / 60) }} mnt
+                </span>
+            @endif
+        </div>
+        <div id="trip-dossier-map" class="w-full h-72 sm:h-96 rounded-xl overflow-hidden border border-[#DCE5DD] bg-slate-100"></div>
+    </div>
+
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <!-- Kolom Kiri (7 Kolom): Urutan Pemberhentian (Stop Rail) -->
         <div class="lg:col-span-7 space-y-6">
@@ -238,4 +254,15 @@
             </div>
         </div>
     </div>
+
+    <!-- Script Inisialisasi Dossier Map -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.initDispatchMap) {
+                window.initDispatchMap('trip-dossier-map', {
+                    dataUrl: '{{ route('trips.map-data', $trip) }}'
+                });
+            }
+        });
+    </script>
 </x-app-shell>

@@ -97,6 +97,29 @@ class TripPolicy
     }
 
     /**
+     * Determine whether the user can verify physical loading for a trip.
+     * Asisten Lapangan or Kepala SPPG in the same SPPG.
+     */
+    public function verifyLoading(User $user, Trip $trip): bool
+    {
+        return $user->is_active
+            && in_array($user->role, [UserRole::ASISTEN_LAPANGAN, UserRole::KEPALA_SPPG], true)
+            && (int) $user->sppg_id === (int) $trip->sppg_id;
+    }
+
+    /**
+     * Determine whether the user can approve dispatch for a trip.
+     * Kepala SPPG in the same SPPG, preventing self-approval if also assigned as driver.
+     */
+    public function approveDispatch(User $user, Trip $trip): bool
+    {
+        return $user->is_active
+            && $user->role === UserRole::KEPALA_SPPG
+            && (int) $user->sppg_id === (int) $trip->sppg_id
+            && (int) $trip->driver_id !== (int) $user->id;
+    }
+
+    /**
      * Determine whether the user can cancel a trip.
      * Kepala SPPG only.
      */

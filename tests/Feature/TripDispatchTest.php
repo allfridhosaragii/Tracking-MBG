@@ -348,13 +348,17 @@ class TripDispatchTest extends TestCase
         $this->assertEquals(TripStopStatus::PENDING, $stop1->status);
         $this->assertEquals($this->schoolA2->id, $stop2->school_id);
 
-        // Verify DeliveryItems linked
+        // Verify DeliveryItems linked (HARD GATE A: PENDING_LOADING, loaded_portions = null, planned_portions set)
         $this->deliveryItemSchool1->refresh();
         $this->deliveryItemSchool2->refresh();
         $this->assertEquals($stop1->id, $this->deliveryItemSchool1->trip_stop_id);
-        $this->assertEquals(200, $this->deliveryItemSchool1->loaded_portions);
+        $this->assertNull($this->deliveryItemSchool1->loaded_portions);
+        $this->assertEquals(200, $this->deliveryItemSchool1->planned_portions);
+        $this->assertEquals('PENDING_LOADING', $this->deliveryItemSchool1->status);
         $this->assertEquals($stop2->id, $this->deliveryItemSchool2->trip_stop_id);
-        $this->assertEquals(130, $this->deliveryItemSchool2->loaded_portions);
+        $this->assertNull($this->deliveryItemSchool2->loaded_portions);
+        $this->assertEquals(130, $this->deliveryItemSchool2->planned_portions);
+        $this->assertEquals('PENDING_LOADING', $this->deliveryItemSchool2->status);
 
         // Verify Audit Log
         $this->assertDatabaseHas('activity_logs', [
@@ -709,9 +713,20 @@ class TripDispatchTest extends TestCase
 
         $trip->refresh();
         $this->assertTrue($trip->vehicle_check_passed);
-        $this->assertEquals(TripStatus::READY, $trip->status);
+        $this->assertEquals(TripStatus::VEHICLE_CHECKED, $trip->status);
         $this->assertNotNull($trip->vehicle_checked_at);
         $this->assertEquals('Rem, ban, dan boks makanan prima.', $trip->vehicle_check_notes);
+
+        // Verify physical loading and approve dispatch to transition to READY
+        $tripService = app(TripDispatchService::class);
+        $tripService->verifyLoading($trip, [
+            'items' => [
+                $this->deliveryItemSchool1->id => 200,
+            ],
+        ], $this->asistenA);
+        $tripService->approveDispatch($trip, $this->kepalaA);
+        $trip->refresh();
+        $this->assertEquals(TripStatus::READY, $trip->status);
     }
 
     /**
@@ -769,8 +784,19 @@ class TripDispatchTest extends TestCase
             ],
         ], $this->kepalaA);
 
-        // Complete check
+        // Complete loading verification
+        $tripService->verifyLoading($trip, [
+            'items' => [
+                $this->deliveryItemSchool1->id => 200,
+            ],
+        ], $this->asistenA);
+
+        // Complete vehicle check
         $tripService->checkVehicle($trip, ['passed' => true, 'notes' => 'OK'], $this->driverA);
+
+        // Complete dispatch authorization
+        $tripService->approveDispatch($trip, $this->kepalaA);
+
         $trip->refresh();
         $this->assertEquals(TripStatus::READY, $trip->status);
 
@@ -784,7 +810,7 @@ class TripDispatchTest extends TestCase
         $trip->refresh();
         $this->assertEquals(TripStatus::IN_PROGRESS, $trip->status);
         $this->assertNotNull($trip->started_at);
-        $this->assertEquals('ACTIVE', $trip->tracking_status);
+        $this->assertEquals('WAITING_FOR_LOCATION', $trip->tracking_status);
 
         // First stop is EN_ROUTE
         $stop1 = $trip->stops->first();

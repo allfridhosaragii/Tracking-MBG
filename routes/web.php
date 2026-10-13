@@ -87,6 +87,8 @@ Route::middleware(['auth', 'active'])->group(function () {
             Route::get('/distribution', [DistributionController::class, 'index'])->name('distribution.index');
             Route::post('/distribution/trips', [DistributionController::class, 'storeTrip'])->name('distribution.trips.store');
             Route::post('/distribution/trips/{trip}/cancel', [DistributionController::class, 'cancelTrip'])->name('distribution.trips.cancel');
+            Route::post('/distribution/trips/{trip}/verify-loading', [DistributionController::class, 'verifyLoading'])->name('distribution.trips.verify-loading');
+            Route::post('/distribution/trips/{trip}/approve-dispatch', [DistributionController::class, 'approveDispatch'])->name('distribution.trips.approve-dispatch');
         });
 
     // 2. Pengawas Gizi Module
@@ -164,6 +166,7 @@ Route::middleware(['auth', 'active'])->group(function () {
 
     // Cross-role PBI-08: Trip Detail & Multi-stop (Page C03)
     Route::get('/trips/{trip}', [TripDetailController::class, 'show'])->name('trips.show');
+    Route::get('/trips/{trip}/map-data', [TripDetailController::class, 'mapData'])->name('trips.map-data');
 
     // Private Evidence Photos with Policy Gate enforcement
     Route::get('/evidence-photos/{evidencePhoto}', [EvidencePhotoController::class, 'show'])->name('evidence-photos.show');
@@ -171,3 +174,12 @@ Route::middleware(['auth', 'active'])->group(function () {
     // Resource with Policy Gate enforcement
     Route::get('/schools/{school}', [SchoolOverviewController::class, 'show'])->name('schools.show');
 });
+
+// Public Sanitized Delivery Map (No authentication required, rate limited)
+Route::get('/public/trips/{tripCode}/map', [\App\Http\Controllers\Public\PublicDeliveryMapController::class, 'show'])
+    ->name('public.trips.map')
+    ->middleware('throttle:60,1');
+Route::get('/public/trips/{tripCode}/map-data', [\App\Http\Controllers\Public\PublicDeliveryMapController::class, 'mapData'])
+    ->name('public.trips.map-data')
+    ->middleware('throttle:60,1');
+

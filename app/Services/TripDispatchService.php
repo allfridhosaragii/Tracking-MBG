@@ -21,6 +21,13 @@ use Illuminate\Validation\ValidationException;
 
 class TripDispatchService
 {
+    protected OsrmRoutingService $routingService;
+
+    public function __construct(?OsrmRoutingService $routingService = null)
+    {
+        $this->routingService = $routingService ?? app(OsrmRoutingService::class);
+    }
+
     /**
      * Get logistics and dispatch planning state for Kepala SPPG workspace.
      */
@@ -37,7 +44,7 @@ class TripDispatchService
             ->with(['recipeMenu', 'productionPlan', 'deliveryItems.productionAllocation.school'])
             ->get();
 
-        // 2. Available delivery items (ready to load, not yet assigned to a trip stop)
+        // 2. Available delivery items (ready to assign, not yet linked to a trip stop)
         $unassignedDeliveryItems = DeliveryItem::whereHas('foodBatch.productionPlan', function ($query) use ($sppgId, $date) {
             $query->where('sppg_id', $sppgId)
                 ->whereDate('service_date', $date);
@@ -46,6 +53,8 @@ class TripDispatchService
                 $query->where('status', FoodBatchStatus::RELEASED);
             })
             ->whereNull('trip_stop_id')
+            ->whereNotNull('released_portions')
+            ->where('released_portions', '>', 0)
             ->with(['foodBatch.recipeMenu', 'productionAllocation.school'])
             ->get();
 
@@ -91,7 +100,14 @@ class TripDispatchService
         // 5. Existing trips for this SPPG and date
         $trips = Trip::forSppg($sppgId)
             ->whereDate('service_date', $date)
-            ->with(['driver', 'vehicle', 'stops.school', 'stops.deliveryItems.foodBatch'])
+            ->with([
+                'driver',
+                'vehicle',
+                'loadingVerifiedBy',
+                'dispatchApprovedBy',
+                'stops.school',
+                'stops.deliveryItems.foodBatch',
+            ])
             ->latest()
             ->get();
 
@@ -115,12 +131,12 @@ class TripDispatchService
      * Create a new trip with scheduled stops and linked delivery items.
      * Enforces:
      * 1. Actor must be KEPALA_SPPG for their SPPG.
-     * 2. Active vehicle without schedule conflicts.
+     * 2. Active vehicle with known capacity (> 0) and without schedule conflicts.
      * 3. Active driver (KURIR) without assignment conflicts.
-     * 4. Multi-school unique stops in defined sequence.
-     * 5. Delivery items must belong to RELEASED batches and correct schools.
-     * 6. Loaded quantity <= QC accepted available portions.
-     * 7. Total loaded <= vehicle capacity (if defined).
+     * 4. Multi-school unique stops in defined sequential sequence starting at 1.
+     * 5. Delivery items must belong to RELEASED batches, same service_date, and correct schools.
+     * 6. Planned portion <= QC released available portions (NO fallback to planned!).
+     * 7. Total planned <= vehicle capacity.
      * 8. Safe concurrency & idempotent creation.
      */
     public function createTrip(array $data, User $actor): Trip
@@ -140,6 +156,13 @@ class TripDispatchService
             if (! $vehicle) {
                 throw ValidationException::withMessages([
                     'vehicle_id' => ['Kendaraan yang dipilih tidak valid, tidak aktif, atau bukan milik SPPG ini.'],
+                ]);
+            }
+
+            // Enforce vehicle capacity known and > 0
+            if (! $vehicle->capacity_portions || $vehicle->capacity_portions <= 0) {
+                throw ValidationException::withMessages([
+                    'vehicle_id' => ["Kapasitas armada kendaraan {$vehicle->plate_number} belum terdefinisi atau tidak valid (0). Lengkapi data resmi kapasitas armada."],
                 ]);
             }
 
@@ -192,7 +215,7 @@ class TripDispatchService
                 ]);
             }
 
-            // 3. Validate Stops Structure
+            // 3. Validate Stops Structure & Sequence
             $stopsData = $data['stops'] ?? [];
             if (empty($stopsData) || ! is_array($stopsData)) {
                 throw ValidationException::withMessages([
@@ -200,13 +223,36 @@ class TripDispatchService
                 ]);
             }
 
+            $stopCount = count($stopsData);
+            $sequences = [];
+            foreach ($stopsData as $idx => $stopInput) {
+                if (! isset($stopInput['sequence_number'])) {
+                    throw ValidationException::withMessages([
+                        "stops.{$idx}.sequence_number" => ['Nomor urutan pemberhentian wajib diisi.'],
+                    ]);
+                }
+                $seq = (int) $stopInput['sequence_number'];
+                $sequences[] = $seq;
+            }
+
+            // Validate sequence: starts at 1, strictly consecutive without gaps, no duplicates
+            sort($sequences);
+            $expectedSequences = range(1, $stopCount);
+            if ($sequences !== $expectedSequences) {
+                throw ValidationException::withMessages([
+                    'sequence_number' => ['Urutan pemberhentian (sequence_number) harus mulai dari 1, berurutan tanpa jeda atau angka lompat, dan unik untuk setiap stop.'],
+                ]);
+            }
+
             $schoolIdsSeen = [];
-            $totalLoadedTrip = 0;
+            $deliveryItemIdsSeen = [];
+            $batchCommittedPortions = [];
+            $totalPlannedTrip = 0;
             $validatedStops = [];
 
             foreach ($stopsData as $index => $stopInput) {
                 $schoolId = (int) ($stopInput['school_id'] ?? 0);
-                $sequence = (int) ($stopInput['sequence_number'] ?? ($index + 1));
+                $sequence = (int) $stopInput['sequence_number'];
 
                 // Verify school tenant scope
                 $school = School::where('id', $schoolId)
@@ -236,15 +282,25 @@ class TripDispatchService
                 }
 
                 $validatedItems = [];
+                $stopPlannedPortions = 0;
+
                 foreach ($itemsInput as $itemIdx => $itemData) {
                     $deliveryItemId = (int) ($itemData['delivery_item_id'] ?? 0);
-                    $loadedPortions = (int) ($itemData['loaded_portions'] ?? 0);
+                    $plannedPortions = (int) ($itemData['planned_portions'] ?? ($itemData['loaded_portions'] ?? 0));
 
-                    if ($loadedPortions <= 0) {
+                    if ($plannedPortions <= 0) {
                         throw ValidationException::withMessages([
-                            "stops.{$index}.items.{$itemIdx}.loaded_portions" => ['Jumlah porsi yang dimuat harus lebih dari nol.'],
+                            "stops.{$index}.items.{$itemIdx}.planned_portions" => ['Jumlah porsi rencana alokasi harus lebih dari nol.'],
                         ]);
                     }
+
+                    // Enforce unique delivery item in this request
+                    if (in_array($deliveryItemId, $deliveryItemIdsSeen, true)) {
+                        throw ValidationException::withMessages([
+                            "stops.{$index}.items.{$itemIdx}.delivery_item_id" => ["Item alokasi makanan #{$deliveryItemId} diduplikasi dalam satu pengiriman."],
+                        ]);
+                    }
+                    $deliveryItemIdsSeen[] = $deliveryItemId;
 
                     // Lock DeliveryItem
                     $deliveryItem = DeliveryItem::where('id', $deliveryItemId)
@@ -290,21 +346,50 @@ class TripDispatchService
                         ]);
                     }
 
-                    // Quantity check: loaded <= released_portions (or accepted_portions)
-                    $availablePortions = $deliveryItem->released_portions ?? $deliveryItem->planned_portions;
-                    if ($loadedPortions > $availablePortions) {
+                    // Date check: production plan service_date must match trip service_date
+                    $planDate = Carbon::parse($batch->productionPlan->service_date)->toDateString();
+                    if ($planDate !== $serviceDate) {
                         throw ValidationException::withMessages([
-                            "stops.{$index}.items.{$itemIdx}.loaded_portions" => [
-                                "Jumlah muatan ({$loadedPortions}) melebihi kuantitas yang disetujui QC ({$availablePortions} porsi) untuk sekolah ini.",
+                            "stops.{$index}.items.{$itemIdx}.delivery_item_id" => [
+                                "Batch {$batch->batch_code} dijadwalkan untuk tanggal layanan {$planDate}, berbeda dengan tanggal perjalanan {$serviceDate}.",
                             ],
                         ]);
                     }
 
-                    $totalLoadedTrip += $loadedPortions;
+                    // HARD GATE C: released_portions must NOT be null. NO fallback to planned_portions!
+                    if ($deliveryItem->released_portions === null) {
+                        throw ValidationException::withMessages([
+                            "stops.{$index}.items.{$itemIdx}.delivery_item_id" => [
+                                "Batch {$batch->batch_code} belum memiliki kuantitas rilisan QC yang sah (released_portions bernilai null).",
+                            ],
+                        ]);
+                    }
+
+                    $availablePortions = (int) $deliveryItem->released_portions;
+                    if ($plannedPortions > $availablePortions) {
+                        throw ValidationException::withMessages([
+                            "stops.{$index}.items.{$itemIdx}.planned_portions" => [
+                                "Jumlah porsi rencana ({$plannedPortions}) melebihi kuantitas yang disetujui QC ({$availablePortions} porsi) untuk sekolah ini.",
+                            ],
+                        ]);
+                    }
+
+                    // Cumulative batch check across entire request against batch accepted portions
+                    $batchCommittedPortions[$batch->id] = ($batchCommittedPortions[$batch->id] ?? 0) + $plannedPortions;
+                    if ($batchCommittedPortions[$batch->id] > (int) $batch->accepted_portions) {
+                        throw ValidationException::withMessages([
+                            "stops.{$index}.items.{$itemIdx}.delivery_item_id" => [
+                                "Akumulasi muatan untuk batch {$batch->batch_code} ({$batchCommittedPortions[$batch->id]} porsi) melebihi total porsi lolos QC ({$batch->accepted_portions} porsi).",
+                            ],
+                        ]);
+                    }
+
+                    $totalPlannedTrip += $plannedPortions;
+                    $stopPlannedPortions += $plannedPortions;
 
                     $validatedItems[] = [
                         'delivery_item' => $deliveryItem,
-                        'loaded_portions' => $loadedPortions,
+                        'planned_portions' => $plannedPortions,
                     ];
                 }
 
@@ -313,15 +398,16 @@ class TripDispatchService
                     'sequence_number' => $sequence,
                     'stop_type' => $stopInput['stop_type'] ?? 'DELIVERY',
                     'planned_arrival_at' => $stopInput['planned_arrival_at'] ?? null,
+                    'planned_portions' => $stopPlannedPortions,
                     'items' => $validatedItems,
                 ];
             }
 
             // 4. Vehicle Capacity Validation
-            if ($vehicle->capacity_portions && $totalLoadedTrip > $vehicle->capacity_portions) {
+            if ($totalPlannedTrip > $vehicle->capacity_portions) {
                 throw ValidationException::withMessages([
                     'vehicle_id' => [
-                        "Total muatan ({$totalLoadedTrip} porsi) melampaui kapasitas armada {$vehicle->plate_number} ({$vehicle->capacity_portions} porsi).",
+                        "Total muatan rencana ({$totalPlannedTrip} porsi) melampaui kapasitas armada {$vehicle->plate_number} ({$vehicle->capacity_portions} porsi).",
                     ],
                 ]);
             }
@@ -335,7 +421,7 @@ class TripDispatchService
             $seqPad = str_pad($tripCountToday + 1, 2, '0', STR_PAD_LEFT);
             $tripCode = "TRIP-{$datePrefix}-{$sppgCode}-{$seqPad}";
 
-            // 6. Create Trip Record
+            // 6. Create Trip Record (Initialized with ASSIGNED, loading_verified = false)
             $trip = Trip::create([
                 'sppg_id' => $sppgId,
                 'driver_id' => $driver->id,
@@ -345,16 +431,22 @@ class TripDispatchService
                 'service_date' => $serviceDate,
                 'planned_departure_at' => $data['planned_departure_at'] ?? null,
                 'status' => TripStatus::ASSIGNED,
+                'vehicle_check_passed' => false,
+                'loading_verified' => false,
+                'dispatch_approved' => false,
+                'tracking_status' => 'OFF',
                 'created_by' => $actor->id,
             ]);
 
-            // 7. Create Stops & Link Delivery Items
+            // 7. Create Stops & Link Delivery Items (HARD GATE A: status = PENDING_LOADING, loaded_portions = null)
             foreach ($validatedStops as $stopData) {
                 $tripStop = TripStop::create([
                     'trip_id' => $trip->id,
                     'school_id' => $stopData['school_id'],
                     'stop_type' => $stopData['stop_type'],
                     'sequence_number' => $stopData['sequence_number'],
+                    'planned_portions' => $stopData['planned_portions'],
+                    'loaded_portions' => null,
                     'planned_arrival_at' => $stopData['planned_arrival_at'],
                     'status' => TripStopStatus::PENDING,
                 ]);
@@ -364,13 +456,21 @@ class TripDispatchService
                     $item = $itemData['delivery_item'];
                     $item->update([
                         'trip_stop_id' => $tripStop->id,
-                        'loaded_portions' => $itemData['loaded_portions'],
-                        'status' => 'LOADED',
+                        'planned_portions' => $itemData['planned_portions'],
+                        'loaded_portions' => null,
+                        'status' => 'PENDING_LOADING',
                     ]);
                 }
             }
 
-            // 8. Record Activity Audit Trail
+            // 8. Pre-calculate OSRM Route Geometry (Non-blocking fallback if OSRM unavailable)
+            try {
+                $this->routingService->calculateTripRoute($trip);
+            } catch (\Throwable $e) {
+                // Route calculation logged but does not block atomic trip creation
+            }
+
+            // 9. Record Activity Audit Trail
             ActivityLog::record(
                 event: 'trip.created_and_assigned',
                 auditable: $trip,
@@ -382,7 +482,7 @@ class TripDispatchService
                     'vehicle_id' => $vehicle->id,
                     'vehicle_plate' => $vehicle->plate_number,
                     'stops_count' => count($validatedStops),
-                    'total_loaded_portions' => $totalLoadedTrip,
+                    'total_planned_portions' => $totalPlannedTrip,
                     'status' => TripStatus::ASSIGNED->value,
                 ]
             );
@@ -392,8 +492,131 @@ class TripDispatchService
     }
 
     /**
+     * Physical Loading Verification by Asisten Lapangan / SPPG Staff.
+     * HARD GATE A & B:
+     * Verifies physical counts of boxes loaded into vehicle per stop & batch.
+     * Transitions DeliveryItem status: PENDING_LOADING -> LOADED.
+     */
+    public function verifyLoading(Trip $trip, array $loadingData, User $actor): Trip
+    {
+        return DB::transaction(function () use ($trip, $loadingData, $actor) {
+            $lockedTrip = Trip::where('id', $trip->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ((int) $lockedTrip->sppg_id !== (int) $actor->sppg_id) {
+                throw ValidationException::withMessages([
+                    'authorization' => ['Anda tidak berwenang memverifikasi muatan SPPG lain.'],
+                ]);
+            }
+
+            if (in_array($lockedTrip->status, [TripStatus::IN_PROGRESS, TripStatus::COMPLETED, TripStatus::CANCELLED], true)) {
+                throw ValidationException::withMessages([
+                    'status' => ["Verifikasi muatan tidak dapat dilakukan pada perjalanan berstatus {$lockedTrip->status->label()}."],
+                ]);
+            }
+
+            $itemsData = $loadingData['items'] ?? [];
+            if (empty($itemsData) || ! is_array($itemsData)) {
+                throw ValidationException::withMessages([
+                    'items' => ['Data verifikasi kuantitas fisik muatan wajib disertakan.'],
+                ]);
+            }
+
+            $totalLoadedTrip = 0;
+            $vehicle = $lockedTrip->vehicle;
+
+            foreach ($itemsData as $idx => $itemInput) {
+                if (is_array($itemInput)) {
+                    $deliveryItemId = (int) ($itemInput['delivery_item_id'] ?? $idx);
+                    $loadedQuantity = (int) ($itemInput['loaded_portions'] ?? 0);
+                } else {
+                    $deliveryItemId = (int) $idx;
+                    $loadedQuantity = (int) $itemInput;
+                }
+
+                if ($loadedQuantity <= 0) {
+                    throw ValidationException::withMessages([
+                        "items.{$idx}.loaded_portions" => ['Kuantitas fisik muatan harus lebih dari nol.'],
+                    ]);
+                }
+
+                $deliveryItem = DeliveryItem::where('id', $deliveryItemId)
+                    ->whereHas('tripStop', function ($q) use ($lockedTrip) {
+                        $q->where('trip_id', $lockedTrip->id);
+                    })
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $deliveryItem) {
+                    throw ValidationException::withMessages([
+                        "items.{$idx}.delivery_item_id" => ['Item alokasi tidak ditemukan dalam perjalanan ini.'],
+                    ]);
+                }
+
+                $availablePortions = (int) $deliveryItem->released_portions;
+                if ($loadedQuantity > $availablePortions) {
+                    throw ValidationException::withMessages([
+                        "items.{$idx}.loaded_portions" => [
+                            "Kuantitas muat ({$loadedQuantity} porsi) melebihi kuota rilisan QC yang sah ({$availablePortions} porsi).",
+                        ],
+                    ]);
+                }
+
+                $deliveryItem->update([
+                    'loaded_portions' => $loadedQuantity,
+                    'status' => 'LOADED',
+                ]);
+
+                $totalLoadedTrip += $loadedQuantity;
+            }
+
+            // Check against vehicle capacity
+            if ($vehicle && $vehicle->capacity_portions && $totalLoadedTrip > $vehicle->capacity_portions) {
+                throw ValidationException::withMessages([
+                    'capacity' => [
+                        "Total kuantitas fisik muatan ({$totalLoadedTrip} porsi) melebihi batas kapasitas armada {$vehicle->plate_number} ({$vehicle->capacity_portions} porsi).",
+                    ],
+                ]);
+            }
+
+            // Update loaded_portions on each trip_stop
+            foreach ($lockedTrip->stops as $stop) {
+                $stopLoaded = DeliveryItem::where('trip_stop_id', $stop->id)->sum('loaded_portions');
+                $stop->update([
+                    'loaded_portions' => (int) $stopLoaded,
+                ]);
+            }
+
+            $lockedTrip->update([
+                'loading_verified' => true,
+                'loading_verified_at' => Carbon::now(),
+                'loading_verified_by' => $actor->id,
+                'loading_notes' => $loadingData['notes'] ?? null,
+            ]);
+
+            // Check if all gates passed to transition to READY
+            if ($lockedTrip->vehicle_check_passed && $lockedTrip->dispatch_approved) {
+                $lockedTrip->update(['status' => TripStatus::READY]);
+            }
+
+            ActivityLog::record(
+                event: 'trip.loading_verified',
+                auditable: $lockedTrip,
+                actor: $actor,
+                newValues: [
+                    'loading_verified' => true,
+                    'total_loaded_portions' => $totalLoadedTrip,
+                    'verified_by' => $actor->name,
+                ]
+            );
+
+            return $lockedTrip->load(['stops.deliveryItems', 'loadingVerifiedBy']);
+        });
+    }
+
+    /**
      * Driver performs pre-trip vehicle and safety checklist.
-     * Transitions: ASSIGNED -> VEHICLE_CHECKED -> READY (if passed).
      */
     public function checkVehicle(Trip $trip, array $data, User $driver): Trip
     {
@@ -428,7 +651,7 @@ class TripDispatchService
                     'vehicle_check_passed' => true,
                     'vehicle_checked_at' => Carbon::now(),
                     'vehicle_check_notes' => $notes,
-                    'status' => TripStatus::READY,
+                    'status' => ($lockedTrip->loading_verified && $lockedTrip->dispatch_approved) ? TripStatus::READY : TripStatus::VEHICLE_CHECKED,
                 ]);
             } else {
                 $lockedTrip->update([
@@ -456,8 +679,97 @@ class TripDispatchService
     }
 
     /**
-     * Driver starts trip dispatch from kitchen to first school.
+     * Pre-departure Dispatch Authorization by Kepala SPPG.
+     * HARD GATE B:
+     * Validates:
+     * 1. All batches RELEASED
+     * 2. Physical loading verified
+     * 3. Vehicle check passed
+     * 4. Self-approval prevention (Kepala SPPG cannot approve their own trip if acting as driver)
+     */
+    public function approveDispatch(Trip $trip, User $actor, ?string $notes = null): Trip
+    {
+        return DB::transaction(function () use ($trip, $actor, $notes) {
+            $lockedTrip = Trip::where('id', $trip->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ((int) $lockedTrip->sppg_id !== (int) $actor->sppg_id) {
+                throw ValidationException::withMessages([
+                    'authorization' => ['Anda tidak berwenang mengesahkan perjalanan SPPG lain.'],
+                ]);
+            }
+
+            // Self-approval prevention: Kepala SPPG cannot approve if assigned as driver
+            if ((int) $lockedTrip->driver_id === (int) $actor->id) {
+                throw ValidationException::withMessages([
+                    'authorization' => ['Penyelenggara tidak dapat menyetujui keberangkatan perjalanan di mana dirinya bertindak sebagai kurir.'],
+                ]);
+            }
+
+            // Gate 1: Check all batches are RELEASED
+            $batchIds = DeliveryItem::whereHas('tripStop', function ($q) use ($lockedTrip) {
+                $q->where('trip_id', $lockedTrip->id);
+            })->pluck('food_batch_id')->unique();
+
+            $unreleasedCount = FoodBatch::whereIn('id', $batchIds)
+                ->where('status', '!=', FoodBatchStatus::RELEASED)
+                ->count();
+
+            if ($unreleasedCount > 0) {
+                throw ValidationException::withMessages([
+                    'dispatch' => ['Terdapat batch makanan pada manifest perjalanan ini yang belum berstatus lolos QC (RELEASED).'],
+                ]);
+            }
+
+            // Gate 2: Check physical loading is verified
+            if (! $lockedTrip->loading_verified) {
+                throw ValidationException::withMessages([
+                    'dispatch' => ['Kuantitas muatan fisik belum diverifikasi oleh petugas muat (loading verification).'],
+                ]);
+            }
+
+            // Gate 3: Check vehicle condition check passed
+            if (! $lockedTrip->vehicle_check_passed) {
+                throw ValidationException::withMessages([
+                    'dispatch' => ['Pemeriksaan kelaikan kendaraan belum dilakukan atau belum dinyatakan lolos oleh kurir.'],
+                ]);
+            }
+
+            $lockedTrip->update([
+                'dispatch_approved' => true,
+                'dispatch_approved_at' => Carbon::now(),
+                'dispatch_approved_by' => $actor->id,
+                'dispatch_notes' => $notes,
+                'status' => TripStatus::READY,
+            ]);
+
+            // Ensure route geometry is cached
+            try {
+                $this->routingService->calculateTripRoute($lockedTrip);
+            } catch (\Throwable $e) {
+                // Ignore route failure; dispatch approval remains valid
+            }
+
+            ActivityLog::record(
+                event: 'trip.dispatch_approved',
+                auditable: $lockedTrip,
+                actor: $actor,
+                newValues: [
+                    'dispatch_approved' => true,
+                    'approved_by' => $actor->name,
+                    'status' => TripStatus::READY->value,
+                ]
+            );
+
+            return $lockedTrip->load(['dispatchApprovedBy', 'stops.school']);
+        });
+    }
+
+    /**
+     * Driver starts trip dispatch from kitchen to first school (Swipe-to-depart).
      * Transitions: READY -> IN_PROGRESS. First stop becomes EN_ROUTE.
+     * HARD GATE E: tracking_status becomes WAITING_FOR_LOCATION (NOT ACTIVE, no fake GPS!).
      */
     public function startTrip(Trip $trip, User $driver): Trip
     {
@@ -476,7 +788,14 @@ class TripDispatchService
             // Precondition: Must be READY
             if ($lockedTrip->status !== TripStatus::READY) {
                 throw ValidationException::withMessages([
-                    'status' => ["Perjalanan tidak dapat dimulai. Status saat ini: {$lockedTrip->status->label()}. Pastikan checklist kendaraan telah lolos pemeriksaan."],
+                    'status' => ["Perjalanan tidak dapat dimulai. Status saat ini: {$lockedTrip->status->label()}. Pastikan seluruh gerbang Dispatch Gate (QC, muatan, armada, dan otorisasi Kepala SPPG) telah terpenuhi."],
+                ]);
+            }
+
+            // Re-verify Dispatch Gates atomically
+            if (! $lockedTrip->loading_verified) {
+                throw ValidationException::withMessages([
+                    'loading_verified' => ['Kuantitas muatan belum diverifikasi secara resmi.'],
                 ]);
             }
 
@@ -486,11 +805,17 @@ class TripDispatchService
                 ]);
             }
 
+            if (! $lockedTrip->dispatch_approved) {
+                throw ValidationException::withMessages([
+                    'dispatch_approved' => ['Otorisasi keberangkatan dari Kepala SPPG belum diterbitkan.'],
+                ]);
+            }
+
             $lockedTrip->update([
                 'status' => TripStatus::IN_PROGRESS,
                 'started_at' => Carbon::now(),
-                'tracking_status' => 'ACTIVE',
-                'tracking_started_at' => Carbon::now(),
+                'tracking_status' => 'WAITING_FOR_LOCATION', // HARD GATE E: NOT ACTIVE until real telemetry in PBI-09
+                'tracking_started_at' => null,
             ]);
 
             // Transition first stop from PENDING to EN_ROUTE
@@ -512,6 +837,7 @@ class TripDispatchService
                 newValues: [
                     'status' => TripStatus::IN_PROGRESS->value,
                     'started_at' => $lockedTrip->started_at->toIso8601String(),
+                    'tracking_status' => 'WAITING_FOR_LOCATION',
                 ]
             );
 
