@@ -222,6 +222,7 @@
 
             // Client Geolocation Telemetry Logic
             const telemetryUrl = '{{ route('driver.trips.telemetry', $trip) }}';
+            const telemetryStopUrl = '{{ route('driver.trips.telemetry.stop', $trip) }}';
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
             const statusText = document.getElementById('gps-status-text');
             const statusDetail = document.getElementById('gps-status-detail');
@@ -232,6 +233,19 @@
 
             let watchId = null;
             let lastSentTime = 0;
+
+            function notifyStopServer() {
+                fetch(telemetryStopUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken
+                    }
+                }).catch(err => {
+                    console.warn('Gagal sinkronisasi penghentian GPS ke server:', err);
+                });
+            }
 
             function sendLocation(pos) {
                 const now = Date.now();
@@ -319,7 +333,7 @@
                 );
             }
 
-            function stopTracking() {
+            function stopTracking(notify = true) {
                 if (watchId !== null) {
                     navigator.geolocation.clearWatch(watchId);
                     watchId = null;
@@ -331,21 +345,29 @@
                 statusDetail.textContent = 'Pelacakan dihentikan oleh kurir. Klik "Mulai Bagikan Lokasi" untuk mengaktifkan kembali.';
                 indicatorDot.className = 'w-3.5 h-3.5 rounded-full bg-slate-400 shrink-0';
                 if (accuracyDisplay) accuracyDisplay.textContent = '';
+
+                if (notify) {
+                    notifyStopServer();
+                }
             }
 
             btnToggleGps?.addEventListener('click', function() {
                 if (watchId !== null) {
-                    stopTracking();
+                    stopTracking(true);
                 } else {
                     startTracking();
                 }
             });
 
-            // Clean up watcher when leaving page
+            // Clean up watcher when leaving page and notify server
             window.addEventListener('beforeunload', function() {
                 if (watchId !== null) {
                     navigator.geolocation.clearWatch(watchId);
                     watchId = null;
+                    if (navigator.sendBeacon) {
+                        const blob = new Blob([JSON.stringify({ _token: csrfToken })], { type: 'application/json' });
+                        navigator.sendBeacon(telemetryStopUrl, blob);
+                    }
                 }
             });
         });

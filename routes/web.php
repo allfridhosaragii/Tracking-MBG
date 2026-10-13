@@ -147,6 +147,7 @@ Route::middleware(['auth', 'active'])->group(function () {
             // PBI-09: Real GPS Telemetry & Active Trip Navigation (Page D03)
             Route::get('/trips/{trip}/active', [DriverTripController::class, 'active'])->name('trips.active');
             Route::post('/trips/{trip}/telemetry', [DriverTripController::class, 'telemetry'])->name('trips.telemetry');
+            Route::post('/trips/{trip}/telemetry/stop', [DriverTripController::class, 'stopTelemetry'])->name('trips.telemetry.stop');
             Route::post('/trips/{trip}/stops/{stop}/arrive', [DriverTripController::class, 'arrive'])->name('trips.stops.arrive');
         });
 
@@ -188,8 +189,11 @@ Route::get('/public/trips/{tripCode}/map-data', [\App\Http\Controllers\Public\Pu
     ->name('public.trips.map-data')
     ->middleware('throttle:60,1');
 
-// Development Isolated Map Diagnostics
+// Development Isolated Map Diagnostics (Strictly restricted to local & testing environments)
 Route::get('/dev/map-test', function () {
+    if (! app()->environment(['local', 'testing'])) {
+        abort(404, 'Halaman diagnostik hanya tersedia pada lingkungan pengembangan lokal.');
+    }
     return view('dev.map-test');
 })->name('dev.map-test');
 

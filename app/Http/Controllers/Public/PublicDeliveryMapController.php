@@ -81,13 +81,25 @@ class PublicDeliveryMapController extends Controller
             // Graceful fallback
         }
 
+        $latestTimestamp = collect([
+            $trip->updated_at,
+            $trip->created_at,
+            $trip->last_location_at,
+            $stops->max('updated_at'),
+            $stops->max('arrived_at'),
+        ])->filter()->max();
+
+        $lastUpdatedIso = ($latestTimestamp instanceof \Carbon\CarbonInterface)
+            ? $latestTimestamp->toIso8601String()
+            : ($latestTimestamp ? \Carbon\Carbon::parse($latestTimestamp)->toIso8601String() : ($trip->updated_at ?? $trip->created_at)->toIso8601String());
+
         return response()->json([
             'trip_code' => $trip->trip_code,
             'service_date' => $trip->service_date->translatedFormat('d F Y'),
             'delivery_stage' => $publicStage,
             'status' => $trip->status->value,
             'status_label' => $trip->status->label(),
-            'last_updated' => ($trip->updated_at ?? $trip->created_at)->toIso8601String(),
+            'last_updated' => $lastUpdatedIso,
             'sppg' => [
                 'name' => $sppg->name,
                 'lat' => (float) $sppg->latitude,

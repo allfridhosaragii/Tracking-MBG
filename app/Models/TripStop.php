@@ -66,7 +66,7 @@ class TripStop extends Model
     public function getTotalReleasedPortionsAttribute(): int
     {
         return (int) $this->deliveryItems->sum(function ($item) {
-            return $item->released_portions ?? $item->planned_portions;
+            return (int) ($item->released_portions ?? 0);
         });
     }
 }

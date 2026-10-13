@@ -189,6 +189,26 @@ class DriverTripController extends Controller
     }
 
     /**
+     * Driver explicitly stops GPS telemetry sharing (Gate C).
+     */
+    public function stopTelemetry(Request $request, Trip $trip): \Illuminate\Http\JsonResponse
+    {
+        Gate::authorize('recordTelemetry', $trip);
+
+        $trackingService = app(\App\Services\GpsTrackingService::class);
+        $updatedTrip = $trackingService->stopDriverTracking($trip, $request->user());
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Berbagi lokasi GPS telah berhasil dihentikan oleh kurir.',
+            'tracking_status' => 'SHARING_STOPPED',
+            'tracking_ended_at' => $updatedTrip->tracking_ended_at?->toIso8601String(),
+            'last_latitude' => (float) $updatedTrip->last_latitude,
+            'last_longitude' => (float) $updatedTrip->last_longitude,
+        ], 200);
+    }
+
+    /**
      * Driver marks arrival at the active school stop.
      */
     public function arrive(Request $request, Trip $trip, \App\Models\TripStop $stop): \Illuminate\Http\JsonResponse|RedirectResponse

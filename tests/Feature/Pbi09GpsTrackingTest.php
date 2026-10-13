@@ -608,4 +608,201 @@ class Pbi09GpsTrackingTest extends TestCase
         $response->assertStatus(200);
         $this->assertEquals($expectedTime, $response->json('last_updated'));
     }
+
+    /**
+     * Requirement C: Driver can explicitly stop GPS sharing and server synchronizes stopped status.
+     */
+    public function test_driver_can_explicitly_stop_gps_telemetry_sharing(): void
+    {
+        // 1. Submit initial telemetry
+        $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
+                'latitude' => -7.288543,
+                'longitude' => 112.735123,
+                'accuracy' => 10.0,
+                'recorded_at' => Carbon::now()->toIso8601String(),
+            ])
+            ->assertStatus(200);
+
+        // 2. Stop sharing
+        $response = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.stop', $this->inProgressTrip));
+
+        $response->assertStatus(200);
+        $response->assertJson([
+            'success' => true,
+            'tracking_status' => 'SHARING_STOPPED',
+        ]);
+
+        $this->inProgressTrip->refresh();
+        $this->assertEquals('SHARING_STOPPED', $this->inProgressTrip->tracking_status);
+        $this->assertNotNull($this->inProgressTrip->tracking_ended_at);
+        $this->assertEquals(-7.288543, (float) $this->inProgressTrip->last_latitude, 'Last latitude preserved on stop');
+        $this->assertEquals(112.735123, (float) $this->inProgressTrip->last_longitude, 'Last longitude preserved on stop');
+
+        $this->assertDatabaseHas('activity_logs', [
+            'event' => 'trip.tracking_stopped',
+            'auditable_id' => $this->inProgressTrip->id,
+        ]);
+    }
+
+    /**
+     * Requirement C: Stopped GPS does not retain false ONLINE status on monitoring dashboard.
+     */
+    public function test_stopped_gps_does_not_retain_online_status_on_monitoring_dashboard(): void
+    {
+        $trackingService = app(GpsTrackingService::class);
+
+        // Telemetry recorded 10 seconds ago, but kurir stopped sharing
+        $this->inProgressTrip->update([
+            'last_latitude' => -7.288543,
+            'last_longitude' => 112.735123,
+            'last_accuracy_m' => 8.0,
+            'last_location_at' => Carbon::now()->subSeconds(10),
+            'tracking_status' => 'SHARING_STOPPED',
+            'tracking_ended_at' => Carbon::now()->subSeconds(5),
+        ]);
+
+        $status = $trackingService->getDriverTrackingStatus($this->inProgressTrip);
+        $this->assertEquals('SHARING_STOPPED', $status['status']);
+        $this->assertFalse($status['is_online'], 'Stopped tracking must NEVER report is_online true');
+        $this->assertTrue($status['is_stopped']);
+
+        // Check map-data endpoint as Kepala SPPG
+        $response = $this->actingAs($this->kepalaA)
+            ->getJson(route('trips.map-data', $this->inProgressTrip));
+
+        $response->assertStatus(200);
+        $telemetry = $response->json('driver_telemetry');
+        $this->assertNotNull($telemetry);
+        $this->assertEquals('SHARING_STOPPED', $telemetry['status']);
+        $this->assertFalse($telemetry['is_online']);
+    }
+
+    /**
+     * Requirement C: Driver submitting new telemetry after stop resets ONLINE status.
+     */
+    public function test_driver_submitting_new_telemetry_resets_online_status(): void
+    {
+        $this->inProgressTrip->update([
+            'last_location_at' => Carbon::now()->subMinutes(5),
+            'tracking_status' => 'SHARING_STOPPED',
+            'tracking_ended_at' => Carbon::now()->subMinutes(5),
+        ]);
+
+        $response = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
+                'latitude' => -7.289000,
+                'longitude' => 112.736000,
+                'accuracy' => 9.0,
+                'recorded_at' => Carbon::now()->toIso8601String(),
+            ]);
+
+        $response->assertStatus(200);
+        $response->assertJson([
+            'success' => true,
+            'tracking_status' => 'ONLINE',
+        ]);
+
+        $this->inProgressTrip->refresh();
+        $this->assertEquals('ONLINE', $this->inProgressTrip->tracking_status);
+        $this->assertNull($this->inProgressTrip->tracking_ended_at, 'tracking_ended_at must be reset upon resumption');
+    }
+
+    /**
+     * Requirement D: Terminal stop cannot be re-arrived.
+     */
+    public function test_terminal_stop_cannot_be_re_arrived(): void
+    {
+        $stop1 = $this->inProgressTrip->stops()->orderBy('sequence_number')->first();
+        $stop1->update([
+            'status' => TripStopStatus::COMPLETED,
+            'handed_over_at' => Carbon::now(),
+        ]);
+
+        $response = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.stops.arrive', [$this->inProgressTrip, $stop1]));
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['stop']);
+    }
+
+    /**
+     * Requirement D: Stop 2 cannot arrive while Stop 1 is awaiting handover confirmation (PBI-10 dependency).
+     */
+    public function test_subsequent_stop_requires_prior_stop_to_complete_handover(): void
+    {
+        $stop2 = TripStop::create([
+            'trip_id' => $this->inProgressTrip->id,
+            'school_id' => $this->schoolA2->id,
+            'sequence_number' => 2,
+            'planned_portions' => 150,
+            'status' => TripStopStatus::PENDING,
+        ]);
+
+        $stop1 = $this->inProgressTrip->stops()->where('sequence_number', 1)->first();
+        $stop1->update(['status' => TripStopStatus::ARRIVED_AWAITING_CONFIRMATION]);
+
+        // 1. Attempting Stop 2 when Stop 1 has arrived but NOT handed over must be rejected
+        $res1 = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.stops.arrive', [$this->inProgressTrip, $stop2]));
+
+        $res1->assertStatus(422);
+        $res1->assertJsonValidationErrors(['stop']);
+
+        // 2. Once Stop 1 completes handover (PBI-10), Stop 2 can mark arrival
+        $stop1->update(['status' => TripStopStatus::HANDED_OVER]);
+
+        $res2 = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.stops.arrive', [$this->inProgressTrip, $stop2]));
+
+        $res2->assertStatus(200);
+        $stop2->refresh();
+        $this->assertEquals(TripStopStatus::ARRIVED_AWAITING_CONFIRMATION, $stop2->status);
+    }
+
+    /**
+     * Requirement E: Isolated dev diagnostic route rejected in production environment.
+     */
+    public function test_dev_map_test_route_is_rejected_in_production_environment(): void
+    {
+        $this->app['env'] = 'production';
+
+        $response = $this->get('/dev/map-test');
+        $response->assertStatus(404);
+    }
+
+    /**
+     * Requirement F: Null released portions strictly returns 0, never planned portions.
+     */
+    public function test_released_portions_null_does_not_fallback_to_planned_portions(): void
+    {
+        $stop = $this->inProgressTrip->stops()->first();
+        $item = $stop->deliveryItems()->first();
+
+        // Simulate unreleased item (QC pending)
+        $item->update([
+            'planned_portions' => 250,
+            'released_portions' => null,
+        ]);
+
+        $stop->refresh();
+        $this->assertEquals(0, $stop->total_released_portions, 'total_released_portions must be 0 when released_portions is null');
+    }
+
+    /**
+     * Requirement F: Public map data reflects newest stop arrival or location update timestamp.
+     */
+    public function test_public_last_updated_reflects_latest_stop_or_gps_change(): void
+    {
+        $stop = $this->inProgressTrip->stops()->first();
+        $laterTime = Carbon::now()->addMinutes(15);
+        $stop->update(['arrived_at' => $laterTime]);
+
+        $response = $this->getJson(route('public.trips.map-data', $this->inProgressTrip->trip_code));
+
+        $response->assertStatus(200);
+        $this->assertEquals($laterTime->toIso8601String(), $response->json('last_updated'));
+    }
 }
+

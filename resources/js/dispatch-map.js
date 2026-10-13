@@ -17,9 +17,94 @@ function isWebGlSupported() {
 }
 
 /**
+ * Creates safe DOM popup node for a school stop without innerHTML interpolation.
+ */
+function createSchoolPopupContent(stop) {
+    const popupNode = document.createElement('div');
+    popupNode.className = 'p-2 text-xs min-w-[160px]';
+
+    const headerRow = document.createElement('div');
+    headerRow.className = 'flex items-center gap-1 font-bold text-slate-800';
+
+    const seqBadge = document.createElement('span');
+    seqBadge.className = 'inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 text-[10px]';
+    seqBadge.textContent = String(stop.sequence_number);
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'truncate max-w-[180px]';
+    nameSpan.textContent = stop.school_name || '';
+
+    headerRow.appendChild(seqBadge);
+    headerRow.appendChild(nameSpan);
+    popupNode.appendChild(headerRow);
+
+    if (stop.school_address) {
+        const addrDiv = document.createElement('div');
+        addrDiv.className = 'text-[11px] text-slate-500 mt-1';
+        addrDiv.textContent = stop.school_address;
+        popupNode.appendChild(addrDiv);
+    }
+
+    if (stop.planned_portions) {
+        const planDiv = document.createElement('div');
+        planDiv.className = 'mt-1 font-semibold text-emerald-700';
+        planDiv.textContent = `Rencana: ${stop.planned_portions} porsi`;
+        popupNode.appendChild(planDiv);
+    }
+
+    if (stop.loaded_portions) {
+        const loadDiv = document.createElement('div');
+        loadDiv.className = 'font-semibold text-blue-700';
+        loadDiv.textContent = `Dimuat: ${stop.loaded_portions} porsi`;
+        popupNode.appendChild(loadDiv);
+    }
+
+    const statusDiv = document.createElement('div');
+    statusDiv.className = 'mt-1 text-[10px] uppercase font-bold text-slate-400';
+    statusDiv.textContent = stop.status_label || stop.stage || stop.status || '';
+    popupNode.appendChild(statusDiv);
+
+    return popupNode;
+}
+
+/**
+ * Creates safe DOM popup node for driver telemetry without innerHTML interpolation.
+ */
+function createDriverPopupContent(tel) {
+    const driverPopupNode = document.createElement('div');
+    driverPopupNode.className = 'p-2 text-xs min-w-[160px]';
+
+    const dHeader = document.createElement('div');
+    dHeader.className = 'font-bold text-emerald-800 flex items-center gap-1.5';
+    dHeader.textContent = 'POSISI ARMADA KURIR';
+    driverPopupNode.appendChild(dHeader);
+
+    const dStatus = document.createElement('div');
+    dStatus.className = 'mt-1 text-[11px] font-semibold text-slate-700';
+    dStatus.textContent = tel.label || 'Aktif';
+    driverPopupNode.appendChild(dStatus);
+
+    if (tel.accuracy_m) {
+        const dAcc = document.createElement('div');
+        dAcc.className = 'text-[10px] text-slate-500 mt-0.5 font-mono';
+        dAcc.textContent = `Ketidakpastian akurasi: ±${Math.round(tel.accuracy_m)}m`;
+        driverPopupNode.appendChild(dAcc);
+    }
+
+    if (tel.age_human) {
+        const dAge = document.createElement('div');
+        dAge.className = 'text-[10px] text-slate-400 mt-0.5';
+        dAge.textContent = `Pembaruan terakhir: ${tel.age_human}`;
+        driverPopupNode.appendChild(dAge);
+    }
+
+    return driverPopupNode;
+}
+
+/**
  * MBG-Track Smart Dispatch Map Component (MapLibre GL JS + OpenFreeMap)
- * Supports hybrid multi-stop routing, numbered school pins, active leg highlight,
- * and graceful fallback when WebGL or network routing is unavailable.
+ * Supports keyed marker lifecycle (smooth updates without full marker destruction),
+ * popup state retention during live polling, and honest fallback geometry indication.
  */
 export function initDispatchMap(containerId, options = {}) {
     const container = document.getElementById(containerId);
@@ -49,7 +134,12 @@ export function initDispatchMap(containerId, options = {}) {
     } = options;
 
     let map = null;
-    let markers = [];
+    let sppgMarker = null;
+    const schoolMarkers = new Map(); // key -> { marker, popup, element, data }
+    let driverMarker = null;
+    let driverElement = null;
+    let driverPopup = null;
+    let lastDriverCoords = null;
     let isInitialRender = true;
     let pollTimer = null;
 
@@ -80,128 +170,109 @@ export function initDispatchMap(containerId, options = {}) {
     function renderMapData(data) {
         if (!data || !map) return;
 
-        // Clear existing markers
-        markers.forEach(m => m.remove());
-        markers = [];
-
         const bounds = new LngLatBounds();
         let hasPoints = false;
 
-        // 1. Add SPPG Marker
+        // 1. Keyed SPPG Marker (Created once, updated without DOM recreation)
         if (data.sppg && data.sppg.lat && data.sppg.lng) {
-            const sppgEl = document.createElement('div');
-            sppgEl.className = 'flex items-center justify-center w-8 h-8 rounded-full bg-emerald-700 text-white font-bold text-xs shadow-md border-2 border-white ring-2 ring-emerald-500 cursor-pointer';
-            sppgEl.innerHTML = `<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>`;
-            sppgEl.title = `Dapur SPPG: ${data.sppg.name || 'SPPG'}`;
+            const sppgCoords = [Number(data.sppg.lng), Number(data.sppg.lat)];
+            if (!sppgMarker) {
+                const sppgEl = document.createElement('div');
+                sppgEl.className = 'flex items-center justify-center w-8 h-8 rounded-full bg-emerald-700 text-white font-bold text-xs shadow-md border-2 border-white ring-2 ring-emerald-500 cursor-pointer';
+                sppgEl.innerHTML = `<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>`;
+                sppgEl.title = `Dapur SPPG: ${data.sppg.name || 'SPPG'}`;
 
-            // HIGH GATE E: Safe DOM Popup construction without raw HTML interpolation
-            const sppgPopupContent = document.createElement('div');
-            sppgPopupContent.className = 'p-2 text-xs';
-            const sppgHeader = document.createElement('div');
-            sppgHeader.className = 'font-bold text-emerald-800';
-            sppgHeader.textContent = 'DAPUR SPPG ASAL';
-            const sppgName = document.createElement('div');
-            sppgName.className = 'text-slate-700 mt-0.5';
-            sppgName.textContent = data.sppg.name || '';
-            sppgPopupContent.appendChild(sppgHeader);
-            sppgPopupContent.appendChild(sppgName);
+                const sppgPopupContent = document.createElement('div');
+                sppgPopupContent.className = 'p-2 text-xs';
+                const sppgHeader = document.createElement('div');
+                sppgHeader.className = 'font-bold text-emerald-800';
+                sppgHeader.textContent = 'DAPUR SPPG ASAL';
+                const sppgName = document.createElement('div');
+                sppgName.className = 'text-slate-700 mt-0.5';
+                sppgName.textContent = data.sppg.name || '';
+                sppgPopupContent.appendChild(sppgHeader);
+                sppgPopupContent.appendChild(sppgName);
 
-            const sppgMarker = new Marker({ element: sppgEl })
-                .setLngLat([data.sppg.lng, data.sppg.lat])
-                .setPopup(new Popup({ offset: 12 }).setDOMContent(sppgPopupContent))
-                .addTo(map);
-
-            markers.push(sppgMarker);
-            bounds.extend([data.sppg.lng, data.sppg.lat]);
+                sppgMarker = new Marker({ element: sppgEl })
+                    .setLngLat(sppgCoords)
+                    .setPopup(new Popup({ offset: 12 }).setDOMContent(sppgPopupContent))
+                    .addTo(map);
+            } else {
+                sppgMarker.setLngLat(sppgCoords);
+            }
+            bounds.extend(sppgCoords);
             hasPoints = true;
         }
 
-        // 2. Add School Markers (Numbered 1, 2, 3...) with safe DOM content
+        // 2. Keyed School Markers (Retained across updates to prevent popup closing and flicker)
         if (Array.isArray(data.stops)) {
+            const currentStopKeys = new Set();
+
             data.stops.forEach((stop) => {
                 if (!stop.lat || !stop.lng) return;
+                const stopKey = String(stop.id || stop.sequence_number);
+                currentStopKeys.add(stopKey);
+                const stopCoords = [Number(stop.lng), Number(stop.lat)];
 
                 const isCurrent = Boolean(stop.is_active || stop.is_current_target);
                 const isCompleted = ['COMPLETED', 'HANDED_OVER'].includes(stop.status);
-                const markerEl = document.createElement('div');
 
-                if (isCompleted) {
-                    markerEl.className = 'flex items-center justify-center w-8 h-8 rounded-full font-bold text-xs shadow-md border-2 border-white bg-emerald-600 text-white ring-2 ring-emerald-300 cursor-pointer';
-                    markerEl.textContent = '✓';
-                } else if (isCurrent) {
-                    markerEl.className = 'flex items-center justify-center w-8 h-8 rounded-full font-bold text-xs shadow-md border-2 border-white bg-amber-600 text-white ring-4 ring-amber-300 scale-110 z-10 cursor-pointer animate-pulse';
-                    markerEl.textContent = String(stop.sequence_number);
+                let markerRecord = schoolMarkers.get(stopKey);
+
+                if (!markerRecord) {
+                    const markerEl = document.createElement('div');
+                    markerEl.title = `Stop #${stop.sequence_number}: ${stop.school_name || ''}`;
+
+                    if (typeof onStopSelected === 'function') {
+                        markerEl.addEventListener('click', () => onStopSelected(stop));
+                    }
+
+                    const popupNode = createSchoolPopupContent(stop);
+                    const popup = new Popup({ offset: 12 }).setDOMContent(popupNode);
+
+                    const marker = new Marker({ element: markerEl })
+                        .setLngLat(stopCoords)
+                        .setPopup(popup)
+                        .addTo(map);
+
+                    markerRecord = { marker, popup, element: markerEl, data: stop };
+                    schoolMarkers.set(stopKey, markerRecord);
                 } else {
-                    markerEl.className = 'flex items-center justify-center w-8 h-8 rounded-full font-bold text-xs shadow-md border-2 border-white bg-slate-700 text-white ring-2 ring-slate-400 cursor-pointer transition-transform';
-                    markerEl.textContent = String(stop.sequence_number);
+                    markerRecord.marker.setLngLat(stopCoords);
+                    const newPopupNode = createSchoolPopupContent(stop);
+                    markerRecord.popup.setDOMContent(newPopupNode);
+                    markerRecord.data = stop;
                 }
 
-                markerEl.title = `Stop #${stop.sequence_number}: ${stop.school_name || ''}`;
-
-                if (typeof onStopSelected === 'function') {
-                    markerEl.addEventListener('click', () => onStopSelected(stop));
+                // Update styling based on stop progression
+                if (isCompleted) {
+                    markerRecord.element.className = 'flex items-center justify-center w-8 h-8 rounded-full font-bold text-xs shadow-md border-2 border-white bg-emerald-600 text-white ring-2 ring-emerald-300 cursor-pointer';
+                    markerRecord.element.textContent = '✓';
+                } else if (isCurrent) {
+                    markerRecord.element.className = 'flex items-center justify-center w-8 h-8 rounded-full font-bold text-xs shadow-md border-2 border-white bg-amber-600 text-white ring-4 ring-amber-300 scale-110 z-10 cursor-pointer animate-pulse';
+                    markerRecord.element.textContent = String(stop.sequence_number);
+                } else {
+                    markerRecord.element.className = 'flex items-center justify-center w-8 h-8 rounded-full font-bold text-xs shadow-md border-2 border-white bg-slate-700 text-white ring-2 ring-slate-400 cursor-pointer transition-transform';
+                    markerRecord.element.textContent = String(stop.sequence_number);
                 }
 
-                // HIGH GATE E: Safe DOM Popup construction without raw HTML interpolation (Prevents Stored XSS)
-                const popupNode = document.createElement('div');
-                popupNode.className = 'p-2 text-xs min-w-[160px]';
-
-                const headerRow = document.createElement('div');
-                headerRow.className = 'flex items-center gap-1 font-bold text-slate-800';
-
-                const seqBadge = document.createElement('span');
-                seqBadge.className = 'inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 text-[10px]';
-                seqBadge.textContent = String(stop.sequence_number);
-
-                const nameSpan = document.createElement('span');
-                nameSpan.className = 'truncate max-w-[180px]';
-                nameSpan.textContent = stop.school_name || '';
-
-                headerRow.appendChild(seqBadge);
-                headerRow.appendChild(nameSpan);
-                popupNode.appendChild(headerRow);
-
-                if (stop.school_address) {
-                    const addrDiv = document.createElement('div');
-                    addrDiv.className = 'text-[11px] text-slate-500 mt-1';
-                    addrDiv.textContent = stop.school_address;
-                    popupNode.appendChild(addrDiv);
-                }
-
-                if (stop.planned_portions) {
-                    const planDiv = document.createElement('div');
-                    planDiv.className = 'mt-1 font-semibold text-emerald-700';
-                    planDiv.textContent = `Rencana: ${stop.planned_portions} porsi`;
-                    popupNode.appendChild(planDiv);
-                }
-
-                if (stop.loaded_portions) {
-                    const loadDiv = document.createElement('div');
-                    loadDiv.className = 'font-semibold text-blue-700';
-                    loadDiv.textContent = `Dimuat: ${stop.loaded_portions} porsi`;
-                    popupNode.appendChild(loadDiv);
-                }
-
-                const statusDiv = document.createElement('div');
-                statusDiv.className = 'mt-1 text-[10px] uppercase font-bold text-slate-400';
-                statusDiv.textContent = stop.status_label || stop.stage || stop.status || '';
-                popupNode.appendChild(statusDiv);
-
-                const schoolMarker = new Marker({ element: markerEl })
-                    .setLngLat([stop.lng, stop.lat])
-                    .setPopup(new Popup({ offset: 12 }).setDOMContent(popupNode))
-                    .addTo(map);
-
-                markers.push(schoolMarker);
-                bounds.extend([stop.lng, stop.lat]);
+                bounds.extend(stopCoords);
                 hasPoints = true;
+            });
+
+            // Clean up removed stops
+            schoolMarkers.forEach((rec, key) => {
+                if (!currentStopKeys.has(key)) {
+                    rec.marker.remove();
+                    schoolMarkers.delete(key);
+                }
             });
         }
 
-        // 2b. Add Driver Real Telemetry Marker if authorized & available
+        // 2b. Keyed Driver Real Telemetry Marker
         if (data.driver_telemetry && data.driver_telemetry.latitude && data.driver_telemetry.longitude) {
             const tel = data.driver_telemetry;
-            const driverEl = document.createElement('div');
+            const newCoords = [Number(tel.longitude), Number(tel.latitude)];
 
             let bgClass = 'bg-slate-700 text-white';
             let ringClass = 'ring-2 ring-slate-400';
@@ -211,51 +282,52 @@ export function initDispatchMap(containerId, options = {}) {
             } else if (tel.is_stale) {
                 bgClass = 'bg-amber-600 text-white';
                 ringClass = 'ring-2 ring-amber-300';
+            } else if (tel.is_stopped) {
+                bgClass = 'bg-slate-500 text-slate-200';
+                ringClass = 'ring-2 ring-slate-300';
             }
 
-            driverEl.className = `flex items-center justify-center w-8 h-8 rounded-full font-bold text-xs shadow-lg border-2 border-white ${bgClass} ${ringClass} cursor-pointer z-20`;
-            driverEl.innerHTML = `<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"/></svg>`;
-            driverEl.title = `Kurir: ${tel.label || 'Posisi Armada'}`;
+            if (!driverMarker) {
+                driverElement = document.createElement('div');
+                driverElement.className = `flex items-center justify-center w-8 h-8 rounded-full font-bold text-xs shadow-lg border-2 border-white ${bgClass} ${ringClass} cursor-pointer z-20`;
+                driverElement.innerHTML = `<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"/></svg>`;
+                driverElement.title = `Kurir: ${tel.label || 'Posisi Armada'}`;
 
-            // Safe DOM popup (Prevents Stored XSS)
-            const driverPopupNode = document.createElement('div');
-            driverPopupNode.className = 'p-2 text-xs min-w-[160px]';
+                const driverPopupNode = createDriverPopupContent(tel);
+                driverPopup = new Popup({ offset: 12 }).setDOMContent(driverPopupNode);
 
-            const dHeader = document.createElement('div');
-            dHeader.className = 'font-bold text-emerald-800 flex items-center gap-1.5';
-            dHeader.textContent = 'POSISI ARMADA KURIR';
-            driverPopupNode.appendChild(dHeader);
+                driverMarker = new Marker({ element: driverElement })
+                    .setLngLat(newCoords)
+                    .setPopup(driverPopup)
+                    .addTo(map);
 
-            const dStatus = document.createElement('div');
-            dStatus.className = 'mt-1 text-[11px] font-semibold text-slate-700';
-            dStatus.textContent = tel.label || 'Aktif';
-            driverPopupNode.appendChild(dStatus);
+                lastDriverCoords = newCoords;
+            } else {
+                driverElement.className = `flex items-center justify-center w-8 h-8 rounded-full font-bold text-xs shadow-lg border-2 border-white ${bgClass} ${ringClass} cursor-pointer z-20`;
+                driverElement.title = `Kurir: ${tel.label || 'Posisi Armada'}`;
 
-            if (tel.accuracy_m) {
-                const dAcc = document.createElement('div');
-                dAcc.className = 'text-[10px] text-slate-500 mt-0.5 font-mono';
-                dAcc.textContent = `Ketidakpastian akurasi: ±${Math.round(tel.accuracy_m)}m`;
-                driverPopupNode.appendChild(dAcc);
+                // Smooth position update without DOM recreation
+                if (!lastDriverCoords || lastDriverCoords[0] !== newCoords[0] || lastDriverCoords[1] !== newCoords[1]) {
+                    driverMarker.setLngLat(newCoords);
+                    lastDriverCoords = newCoords;
+                }
+
+                // Update popup text while keeping it open if user opened it
+                const newDriverPopupNode = createDriverPopupContent(tel);
+                driverPopup.setDOMContent(newDriverPopupNode);
             }
 
-            if (tel.age_human) {
-                const dAge = document.createElement('div');
-                dAge.className = 'text-[10px] text-slate-400 mt-0.5';
-                dAge.textContent = `Pembaruan terakhir: ${tel.age_human}`;
-                driverPopupNode.appendChild(dAge);
-            }
-
-            const driverMarker = new Marker({ element: driverEl })
-                .setLngLat([tel.longitude, tel.latitude])
-                .setPopup(new Popup({ offset: 12 }).setDOMContent(driverPopupNode))
-                .addTo(map);
-
-            markers.push(driverMarker);
-            bounds.extend([tel.longitude, tel.latitude]);
+            bounds.extend(newCoords);
             hasPoints = true;
+        } else if (driverMarker) {
+            driverMarker.remove();
+            driverMarker = null;
+            driverElement = null;
+            driverPopup = null;
+            lastDriverCoords = null;
         }
 
-        // 3. Add Hybrid Multi-Stop Polyline Route Geometry (OSRM or Graceful Straight Segments)
+        // 3. Add Hybrid Multi-Stop Polyline Route Geometry (OSRM or Fallback Reference)
         let geometryToRender = (data.geometry && data.geometry.coordinates) ? data.geometry : null;
         let isFallbackGeometry = false;
 
@@ -263,10 +335,10 @@ export function initDispatchMap(containerId, options = {}) {
         if (!geometryToRender && data.sppg && Array.isArray(data.stops) && data.stops.length > 0) {
             const fallbackCoords = [];
             if (data.sppg.lng && data.sppg.lat) {
-                fallbackCoords.push([data.sppg.lng, data.sppg.lat]);
+                fallbackCoords.push([Number(data.sppg.lng), Number(data.sppg.lat)]);
             }
             data.stops.forEach(s => {
-                if (s.lng && s.lat) fallbackCoords.push([s.lng, s.lat]);
+                if (s.lng && s.lat) fallbackCoords.push([Number(s.lng), Number(s.lat)]);
             });
             if (fallbackCoords.length >= 2) {
                 geometryToRender = {
@@ -278,7 +350,6 @@ export function initDispatchMap(containerId, options = {}) {
         }
 
         if (geometryToRender && geometryToRender.coordinates) {
-            // Determine active leg index
             let activeLegIndex = 0;
             if (Array.isArray(data.stops)) {
                 const activeStop = data.stops.find(s => Boolean(s.is_active || s.is_current_target));
@@ -295,10 +366,11 @@ export function initDispatchMap(containerId, options = {}) {
                 }
             }
 
-            // Base preview line (soft neutral preview of entire route)
             const previewGeoJson = {
                 type: 'Feature',
-                properties: {},
+                properties: {
+                    isFallback: isFallbackGeometry,
+                },
                 geometry: geometryToRender,
             };
 
@@ -319,15 +391,15 @@ export function initDispatchMap(containerId, options = {}) {
                         'line-cap': 'round',
                     },
                     paint: {
-                        'line-color': '#94A3B8',
-                        'line-width': 4,
-                        'line-opacity': 0.65,
-                        'line-dasharray': [2, 2],
+                        'line-color': isFallbackGeometry ? '#B45309' : '#94A3B8',
+                        'line-width': isFallbackGeometry ? 3 : 4,
+                        'line-opacity': 0.7,
+                        'line-dasharray': [3, 3],
                     },
                 });
             }
 
-            // Prominent active leg line (Forest Pine #1C6654) - only when detailed OSRM leg exists
+            // Prominent active leg line (Forest Pine #1C6654) - only when detailed road geometry exists
             if (activeLegGeometry && !isFallbackGeometry) {
                 const activeLineData = {
                     type: 'Feature',
@@ -373,10 +445,16 @@ export function initDispatchMap(containerId, options = {}) {
                         },
                     });
                 }
+            } else if (map.getSource('route-active-line')) {
+                // Clear active leg if in fallback mode
+                map.getSource('route-active-line').setData({
+                    type: 'FeatureCollection',
+                    features: [],
+                });
             }
         }
 
-        // Fit bounds only on initial render to preserve user pan/zoom during live polling updates
+        // Fit bounds ONLY on initial render to preserve user pan/zoom during live polling
         if (hasPoints && !bounds.isEmpty() && isInitialRender) {
             map.fitBounds(bounds, {
                 padding: { top: 50, bottom: 50, left: 50, right: 50 },
@@ -405,7 +483,10 @@ export function initDispatchMap(containerId, options = {}) {
     }
 
     function startPolling(intervalMs) {
-        if (pollTimer) clearInterval(pollTimer);
+        if (pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+        }
         const ms = intervalMs || pollInterval || 10000;
         pollTimer = setInterval(fetchAndRender, ms);
     }
@@ -450,6 +531,16 @@ export function initDispatchMap(containerId, options = {}) {
         stopPolling,
         destroy: () => {
             stopPolling();
+            if (sppgMarker) {
+                sppgMarker.remove();
+                sppgMarker = null;
+            }
+            schoolMarkers.forEach(rec => rec.marker.remove());
+            schoolMarkers.clear();
+            if (driverMarker) {
+                driverMarker.remove();
+                driverMarker = null;
+            }
             if (map) map.remove();
         },
     };

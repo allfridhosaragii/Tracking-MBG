@@ -178,6 +178,7 @@ class GpsTrackingService
                     'last_location_at' => $recordedAt,
                     'tracking_status' => 'ONLINE',
                     'tracking_started_at' => $lockedTrip->tracking_started_at ?: $now,
+                    'tracking_ended_at' => null,
                 ]);
             }
 
@@ -221,6 +222,30 @@ class GpsTrackingService
                 'is_online' => false,
                 'is_stale' => false,
                 'is_offline' => false,
+                'is_stopped' => false,
+                'is_waiting' => false,
+            ];
+        }
+
+        if ($trip->tracking_status === 'SHARING_STOPPED' || $trip->tracking_ended_at !== null) {
+            $ageSeconds = $trip->last_location_at
+                ? max(0, Carbon::now()->getTimestamp() - ($trip->last_location_at instanceof Carbon ? $trip->last_location_at->getTimestamp() : Carbon::parse($trip->last_location_at)->getTimestamp()))
+                : null;
+
+            return [
+                'status' => 'SHARING_STOPPED',
+                'label' => 'Berbagi Lokasi Dihentikan oleh Kurir',
+                'badge_class' => 'bg-slate-100 text-slate-700 border-slate-300',
+                'latitude' => $trip->last_latitude ? (float) $trip->last_latitude : null,
+                'longitude' => $trip->last_longitude ? (float) $trip->last_longitude : null,
+                'accuracy_m' => $trip->last_accuracy_m ? (float) $trip->last_accuracy_m : null,
+                'last_location_at' => $trip->last_location_at?->toIso8601String(),
+                'age_seconds' => $ageSeconds,
+                'age_human' => $trip->last_location_at ? Carbon::parse($trip->last_location_at)->diffForHumans() : 'Lokasi tersimpan',
+                'is_online' => false,
+                'is_stale' => false,
+                'is_offline' => false,
+                'is_stopped' => true,
                 'is_waiting' => false,
             ];
         }
@@ -290,6 +315,51 @@ class GpsTrackingService
     }
 
     /**
+     * Stop driver GPS telemetry sharing explicitly (Gate C).
+     * Synchronizes stopped tracking state to server while preserving last known location.
+     */
+    public function stopDriverTracking(Trip $trip, User $driver): Trip
+    {
+        return DB::transaction(function () use ($trip, $driver) {
+            $lockedTrip = Trip::where('id', $trip->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ((int) $lockedTrip->driver_id !== (int) $driver->id) {
+                throw ValidationException::withMessages([
+                    'driver' => ['Anda bukan kurir yang ditugaskan untuk perjalanan ini.'],
+                ]);
+            }
+
+            if ($lockedTrip->status !== TripStatus::IN_PROGRESS) {
+                throw ValidationException::withMessages([
+                    'status' => ['Penghentian pelacakan hanya dapat dilakukan pada perjalanan yang sedang berlangsung.'],
+                ]);
+            }
+
+            $now = Carbon::now();
+
+            $lockedTrip->update([
+                'tracking_status' => 'SHARING_STOPPED',
+                'tracking_ended_at' => $now,
+            ]);
+
+            ActivityLog::record(
+                event: 'trip.tracking_stopped',
+                auditable: $lockedTrip,
+                actor: $driver,
+                newValues: [
+                    'tracking_status' => 'SHARING_STOPPED',
+                    'tracking_ended_at' => $now->toIso8601String(),
+                    'last_location_at' => $lockedTrip->last_location_at?->toIso8601String(),
+                ]
+            );
+
+            return $lockedTrip;
+        });
+    }
+
+    /**
      * Driver arrives at a trip stop.
      */
     public function markStopArrived(Trip $trip, TripStop $stop, User $driver): TripStop
@@ -317,17 +387,25 @@ class GpsTrackingService
                 ]);
             }
 
-            if (in_array($lockedStop->status, [TripStopStatus::ARRIVED, TripStopStatus::ARRIVED_AWAITING_CONFIRMATION, TripStopStatus::HANDED_OVER, TripStopStatus::COMPLETED], true)) {
-                return $lockedStop; // Idempotent
+            // Terminal status cannot be transitioned back to ARRIVED (Requirement D)
+            if (in_array($lockedStop->status, [TripStopStatus::HANDED_OVER, TripStopStatus::COMPLETED, TripStopStatus::SKIPPED], true)) {
+                throw ValidationException::withMessages([
+                    'stop' => [
+                        "Pemberhentian #{$lockedStop->sequence_number} ({$lockedStop->school->name}) telah berada pada status final ({$lockedStop->status->label()}) dan tidak dapat diubah kembali menjadi tiba.",
+                    ],
+                ]);
             }
 
-            // Enforce sequential stop arrival order (Gate D)
-            // Prior stops must have arrived or completed before subsequent stops can arrive
+            // Idempotent: if already arrived and awaiting confirmation
+            if (in_array($lockedStop->status, [TripStopStatus::ARRIVED, TripStopStatus::ARRIVED_AWAITING_CONFIRMATION], true)) {
+                return $lockedStop;
+            }
+
+            // Enforce sequential stop arrival order (Gate D):
+            // Prior stops must have completed delivery handover (PBI-10) or skipped before subsequent stop can arrive
             $precedingIncomplete = TripStop::where('trip_id', $trip->id)
                 ->where('sequence_number', '<', $lockedStop->sequence_number)
                 ->whereNotIn('status', [
-                    TripStopStatus::ARRIVED,
-                    TripStopStatus::ARRIVED_AWAITING_CONFIRMATION,
                     TripStopStatus::HANDED_OVER,
                     TripStopStatus::COMPLETED,
                     TripStopStatus::SKIPPED,
@@ -336,9 +414,17 @@ class GpsTrackingService
                 ->first();
 
             if ($precedingIncomplete) {
+                $statusDetail = match ($precedingIncomplete->status) {
+                    TripStopStatus::PENDING => 'belum dikunjungi',
+                    TripStopStatus::EN_ROUTE => 'masih dalam perjalanan',
+                    TripStopStatus::ARRIVED,
+                    TripStopStatus::ARRIVED_AWAITING_CONFIRMATION => 'masih menunggu penyelesaian serah terima makanan oleh PIC Sekolah (PBI-10)',
+                    default => 'belum diselesaikan',
+                };
+
                 throw ValidationException::withMessages([
                     'stop' => [
-                        "Pemberhentian #{$lockedStop->sequence_number} ({$lockedStop->school->name}) tidak dapat ditandai tiba sebelum pemberhentian #{$precedingIncomplete->sequence_number} tiba atau diselesaikan.",
+                        "Pemberhentian #{$lockedStop->sequence_number} ({$lockedStop->school->name}) tidak dapat ditandai tiba karena pemberhentian #{$precedingIncomplete->sequence_number} ({$precedingIncomplete->school->name}) {$statusDetail}.",
                     ],
                 ]);
             }
