@@ -24,6 +24,7 @@ class ConfirmPortionRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'service_date' => ['sometimes', 'date_format:Y-m-d'],
             'requested_portions' => ['required', 'integer', 'min:0'],
             'present_count' => ['nullable', 'integer', 'min:0'],
             'revision_reason' => ['nullable', 'string', 'max:1000'],

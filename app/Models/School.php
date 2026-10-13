@@ -47,4 +47,9 @@ class School extends Model
     {
         return $this->hasMany(DailyPortionRequest::class);
     }
+
+    public function productionAllocations(): HasMany
+    {
+        return $this->hasMany(ProductionAllocation::class);
+    }
 }

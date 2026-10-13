@@ -44,8 +44,8 @@ class PortionRequestController extends Controller
             $parsedDate = Carbon::parse($formattedDate, 'Asia/Jakarta')->startOfDay();
         }
 
-        // Get or initialize draft for this date
-        $portionRequest = $service->getOrCreateForDate($school, $formattedDate, $user);
+        // Read-only fetch for this date (Zero database writes on GET!)
+        $portionRequest = $service->getForDate($school, $formattedDate);
 
         // Load 10 recent historical requests
         $history = DailyPortionRequest::where('school_id', $school->id)
@@ -54,8 +54,11 @@ class PortionRequestController extends Controller
             ->take(10)
             ->get();
 
-        $cutoff = $portionRequest->cutoffDateTime();
-        $isPastCutoff = $portionRequest->isPastCutoff($nowWib);
+        $cutoffDays = (int) config('mbg.portion_cutoff_days_prior', 1);
+        $cutoffTime = (string) config('mbg.portion_cutoff_time', '16:00');
+        [$hours, $minutes] = explode(':', $cutoffTime);
+        $cutoff = $parsedDate->copy()->subDays($cutoffDays)->setTime((int) $hours, (int) $minutes, 0);
+        $isPastCutoff = $nowWib->greaterThanOrEqualTo($cutoff);
 
         return view('school.portions.index', [
             'user' => $user,
@@ -103,6 +106,29 @@ class PortionRequestController extends Controller
 
         try {
             $confirmed = $service->confirmRequest($portionRequest, $request->validated(), $request->user());
+
+            return redirect()
+                ->route('school.portions.index', ['date' => $confirmed->service_date->format('Y-m-d')])
+                ->with('status', 'Kebutuhan ' . number_format($confirmed->requested_portions) . ' porsi untuk tanggal ' . $confirmed->service_date->translatedFormat('d F Y') . ' berhasil dikonfirmasi secara resmi.');
+        } catch (ValidationException $e) {
+            return back()->withInput()->withErrors($e->errors())->with('error', collect($e->errors())->flatten()->first() ?? 'Konfirmasi kebutuhan porsi gagal divalidasi.');
+        }
+    }
+
+    /**
+     * Create and confirm daily portion request in one atomic action (e.g. from empty state).
+     */
+    public function confirmDirect(ConfirmPortionRequest $request, PortionRequestService $service): RedirectResponse
+    {
+        $user = $request->user();
+        $school = $user->school;
+        $serviceDate = $request->input('service_date', Carbon::now('Asia/Jakarta')->addDay()->format('Y-m-d'));
+
+        try {
+            $portionRequest = $service->getOrCreateForDate($school, $serviceDate, $user);
+            Gate::authorize('confirm', $portionRequest);
+
+            $confirmed = $service->confirmRequest($portionRequest, $request->validated(), $user);
 
             return redirect()
                 ->route('school.portions.index', ['date' => $confirmed->service_date->format('Y-m-d')])

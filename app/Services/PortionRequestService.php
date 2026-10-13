@@ -14,13 +14,26 @@ use Illuminate\Validation\ValidationException;
 class PortionRequestService
 {
     /**
+     * Read-only fetch for a portion request on a given date without mutating database.
+     * Prevents unintended business record creation during GET page requests.
+     */
+    public function getForDate(School $school, string $serviceDate): ?DailyPortionRequest
+    {
+        return DailyPortionRequest::where('school_id', $school->id)
+            ->whereDate('service_date', $serviceDate)
+            ->first();
+    }
+
+    /**
      * Get existing request or initialize a new draft for the given school and service date.
+     * Only called when explicit write action is executed.
      */
     public function getOrCreateForDate(School $school, string $serviceDate, User $actor): DailyPortionRequest
     {
         return DB::transaction(function () use ($school, $serviceDate, $actor) {
             $request = DailyPortionRequest::where('school_id', $school->id)
                 ->whereDate('service_date', $serviceDate)
+                ->lockForUpdate()
                 ->first();
 
             if (! $request) {
@@ -52,11 +65,28 @@ class PortionRequestService
 
     /**
      * Save draft portion values before formal confirmation.
+     * Concurrency-safe against duplicate submissions.
      */
     public function saveDraft(School $school, string $serviceDate, array $data, User $actor): DailyPortionRequest
     {
         return DB::transaction(function () use ($school, $serviceDate, $data, $actor) {
-            $portionRequest = $this->getOrCreateForDate($school, $serviceDate, $actor);
+            $portionRequest = DailyPortionRequest::where('school_id', $school->id)
+                ->whereDate('service_date', $serviceDate)
+                ->lockForUpdate()
+                ->first();
+
+            $isNew = false;
+            if (! $portionRequest) {
+                $portionRequest = DailyPortionRequest::create([
+                    'school_id' => $school->id,
+                    'service_date' => $serviceDate,
+                    'registered_count' => (int) $school->registered_beneficiaries,
+                    'present_count' => null,
+                    'requested_portions' => null,
+                    'status' => PortionRequestStatus::DRAFT,
+                ]);
+                $isNew = true;
+            }
 
             if (! $portionRequest->isDraft()) {
                 throw ValidationException::withMessages([
@@ -101,10 +131,10 @@ class PortionRequestService
             ]);
 
             ActivityLog::record(
-                event: 'portion_request.draft_saved',
+                event: $isNew ? 'portion_request.draft_initialized' : 'portion_request.draft_saved',
                 auditable: $portionRequest,
                 actor: $actor,
-                oldValues: $oldValues,
+                oldValues: $isNew ? null : $oldValues,
                 newValues: [
                     'present_count' => $presentCount,
                     'requested_portions' => $requestedPortions,
@@ -123,9 +153,9 @@ class PortionRequestService
         return DB::transaction(function () use ($portionRequest, $data, $pic) {
             $locked = DailyPortionRequest::where('id', $portionRequest->id)->lockForUpdate()->firstOrFail();
 
-            if (! $locked->isDraft()) {
+            if (! $locked->isDraft() && ! $locked->isConfirmed()) {
                 throw ValidationException::withMessages([
-                    'status' => ['Hanya permintaan berstatus Draft yang dapat dikonfirmasi.'],
+                    'status' => ['Hanya permintaan berstatus Draft atau Terkonfirmasi yang dapat diproses konfirmasi.'],
                 ]);
             }
 
@@ -159,13 +189,15 @@ class PortionRequestService
                 ]);
             }
 
-            // Exceeding registered beneficiaries rule
+            // Exceeding registered beneficiaries rule: reason is required
             $reason = isset($data['revision_reason']) ? trim((string) $data['revision_reason']) : null;
             if ($requested > $locked->registered_count && empty($reason)) {
                 throw ValidationException::withMessages([
                     'revision_reason' => ['Jumlah porsi yang diminta (' . number_format($requested) . ') melebihi jumlah siswa terdaftar (' . number_format($locked->registered_count) . '). Alasan justifikasi wajib disertakan.'],
                 ]);
             }
+
+            $oldStatus = $locked->status->value;
 
             $locked->update([
                 'requested_portions' => $requested,
@@ -174,12 +206,14 @@ class PortionRequestService
                 'confirmed_by' => $pic->id,
                 'confirmed_at' => now(),
                 'revision_reason' => $reason,
+                'is_exceeds_approved' => false, // Reset/require approval if exceeding registered
             ]);
 
             ActivityLog::record(
                 event: 'portion_request.confirmed',
                 auditable: $locked,
                 actor: $pic,
+                oldValues: ['status' => $oldStatus],
                 newValues: [
                     'requested_portions' => $requested,
                     'present_count' => $present,
@@ -194,7 +228,52 @@ class PortionRequestService
     }
 
     /**
+     * Transition a portion request from CONFIRMED -> LOCKED.
+     * Authorized process (Kepala SPPG or production plan finalization).
+     * Idempotent against double locking.
+     */
+    public function lockRequest(DailyPortionRequest $portionRequest, User $actor): DailyPortionRequest
+    {
+        return DB::transaction(function () use ($portionRequest, $actor) {
+            $locked = DailyPortionRequest::where('id', $portionRequest->id)->lockForUpdate()->firstOrFail();
+
+            // Idempotency: if already locked, return safely without duplicate log
+            if ($locked->isLocked()) {
+                return $locked;
+            }
+
+            // Allowed transitions to LOCKED: from CONFIRMED
+            if (! in_array($locked->status, [PortionRequestStatus::CONFIRMED], true)) {
+                throw ValidationException::withMessages([
+                    'status' => ['Hanya permintaan dengan status Terkonfirmasi (CONFIRMED) yang dapat dikunci untuk produksi. Status saat ini: ' . $locked->status->label()],
+                ]);
+            }
+
+            $oldStatus = $locked->status->value;
+            $locked->update([
+                'status' => PortionRequestStatus::LOCKED,
+                'locked_at' => now(),
+            ]);
+
+            ActivityLog::record(
+                event: 'portion_request.locked',
+                auditable: $locked,
+                actor: $actor,
+                oldValues: ['status' => $oldStatus],
+                newValues: [
+                    'status' => PortionRequestStatus::LOCKED->value,
+                    'locked_at' => $locked->locked_at->toIso8601String(),
+                ]
+            );
+
+            return $locked;
+        });
+    }
+
+    /**
      * Submit an authorized revision for a confirmed or locked portion request.
+     * CRITICAL INTEGRITY: Does NOT overwrite official requested_portions until approved!
+     * Stores proposed count in revised_portions and keeps history intact.
      */
     public function submitRevision(DailyPortionRequest $portionRequest, array $data, User $actor): DailyPortionRequest
     {
@@ -220,8 +299,8 @@ class PortionRequestService
                 ]);
             }
 
-            $requested = (int) $data['requested_portions'];
-            if ($requested < 0) {
+            $revisedPortions = (int) $data['requested_portions'];
+            if ($revisedPortions < 0) {
                 throw ValidationException::withMessages([
                     'requested_portions' => ['Jumlah porsi tidak boleh bernilai negatif.'],
                 ]);
@@ -239,10 +318,15 @@ class PortionRequestService
             ];
 
             $locked->update([
-                'requested_portions' => $requested,
+                'revised_portions' => $revisedPortions,
+                'previous_status' => $locked->status->value,
                 'present_count' => $present,
                 'status' => PortionRequestStatus::REVISED,
                 'revision_reason' => $reason,
+                'revision_requested_at' => now(),
+                'revision_reviewed_by' => null,
+                'revision_reviewed_at' => null,
+                'revision_rejection_reason' => null,
             ]);
 
             ActivityLog::record(
@@ -251,10 +335,184 @@ class PortionRequestService
                 actor: $actor,
                 oldValues: $oldValues,
                 newValues: [
-                    'requested_portions' => $requested,
+                    'requested_portions' => $locked->requested_portions,
+                    'revised_portions' => $revisedPortions,
                     'present_count' => $present,
                     'status' => PortionRequestStatus::REVISED->value,
                     'revision_reason' => $reason,
+                ]
+            );
+
+            return $locked;
+        });
+    }
+
+    /**
+     * Approve a pending revision (Kepala SPPG authorization).
+     * Formally commits the revised portion amount into requested_portions and transitions to LOCKED.
+     */
+    public function approveRevision(DailyPortionRequest $portionRequest, User $actor): DailyPortionRequest
+    {
+        return DB::transaction(function () use ($portionRequest, $actor) {
+            $locked = DailyPortionRequest::where('id', $portionRequest->id)->lockForUpdate()->firstOrFail();
+
+            if (! $locked->isRevised() || $locked->revised_portions === null) {
+                throw ValidationException::withMessages([
+                    'status' => ['Hanya permintaan dengan revisi aktif yang dapat disetujui.'],
+                ]);
+            }
+
+            $oldValues = [
+                'requested_portions' => $locked->requested_portions,
+                'status' => $locked->status->value,
+            ];
+
+            $locked->update([
+                'requested_portions' => $locked->revised_portions,
+                'revised_portions' => null,
+                'status' => PortionRequestStatus::LOCKED,
+                'locked_at' => now(),
+                'revision_reviewed_by' => $actor->id,
+                'revision_reviewed_at' => now(),
+            ]);
+
+            ActivityLog::record(
+                event: 'portion_request.revision_approved',
+                auditable: $locked,
+                actor: $actor,
+                oldValues: $oldValues,
+                newValues: [
+                    'requested_portions' => $locked->requested_portions,
+                    'status' => PortionRequestStatus::LOCKED->value,
+                    'locked_at' => $locked->locked_at->toIso8601String(),
+                    'approved_by' => $actor->id,
+                ]
+            );
+
+            return $locked;
+        });
+    }
+
+    /**
+     * Reject a pending revision (Kepala SPPG authorization).
+     * Retains original official requested_portions and reverts status to previous valid state.
+     */
+    public function rejectRevision(DailyPortionRequest $portionRequest, string $reason, User $actor): DailyPortionRequest
+    {
+        return DB::transaction(function () use ($portionRequest, $reason, $actor) {
+            $locked = DailyPortionRequest::where('id', $portionRequest->id)->lockForUpdate()->firstOrFail();
+
+            if (! $locked->isRevised()) {
+                throw ValidationException::withMessages([
+                    'status' => ['Hanya permintaan berstatus Revisi yang dapat ditolak.'],
+                ]);
+            }
+
+            $trimmedReason = trim($reason);
+            if (empty($trimmedReason)) {
+                throw ValidationException::withMessages([
+                    'reason' => ['Alasan penolakan revisi wajib disertakan.'],
+                ]);
+            }
+
+            $previousStatus = $locked->previous_status ? PortionRequestStatus::tryFrom($locked->previous_status) : PortionRequestStatus::CONFIRMED;
+            $targetStatus = $previousStatus ?? PortionRequestStatus::CONFIRMED;
+
+            $locked->update([
+                'revised_portions' => null,
+                'status' => $targetStatus,
+                'revision_rejection_reason' => $trimmedReason,
+                'revision_reviewed_by' => $actor->id,
+                'revision_reviewed_at' => now(),
+            ]);
+
+            ActivityLog::record(
+                event: 'portion_request.revision_rejected',
+                auditable: $locked,
+                actor: $actor,
+                oldValues: ['status' => PortionRequestStatus::REVISED->value],
+                newValues: [
+                    'status' => $targetStatus->value,
+                    'rejection_reason' => $trimmedReason,
+                    'rejected_by' => $actor->id,
+                ]
+            );
+
+            return $locked;
+        });
+    }
+
+    /**
+     * Authorize exception when requested portions exceed registered count (Kepala SPPG).
+     */
+    public function approveExceedingException(DailyPortionRequest $portionRequest, User $actor): DailyPortionRequest
+    {
+        return DB::transaction(function () use ($portionRequest, $actor) {
+            $locked = DailyPortionRequest::where('id', $portionRequest->id)->lockForUpdate()->firstOrFail();
+
+            if (! $locked->isExceedingRegistered()) {
+                throw ValidationException::withMessages([
+                    'status' => ['Permintaan ini tidak melebihi kuota siswa terdaftar.'],
+                ]);
+            }
+
+            $locked->update([
+                'is_exceeds_approved' => true,
+                'exceeds_approved_by' => $actor->id,
+                'exceeds_approved_at' => now(),
+            ]);
+
+            ActivityLog::record(
+                event: 'portion_request.exceeding_approved',
+                auditable: $locked,
+                actor: $actor,
+                newValues: [
+                    'requested_portions' => $locked->requested_portions,
+                    'registered_count' => $locked->registered_count,
+                    'is_exceeds_approved' => true,
+                    'approved_by' => $actor->id,
+                ]
+            );
+
+            return $locked;
+        });
+    }
+
+    /**
+     * Reject exception when requested portions exceed registered count.
+     * Clamps requested_portions to registered_count.
+     */
+    public function rejectExceedingException(DailyPortionRequest $portionRequest, string $reason, User $actor): DailyPortionRequest
+    {
+        return DB::transaction(function () use ($portionRequest, $reason, $actor) {
+            $locked = DailyPortionRequest::where('id', $portionRequest->id)->lockForUpdate()->firstOrFail();
+
+            if (! $locked->isExceedingRegistered()) {
+                throw ValidationException::withMessages([
+                    'status' => ['Permintaan ini tidak melebihi kuota siswa terdaftar.'],
+                ]);
+            }
+
+            $trimmedReason = trim($reason);
+            $oldRequested = $locked->requested_portions;
+
+            $locked->update([
+                'requested_portions' => $locked->registered_count,
+                'is_exceeds_approved' => false,
+                'exceeds_rejection_reason' => $trimmedReason,
+                'exceeds_approved_by' => $actor->id,
+                'exceeds_approved_at' => now(),
+            ]);
+
+            ActivityLog::record(
+                event: 'portion_request.exceeding_rejected',
+                auditable: $locked,
+                actor: $actor,
+                oldValues: ['requested_portions' => $oldRequested],
+                newValues: [
+                    'requested_portions' => $locked->registered_count,
+                    'rejection_reason' => $trimmedReason,
+                    'rejected_by' => $actor->id,
                 ]
             );
 
@@ -269,6 +527,18 @@ class PortionRequestService
     {
         return DB::transaction(function () use ($portionRequest, $reason, $actor) {
             $locked = DailyPortionRequest::where('id', $portionRequest->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->isCancelled()) {
+                throw ValidationException::withMessages([
+                    'status' => ['Permintaan untuk tanggal ini sudah berstatus Dibatalkan sebelumnya.'],
+                ]);
+            }
+
+            if ($locked->isUsedInFinalizedProductionPlan()) {
+                throw ValidationException::withMessages([
+                    'status' => ['Permintaan ini telah digunakan dalam Rencana Produksi Final. Pembatalan memerlukan koordinasi langsung dengan Kepala SPPG.'],
+                ]);
+            }
 
             $trimmedReason = trim($reason);
             if (empty($trimmedReason)) {
@@ -301,7 +571,10 @@ class PortionRequestService
 
     /**
      * Calculate operational portion aggregates for Kepala SPPG.
-     * CRITICAL RULE: Pending schools are NOT assumed to be 0!
+     * CRITICAL RULES:
+     * 1. Pending schools are NOT assumed to be 0!
+     * 2. REVISED schools are NOT counted in official confirmed portions until approved!
+     * 3. Schools with unapproved exceeding exceptions are segregated.
      */
     public function getSppgAggregateForDate(int $sppgId, string $serviceDate): array
     {
@@ -313,8 +586,10 @@ class PortionRequestService
             ->get();
 
         $confirmedSchools = [];
+        $revisedSchools = [];
         $pendingSchools = [];
         $cancelledSchools = [];
+        $unapprovedExceptions = [];
         $totalConfirmedPortions = 0;
 
         foreach ($schools as $school) {
@@ -337,8 +612,30 @@ class PortionRequestService
                     'request' => $request,
                     'reason' => $request->revision_reason,
                 ];
+            } elseif ($request->isRevised()) {
+                // REVISED: Pending authorization! NOT counted in confirmed portions!
+                $revisedSchools[] = [
+                    'school' => $school,
+                    'request' => $request,
+                    'original_portions' => (int) $request->requested_portions,
+                    'revised_portions' => (int) $request->revised_portions,
+                    'reason' => $request->revision_reason,
+                    'requested_at' => $request->revision_requested_at,
+                    'pic_name' => $school->picUsers->first()?->name ?? 'PIC Terdaftar',
+                ];
             } else {
-                // CONFIRMED, LOCKED, or REVISED
+                // CONFIRMED or LOCKED
+                $hasException = $request->hasUnapprovedException();
+                if ($hasException) {
+                    $unapprovedExceptions[] = [
+                        'school' => $school,
+                        'request' => $request,
+                        'requested_portions' => (int) $request->requested_portions,
+                        'registered_count' => (int) $request->registered_count,
+                        'reason' => $request->revision_reason,
+                    ];
+                }
+
                 $confirmedSchools[] = [
                     'school' => $school,
                     'request' => $request,
@@ -347,7 +644,10 @@ class PortionRequestService
                     'status' => $request->status,
                     'confirmed_by' => $request->confirmedBy?->name ?? 'PIC Terverifikasi',
                     'confirmed_at' => $request->confirmed_at,
+                    'locked_at' => $request->locked_at,
+                    'has_unapproved_exception' => $hasException,
                 ];
+
                 $totalConfirmedPortions += (int) $request->requested_portions;
             }
         }
@@ -356,12 +656,18 @@ class PortionRequestService
             'service_date' => $serviceDate,
             'total_schools' => $schools->count(),
             'confirmed_count' => count($confirmedSchools),
+            'revised_count' => count($revisedSchools),
             'pending_count' => count($pendingSchools),
             'cancelled_count' => count($cancelledSchools),
+            'exception_count' => count($unapprovedExceptions),
             'total_confirmed_portions' => $totalConfirmedPortions,
+            'all_confirmed' => (count($pendingSchools) === 0 && count($revisedSchools) === 0 && count($unapprovedExceptions) === 0),
             'confirmed_schools' => $confirmedSchools,
+            'revised_schools' => $revisedSchools,
             'pending_schools' => $pendingSchools,
             'cancelled_schools' => $cancelledSchools,
+            'unapproved_exceptions' => $unapprovedExceptions,
         ];
     }
 }
+

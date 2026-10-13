@@ -12,10 +12,17 @@
                     <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-[#172923]">
                         Konfirmasi Kebutuhan Porsi Harian
                     </h1>
-                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border {{ $portionRequest->status->badgeClasses() }}">
-                        <span class="w-1.5 h-1.5 rounded-full {{ $portionRequest->status->dotClasses() }}" aria-hidden="true"></span>
-                        <span>{{ $portionRequest->status->label() }}</span>
-                    </span>
+                    @if ($portionRequest)
+                        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border {{ $portionRequest->status->badgeClasses() }}">
+                            <span class="w-1.5 h-1.5 rounded-full {{ $portionRequest->status->dotClasses() }}" aria-hidden="true"></span>
+                            <span>{{ $portionRequest->status->label() }}</span>
+                        </span>
+                    @else
+                        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border bg-[#FAFBF9] text-[#53645B] border-[#DCE5DD]">
+                            <span class="w-1.5 h-1.5 rounded-full bg-[#8E9B94]" aria-hidden="true"></span>
+                            <span>Belum dibuat</span>
+                        </span>
+                    @endif
                 </div>
                 <p class="text-xs sm:text-sm text-[#53645B] mt-1 max-w-2xl leading-relaxed">
                     {{ $school->name }} (NPSN: {{ $school->school_code }}) : Mitra SPPG <strong>{{ $sppg->name }}</strong>. Angka porsi terkonfirmasi menjadi rujukan resmi rencana produksi dapur.
@@ -49,7 +56,7 @@
                 <div class="leading-relaxed">
                     <p class="font-bold text-[#885D1C]">Batas Waktu (Cutoff) Konfirmasi Telah Terlewati</p>
                     <p class="text-[11px] sm:text-xs mt-0.5">
-                        Cutoff konfirmasi untuk layanan tanggal <strong>{{ $portionRequest->service_date->translatedFormat('d F Y') }}</strong> adalah pada <strong>{{ $cutoff->translatedFormat('d M Y, H:i') }} WIB</strong>. Perubahan angka porsi saat ini hanya dapat dilakukan melalui prosedur <strong>Revisi Terotorisasi</strong> dengan menyertakan alasan tertulis.
+                        Cutoff konfirmasi untuk layanan tanggal <strong>{{ $parsedDate->translatedFormat('d F Y') }}</strong> adalah pada <strong>{{ $cutoff->translatedFormat('d M Y, H:i') }} WIB</strong>. Perubahan angka porsi saat ini hanya dapat dilakukan melalui prosedur <strong>Revisi Terotorisasi</strong> dengan menyertakan alasan tertulis.
                     </p>
                 </div>
             </div>
@@ -76,7 +83,7 @@
                     <div class="pb-3 border-b border-[#DCE5DD] flex items-center justify-between">
                         <div>
                             <h2 class="text-sm sm:text-base font-bold text-[#172923]">
-                                Permintaan Porsi: {{ $portionRequest->service_date->translatedFormat('l, d F Y') }}
+                                Permintaan Porsi: {{ $parsedDate->translatedFormat('l, d F Y') }}
                             </h2>
                             <p class="text-xs text-[#53645B] mt-0.5">
                                 Nyatakan jumlah siswa yang hadir dan kebutuhan porsi makan siang sesungguhnya.
@@ -89,7 +96,7 @@
                         <div>
                             <span class="text-[11px] uppercase tracking-wider font-bold text-[#53645B] block">Siswa Terdaftar (Data Pokok Sekolah)</span>
                             <div class="flex items-baseline gap-2 mt-0.5">
-                                <span class="text-2xl font-extrabold text-[#172923] tabular-nums">{{ number_format($portionRequest->registered_count) }}</span>
+                                <span class="text-2xl font-extrabold text-[#172923] tabular-nums">{{ number_format($portionRequest?->registered_count ?? $school->registered_beneficiaries) }}</span>
                                 <span class="text-xs text-[#53645B]">anak terdaftar</span>
                             </div>
                         </div>
@@ -99,7 +106,7 @@
                     </div>
 
                     <!-- ACTION FORM ACCORDING TO STATE -->
-                    @if ($portionRequest->isDraft())
+                    @if (! $portionRequest || $portionRequest->isDraft())
                         <!-- DRAFT FORM: Save Draft or Confirm -->
                         <div class="space-y-4">
                             <!-- Form 1: Save Draft -->
@@ -111,14 +118,14 @@
                                     <!-- Present Count -->
                                     <div class="space-y-1.5">
                                         <label for="present_count" class="block text-xs font-semibold text-[#172923]">
-                                            Perkiraan Siswa Hadir (Opsional)
+                                             Perkiraan Siswa Hadir (Opsional)
                                         </label>
                                         <input type="number" 
                                                id="present_count" 
                                                name="present_count" 
-                                               value="{{ old('present_count', $portionRequest->present_count) }}" 
+                                               value="{{ old('present_count', $portionRequest?->present_count) }}" 
                                                min="0" 
-                                               placeholder="Contoh: {{ $portionRequest->registered_count }}" 
+                                               placeholder="Contoh: {{ $portionRequest?->registered_count ?? $school->registered_beneficiaries }}" 
                                                class="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-white border @error('present_count') border-[#9B3232] @else border-[#DCE5DD] @enderror rounded-xl text-[#172923] font-mono focus:outline-none focus:ring-2 focus:ring-[#21684B] smooth-transition touch-target">
                                         <p class="text-[11px] text-[#53645B]">Perkiraan kehadiran siswa pada hari layanan.</p>
                                         @error('present_count')
@@ -134,10 +141,10 @@
                                         <input type="number" 
                                                id="requested_portions" 
                                                name="requested_portions" 
-                                               value="{{ old('requested_portions', $portionRequest->requested_portions) }}" 
+                                               value="{{ old('requested_portions', $portionRequest?->requested_portions) }}" 
                                                min="0" 
                                                required 
-                                               placeholder="Contoh: {{ $portionRequest->registered_count }}" 
+                                               placeholder="Contoh: {{ $portionRequest?->registered_count ?? $school->registered_beneficiaries }}" 
                                                class="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-white border @error('requested_portions') border-[#9B3232] @else border-[#DCE5DD] @enderror rounded-xl text-[#172923] font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[#21684B] smooth-transition touch-target">
                                         <p class="text-[11px] text-[#53645B]">Angka final porsi yang dimasak oleh SPPG.</p>
                                         @error('requested_portions')
@@ -155,7 +162,7 @@
                                               name="revision_reason" 
                                               rows="2" 
                                               placeholder="Wajib diisi apabila porsi yang diminta melebihi jumlah siswa terdaftar (misal ada rombel tambahan kegiatan sekolah)" 
-                                              class="w-full px-3.5 py-2 text-xs bg-white border @error('revision_reason') border-[#9B3232] @else border-[#DCE5DD] @enderror rounded-xl text-[#172923] focus:outline-none focus:ring-2 focus:ring-[#21684B] smooth-transition">{{ old('revision_reason', $portionRequest->revision_reason) }}</textarea>
+                                              class="w-full px-3.5 py-2 text-xs bg-white border @error('revision_reason') border-[#9B3232] @else border-[#DCE5DD] @enderror rounded-xl text-[#172923] focus:outline-none focus:ring-2 focus:ring-[#21684B] smooth-transition">{{ old('revision_reason', $portionRequest?->revision_reason) }}</textarea>
                                     @error('revision_reason')
                                         <p class="text-xs text-[#9B3232] mt-1">{{ $message }}</p>
                                     @enderror
@@ -170,7 +177,7 @@
 
                                     <!-- Trigger Confirmation Action -->
                                     <button type="submit" 
-                                            formaction="{{ route('school.portions.confirm', $portionRequest) }}" 
+                                            formaction="{{ $portionRequest ? route('school.portions.confirm', $portionRequest) : route('school.portions.confirm-direct') }}" 
                                             onclick="return confirm('Kirim dan konfirmasi porsi harian ini secara resmi ke SPPG?');" 
                                             class="px-5 py-2.5 text-xs sm:text-sm font-bold text-white bg-[#1C6654] hover:bg-[#154E40] rounded-xl shadow-xs smooth-transition touch-target focus:outline-none focus:ring-2 focus:ring-[#1C6654] focus:ring-offset-2 flex items-center justify-center gap-2">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -343,7 +350,7 @@
                         </li>
                         <li class="flex items-start gap-2">
                             <span class="font-bold text-[#1C6654] shrink-0">•</span>
-                            <span>Jika porsi yang diminta melebihi data pokok siswa terdaftar ({{ number_format($portionRequest->registered_count) }} anak), sistem mewajibkan alasan tertulis.</span>
+                            <span>Jika porsi yang diminta melebihi data pokok siswa terdaftar ({{ number_format($portionRequest?->registered_count ?? $school->registered_beneficiaries) }} anak), sistem mewajibkan alasan tertulis.</span>
                         </li>
                         <li class="flex items-start gap-2">
                             <span class="font-bold text-[#1C6654] shrink-0">•</span>

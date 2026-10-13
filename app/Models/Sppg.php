@@ -43,4 +43,9 @@ class Sppg extends Model
     {
         return $this->hasMany(Menu::class);
     }
+
+    public function productionPlans(): HasMany
+    {
+        return $this->hasMany(ProductionPlan::class);
+    }
 }

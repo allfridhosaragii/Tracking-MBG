@@ -6,12 +6,16 @@ return [
     | Batas Waktu (Cutoff) Konfirmasi Porsi Harian Sekolah
     |--------------------------------------------------------------------------
     |
-    | Jam cutoff waktu Indonesia Barat (WIB) pada H-1 tanggal layanan.
-    | Contoh: Layanan tanggal 15 Oktober 2026 memiliki cutoff 14 Oktober 16:00 WIB.
+    | Parameter operasional baseline sistem MBG-Track untuk batasan konfirmasi
+    | mandiri oleh PIC Sekolah. Nilai ini merupakan kesepakatan operasional proyek
+    | (bukan mandat regulasi resmi BGN).
+    |
+    | Default: H-1 pukul 16:00 WIB (Asia/Jakarta).
     |
     */
     'portion_cutoff_time' => env('MBG_PORTION_CUTOFF_TIME', '16:00'),
     'portion_cutoff_days_prior' => (int) env('MBG_PORTION_CUTOFF_DAYS_PRIOR', 1),
+    'timezone' => 'Asia/Jakarta',
 
     /*
     |--------------------------------------------------------------------------

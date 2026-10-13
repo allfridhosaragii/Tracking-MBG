@@ -58,6 +58,11 @@ class Menu extends Model
         return $this->hasMany(MenuItem::class);
     }
 
+    public function productionPlans(): HasMany
+    {
+        return $this->hasMany(ProductionPlan::class);
+    }
+
     public function scopeForSppg(Builder $query, int $sppgId): Builder
     {
         return $query->where('sppg_id', $sppgId);

@@ -19,11 +19,21 @@ class DailyPortionRequest extends Model
         'registered_count',
         'present_count',
         'requested_portions',
+        'revised_portions',
         'status',
+        'previous_status',
         'confirmed_by',
         'confirmed_at',
         'locked_at',
         'revision_reason',
+        'revision_requested_at',
+        'revision_reviewed_by',
+        'revision_reviewed_at',
+        'revision_rejection_reason',
+        'is_exceeds_approved',
+        'exceeds_approved_by',
+        'exceeds_approved_at',
+        'exceeds_rejection_reason',
     ];
 
     protected function casts(): array
@@ -34,8 +44,13 @@ class DailyPortionRequest extends Model
             'registered_count' => 'integer',
             'present_count' => 'integer',
             'requested_portions' => 'integer',
+            'revised_portions' => 'integer',
+            'is_exceeds_approved' => 'boolean',
             'confirmed_at' => 'datetime',
             'locked_at' => 'datetime',
+            'revision_requested_at' => 'datetime',
+            'revision_reviewed_at' => 'datetime',
+            'exceeds_approved_at' => 'datetime',
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
         ];
@@ -49,6 +64,21 @@ class DailyPortionRequest extends Model
     public function confirmedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'confirmed_by');
+    }
+
+    public function revisionReviewedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'revision_reviewed_by');
+    }
+
+    public function exceedsApprovedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'exceeds_approved_by');
+    }
+
+    public function productionAllocations()
+    {
+        return $this->hasMany(ProductionAllocation::class, 'portion_request_id');
     }
 
     public function scopeForSchool(Builder $query, int $schoolId): Builder
@@ -146,5 +176,54 @@ class DailyPortionRequest extends Model
             PortionRequestStatus::LOCKED,
             PortionRequestStatus::REVISED,
         ], true);
+    }
+
+    /**
+     * Determine if requested portions exceed the school's registered beneficiaries.
+     */
+    public function isExceedingRegistered(): bool
+    {
+        return $this->requested_portions !== null && ((int) $this->requested_portions) > ((int) $this->registered_count);
+    }
+
+    /**
+     * Determine if the exceeding portions exception has been authorized by Kepala SPPG.
+     */
+    public function isExceedingApproved(): bool
+    {
+        return (bool) $this->is_exceeds_approved;
+    }
+
+    /**
+     * Determine if there is an unapproved exception that blocks planning.
+     */
+    public function hasUnapprovedException(): bool
+    {
+        return $this->isExceedingRegistered() && ! $this->isExceedingApproved();
+    }
+
+    /**
+     * Determine if this request is officially confirmed or locked and eligible for production planning.
+     */
+    public function isEligibleForProduction(): bool
+    {
+        return in_array($this->status, [PortionRequestStatus::CONFIRMED, PortionRequestStatus::LOCKED], true)
+            && ! $this->hasUnapprovedException();
+    }
+
+    /**
+     * Determine if this request has already been incorporated into a finalized production plan.
+     */
+    public function isUsedInFinalizedProductionPlan(): bool
+    {
+        if (! class_exists(ProductionAllocation::class)) {
+            return false;
+        }
+
+        return $this->productionAllocations()
+            ->whereHas('productionPlan', function ($query) {
+                $query->whereIn('status', ['FINALIZED', 'IN_PRODUCTION', 'READY_FOR_DISTRIBUTION', 'COMPLETED']);
+            })
+            ->exists();
     }
 }

@@ -377,7 +377,8 @@ class PortionRequestTest extends TestCase
 
         $portion->refresh();
         $this->assertEquals(PortionRequestStatus::REVISED, $portion->status);
-        $this->assertEquals(320, $portion->requested_portions);
+        $this->assertEquals(340, $portion->requested_portions); // Angka resmi lama dipertahankan
+        $this->assertEquals(320, $portion->revised_portions); // Angka revisi diajukan menunggu persetujuan
         $this->assertEquals('Pengurangan 20 siswa kelas 6 mengikuti ujian di luar sekolah.', $portion->revision_reason);
     }
 

@@ -20,7 +20,7 @@
         <p class="text-xs sm:text-sm text-[#53645B] mt-0.5">Daftar titik sasaran pelayanan sekolah binaan dan informasi kesiapan armada pengantaran.</p>
     </header>
 
-    <!-- Safety Banner (Strict Operational Contract & Anti-Slop R-16) -->
+    <!-- Safety Banner -->
     <section aria-labelledby="driver-safety-heading" class="mb-5 p-4 rounded-xl bg-[#FAF4EB] border border-[#E8D7BE] text-[#885D1C] text-xs">
         <div class="flex items-start gap-3">
             <svg class="w-5 h-5 shrink-0 text-[#885D1C] mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">

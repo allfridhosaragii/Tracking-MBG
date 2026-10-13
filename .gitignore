@@ -29,3 +29,11 @@ Thumbs.db
 /.anti-slop-upstream/
 /MBG-Track-Documentation-v3/
 /MBG-Track-Documentation-v4-RepoFirst/
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+DECISION-LOG.md
+HANDOFF-LOG.md
+REDESIGN-PROGRESS.md
+/.agents/
+

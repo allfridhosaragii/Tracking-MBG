@@ -5,6 +5,7 @@ use App\Http\Controllers\Driver\DashboardController as DriverDashboardController
 use App\Http\Controllers\Head\DashboardController as HeadDashboardController;
 use App\Http\Controllers\Head\EmployeeManagementController;
 use App\Http\Controllers\Head\PortionMonitoringController;
+use App\Http\Controllers\Head\ProductionPlanController;
 use App\Http\Controllers\Head\SchoolManagementController;
 use App\Http\Controllers\Nutrition\DashboardController as NutritionDashboardController;
 use App\Http\Controllers\Nutrition\MenuManagementController;
@@ -66,6 +67,14 @@ Route::middleware(['auth', 'active'])->group(function () {
 
             // PBI-04: Portion Confirmation Monitoring (Page K04 initial)
             Route::get('/portions', [PortionMonitoringController::class, 'index'])->name('portions.index');
+
+            // PBI-05: Production Planning & Allocation (Page K04)
+            Route::get('/production', [ProductionPlanController::class, 'index'])->name('production.index');
+            Route::post('/production/plans', [ProductionPlanController::class, 'store'])->name('production.plans.store');
+            Route::post('/production/plans/{productionPlan}/finalize', [ProductionPlanController::class, 'finalize'])->name('production.plans.finalize');
+            Route::post('/production/revisions/{portionRequest}/approve', [ProductionPlanController::class, 'approveRevision'])->name('production.revisions.approve');
+            Route::post('/production/revisions/{portionRequest}/reject', [ProductionPlanController::class, 'rejectRevision'])->name('production.revisions.reject');
+            Route::post('/production/exceptions/{portionRequest}/approve', [ProductionPlanController::class, 'approveException'])->name('production.exceptions.approve');
         });
 
     // 2. Pengawas Gizi Module
@@ -114,6 +123,7 @@ Route::middleware(['auth', 'active'])->group(function () {
             // PBI-04: Portion Confirmation (Page P02)
             Route::get('/portions', [PortionRequestController::class, 'index'])->name('portions.index');
             Route::post('/portions/draft', [PortionRequestController::class, 'saveDraft'])->name('portions.draft');
+            Route::post('/portions/confirm', [PortionRequestController::class, 'confirmDirect'])->name('portions.confirm-direct');
             Route::post('/portions/{portionRequest}/confirm', [PortionRequestController::class, 'confirm'])->name('portions.confirm');
             Route::post('/portions/{portionRequest}/revise', [PortionRequestController::class, 'revise'])->name('portions.revise');
             Route::post('/portions/{portionRequest}/cancel', [PortionRequestController::class, 'cancel'])->name('portions.cancel');
