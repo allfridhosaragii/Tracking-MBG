@@ -120,6 +120,18 @@ class TripPolicy
     }
 
     /**
+     * Determine whether the user can record GPS telemetry for a trip.
+     * Strictly assigned driver only, in the same SPPG.
+     */
+    public function recordTelemetry(User $user, Trip $trip): bool
+    {
+        return $user->is_active
+            && $user->role === UserRole::KURIR
+            && (int) $user->id === (int) $trip->driver_id
+            && (int) $user->sppg_id === (int) $trip->sppg_id;
+    }
+
+    /**
      * Determine whether the user can cancel a trip.
      * Kepala SPPG only.
      */

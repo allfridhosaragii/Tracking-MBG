@@ -81,16 +81,136 @@ class DriverTripController extends Controller
     }
 
     /**
-     * Start the trip dispatch.
+     * Start the trip dispatch (Swipe-to-depart).
+     * Supports both JSON response for AJAX swipe slider and redirect for conventional forms.
      */
-    public function start(Request $request, Trip $trip): RedirectResponse
+    public function start(Request $request, Trip $trip): \Illuminate\Http\JsonResponse|RedirectResponse
     {
         Gate::authorize('start', $trip);
 
-        $this->tripDispatchService->startTrip($trip, $request->user());
+        // Status reconciliation: If connection dropped after commit and kurir retried
+        if ($trip->status === TripStatus::IN_PROGRESS) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Perjalanan sudah berstatus aktif berjalan.',
+                    'trip_status' => $trip->status->value,
+                    'started_at' => $trip->started_at?->toIso8601String(),
+                    'tracking_status' => $trip->tracking_status,
+                ], 200);
+            }
+
+            return redirect()
+                ->route('driver.trips.prepare', $trip)
+                ->with('info', 'Perjalanan sudah berstatus aktif berjalan.');
+        }
+
+        // Validate trip readiness before service invocation
+        if ($trip->status !== TripStatus::READY) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Perjalanan belum siap dimulai. Pastikan seluruh gerbang verifikasi (QC, muatan fisik, kelaikan armada, dan otorisasi Kepala SPPG) telah terpenuhi.',
+                    'trip_status' => $trip->status->value,
+                ], 422);
+            }
+
+            return redirect()
+                ->route('driver.trips.prepare', $trip)
+                ->with('error', 'Perjalanan belum berstatus siap berangkat.');
+        }
+
+        $startedTrip = $this->tripDispatchService->startTrip($trip, $request->user());
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Perjalanan pengantaran telah resmi dimulai. Menuju pemberhentian pertama.',
+                'trip_status' => $startedTrip->status->value,
+                'started_at' => $startedTrip->started_at?->toIso8601String(),
+                'tracking_status' => $startedTrip->tracking_status,
+                'active_url' => route('driver.trips.active', $startedTrip),
+            ], 200);
+        }
 
         return redirect()
-            ->route('driver.trips.prepare', $trip)
+            ->route('driver.trips.prepare', $startedTrip)
             ->with('success', 'Perjalanan pengantaran telah resmi dimulai. Menuju pemberhentian pertama.');
     }
+
+    /**
+     * Active trip navigation & real-time GPS telemetry sharing screen (Page D03).
+     */
+    public function active(Request $request, Trip $trip): View
+    {
+        Gate::authorize('view', $trip);
+
+        $trip->load(['vehicle', 'sppg', 'stops.school', 'stops.deliveryItems.foodBatch']);
+
+        $trackingService = app(\App\Services\GpsTrackingService::class);
+        $trackingStatus = $trackingService->getDriverTrackingStatus($trip);
+
+        $stops = $trip->stops->sortBy('sequence_number')->values();
+        $activeStop = $stops->first(function ($stop) {
+            return in_array($stop->status, [
+                \App\Enums\TripStopStatus::EN_ROUTE,
+                \App\Enums\TripStopStatus::ARRIVED,
+                \App\Enums\TripStopStatus::ARRIVED_AWAITING_CONFIRMATION,
+                \App\Enums\TripStopStatus::PENDING,
+            ], true);
+        }) ?: $stops->last();
+
+        return view('driver.trips.active', [
+            'trip' => $trip,
+            'stops' => $stops,
+            'activeStop' => $activeStop,
+            'trackingStatus' => $trackingStatus,
+        ]);
+    }
+
+    /**
+     * Ingest driver's real GPS telemetry point from browser Geolocation API.
+     */
+    public function telemetry(Request $request, Trip $trip): \Illuminate\Http\JsonResponse
+    {
+        Gate::authorize('recordTelemetry', $trip);
+
+        $trackingService = app(\App\Services\GpsTrackingService::class);
+        $gpsPoint = $trackingService->recordDriverLocation($trip, $request->user(), $request->all());
+
+        return response()->json([
+            'success' => true,
+            'tracking_status' => 'ONLINE',
+            'latitude' => $gpsPoint->latitude,
+            'longitude' => $gpsPoint->longitude,
+            'accuracy_m' => $gpsPoint->accuracy_m,
+            'recorded_at' => $gpsPoint->recorded_at->toIso8601String(),
+        ], 200);
+    }
+
+    /**
+     * Driver marks arrival at the active school stop.
+     */
+    public function arrive(Request $request, Trip $trip, \App\Models\TripStop $stop): \Illuminate\Http\JsonResponse|RedirectResponse
+    {
+        Gate::authorize('view', $trip);
+
+        $trackingService = app(\App\Services\GpsTrackingService::class);
+        $updatedStop = $trackingService->markStopArrived($trip, $stop, $request->user());
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => "Tiba di {$updatedStop->school->name}. Menunggu konfirmasi serah terima.",
+                'stop_status' => $updatedStop->status->value,
+                'arrived_at' => $updatedStop->arrived_at?->toIso8601String(),
+            ]);
+        }
+
+        return redirect()
+            ->route('driver.trips.active', $trip)
+            ->with('success', "Tiba di {$updatedStop->school->name}. Menunggu konfirmasi serah terima.");
+    }
 }
+
+

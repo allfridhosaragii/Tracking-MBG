@@ -143,6 +143,11 @@ Route::middleware(['auth', 'active'])->group(function () {
             Route::get('/trips/{trip}/prepare', [DriverTripController::class, 'prepare'])->name('trips.prepare');
             Route::post('/trips/{trip}/vehicle-check', [DriverTripController::class, 'vehicleCheck'])->name('trips.vehicle-check');
             Route::post('/trips/{trip}/start', [DriverTripController::class, 'start'])->name('trips.start');
+
+            // PBI-09: Real GPS Telemetry & Active Trip Navigation (Page D03)
+            Route::get('/trips/{trip}/active', [DriverTripController::class, 'active'])->name('trips.active');
+            Route::post('/trips/{trip}/telemetry', [DriverTripController::class, 'telemetry'])->name('trips.telemetry');
+            Route::post('/trips/{trip}/stops/{stop}/arrive', [DriverTripController::class, 'arrive'])->name('trips.stops.arrive');
         });
 
     // 5. PIC Sekolah Module

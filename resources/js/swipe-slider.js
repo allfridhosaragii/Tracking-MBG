@@ -103,7 +103,7 @@ export function initSwipeToDepart(sliderId, options = {}) {
             .then(async (response) => {
                 const data = await response.json().catch(() => ({}));
 
-                if (response.ok && data.success) {
+                if ((response.ok && data.success) || data.trip_status === 'IN_PROGRESS') {
                     if (label) {
                         label.innerText = 'Perjalanan Resmi Dimulai!';
                         label.classList.remove('animate-pulse');

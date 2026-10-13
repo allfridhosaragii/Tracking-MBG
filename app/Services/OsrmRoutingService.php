@@ -14,13 +14,15 @@ class OsrmRoutingService
     protected string $profile;
     protected int $timeout;
     protected int $cacheTtl;
+    protected int $failureCacheTtl;
 
     public function __construct()
     {
         $this->baseUrl = rtrim(config('services.osrm.base_url', 'https://router.project-osrm.org'), '/');
         $this->profile = config('services.osrm.profile', 'driving');
         $this->timeout = (int) config('services.osrm.timeout', 4);
-        $this->cacheTtl = (int) config('services.osrm.cache_ttl', 86400);
+        $this->cacheTtl = (int) config('services.osrm.cache_ttl', 7200); // 2 hours default
+        $this->failureCacheTtl = (int) config('services.osrm.failure_cache_ttl', 60); // 60s failure TTL
     }
 
     /**
@@ -76,84 +78,213 @@ class OsrmRoutingService
         }
 
         $coordString = implode(';', $coordinatePairs);
-        $cacheKey = 'osrm_route_' . md5("{$this->profile}_{$coordString}");
+        $cacheKey = $this->getCacheKey($waypoints);
 
-        return Cache::remember($cacheKey, $this->cacheTtl, function () use ($coordString, $waypoints) {
-            $url = "{$this->baseUrl}/route/v1/{$this->profile}/{$coordString}?overview=full&geometries=geojson&steps=false";
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached)) {
+            return $cached;
+        }
 
-            try {
-                $response = Http::timeout($this->timeout)
-                    ->acceptJson()
-                    ->get($url);
+        $url = "{$this->baseUrl}/route/v1/{$this->profile}/{$coordString}?overview=full&geometries=geojson&steps=true";
 
-                if (! $response->successful()) {
-                    Log::warning('OSRM request unsuccessful', [
-                        'status' => $response->status(),
-                        'url' => $url,
-                    ]);
+        try {
+            $response = Http::timeout($this->timeout)
+                ->acceptJson()
+                ->get($url);
 
-                    return [
-                        'success' => false,
-                        'distance_m' => null,
-                        'duration_s' => null,
-                        'geometry' => null,
-                        'waypoints' => $waypoints,
-                        'legs' => [],
-                        'error' => 'Layanan rute jalan OSRM merespons dengan status error: ' . $response->status(),
-                    ];
-                }
+            if (! $response->successful()) {
+                Log::warning('OSRM request unsuccessful', [
+                    'status' => $response->status(),
+                    'coord_count' => count($coordinatePairs),
+                ]);
 
-                $data = $response->json();
-
-                if (($data['code'] ?? '') !== 'Ok' || empty($data['routes'][0])) {
-                    return [
-                        'success' => false,
-                        'distance_m' => null,
-                        'duration_s' => null,
-                        'geometry' => null,
-                        'waypoints' => $waypoints,
-                        'legs' => [],
-                        'error' => 'OSRM tidak menemukan rute jalan yang menghubungkan titik-titik tersebut (' . ($data['message'] ?? 'NoRoute') . ').',
-                    ];
-                }
-
-                $route = $data['routes'][0];
-
-                return [
-                    'success' => true,
-                    'distance_m' => (int) round($route['distance'] ?? 0),
-                    'duration_s' => (int) round($route['duration'] ?? 0),
-                    'geometry' => $route['geometry'] ?? null,
-                    'waypoints' => $waypoints,
-                    'legs' => $route['legs'] ?? [],
-                    'error' => null,
-                ];
-            } catch (\Throwable $e) {
-                Log::warning('OSRM routing request failed: ' . $e->getMessage());
-
-                return [
+                $failureResult = [
                     'success' => false,
                     'distance_m' => null,
                     'duration_s' => null,
                     'geometry' => null,
                     'waypoints' => $waypoints,
                     'legs' => [],
-                    'error' => 'Layanan rute jalan OSRM sedang tidak dapat dihubungi. Menampilkan titik tujuan tanpa geometri rute jalan.',
+                    'error' => 'Layanan rute jalan OSRM merespons dengan status error: ' . $response->status(),
+                ];
+
+                Cache::put($cacheKey, $failureResult, $this->failureCacheTtl);
+                return $failureResult;
+            }
+
+            $data = $response->json();
+
+            if (($data['code'] ?? '') !== 'Ok' || empty($data['routes'][0])) {
+                $failureResult = [
+                    'success' => false,
+                    'distance_m' => null,
+                    'duration_s' => null,
+                    'geometry' => null,
+                    'waypoints' => $waypoints,
+                    'legs' => [],
+                    'error' => 'OSRM tidak menemukan rute jalan yang menghubungkan titik-titik tersebut (' . ($data['message'] ?? 'NoRoute') . ').',
+                ];
+
+                Cache::put($cacheKey, $failureResult, $this->failureCacheTtl);
+                return $failureResult;
+            }
+
+            $route = $data['routes'][0];
+            $geometry = $route['geometry'] ?? null;
+
+            if (! $this->isValidGeoJsonLineString($geometry)) {
+                $failureResult = [
+                    'success' => false,
+                    'distance_m' => null,
+                    'duration_s' => null,
+                    'geometry' => null,
+                    'waypoints' => $waypoints,
+                    'legs' => [],
+                    'error' => 'Geometri rute yang dikembalikan OSRM tidak valid.',
+                ];
+
+                Cache::put($cacheKey, $failureResult, $this->failureCacheTtl);
+                return $failureResult;
+            }
+
+            // Extract per-leg geometry from steps for hybrid navigation
+            $legsData = [];
+            foreach ($route['legs'] ?? [] as $legIndex => $leg) {
+                $legCoordinates = [];
+                if (! empty($leg['steps'])) {
+                    foreach ($leg['steps'] as $step) {
+                        if (! empty($step['geometry']['coordinates'])) {
+                            foreach ($step['geometry']['coordinates'] as $coord) {
+                                if (empty($legCoordinates) || end($legCoordinates) !== $coord) {
+                                    $legCoordinates[] = $coord;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                $legsData[] = [
+                    'leg_index' => $legIndex,
+                    'distance_m' => (int) round($leg['distance'] ?? 0),
+                    'duration_s' => (int) round($leg['duration'] ?? 0),
+                    'geometry' => ! empty($legCoordinates) ? [
+                        'type' => 'LineString',
+                        'coordinates' => $legCoordinates,
+                    ] : null,
                 ];
             }
-        });
+
+            $successResult = [
+                'success' => true,
+                'distance_m' => (int) round($route['distance'] ?? 0),
+                'duration_s' => (int) round($route['duration'] ?? 0),
+                'geometry' => $geometry,
+                'waypoints' => $waypoints,
+                'legs' => $legsData,
+                'error' => null,
+            ];
+
+            Cache::put($cacheKey, $successResult, $this->cacheTtl);
+            return $successResult;
+        } catch (\Throwable $e) {
+            Log::warning('OSRM routing request failed: ' . $e->getMessage());
+
+            $failureResult = [
+                'success' => false,
+                'distance_m' => null,
+                'duration_s' => null,
+                'geometry' => null,
+                'waypoints' => $waypoints,
+                'legs' => [],
+                'error' => 'Layanan rute jalan OSRM sedang tidak dapat dihubungi. Menampilkan titik tujuan tanpa geometri rute jalan.',
+            ];
+
+            Cache::put($cacheKey, $failureResult, $this->failureCacheTtl);
+            return $failureResult;
+        }
     }
 
     /**
-     * Calculate and cache route for a Trip model instance.
+     * Validate whether a geometry array is a valid GeoJSON LineString.
      */
-    public function calculateTripRoute(Trip $trip): array
+    public function isValidGeoJsonLineString(mixed $geometry): bool
+    {
+        if (! is_array($geometry)) {
+            return false;
+        }
+
+        if (($geometry['type'] ?? '') !== 'LineString') {
+            return false;
+        }
+
+        if (! isset($geometry['coordinates']) || ! is_array($geometry['coordinates'])) {
+            return false;
+        }
+
+        if (count($geometry['coordinates']) < 2) {
+            return false;
+        }
+
+        foreach ($geometry['coordinates'] as $coord) {
+            if (! is_array($coord) || count($coord) < 2) {
+                return false;
+            }
+            if (! is_numeric($coord[0]) || ! is_numeric($coord[1])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Generate cache key for given waypoints.
+     */
+    public function getCacheKey(array $waypoints): string
+    {
+        $coordinatePairs = [];
+        foreach ($waypoints as $point) {
+            $lat = (float) ($point['lat'] ?? 0);
+            $lng = (float) ($point['lng'] ?? 0);
+            $coordinatePairs[] = sprintf('%.6f,%.6f', $lng, $lat);
+        }
+
+        $coordString = implode(';', $coordinatePairs);
+        return 'osrm_route_' . md5("{$this->profile}_{$coordString}");
+    }
+
+    /**
+     * Invalidate route cache for specific waypoints.
+     */
+    public function invalidateRouteCache(array $waypoints): void
+    {
+        Cache::forget($this->getCacheKey($waypoints));
+    }
+
+    /**
+     * Invalidate cached route for a Trip.
+     */
+    public function invalidateTripRouteCache(Trip $trip): void
+    {
+        $trip->loadMissing(['sppg', 'stops.school']);
+        $waypoints = $this->extractTripWaypoints($trip);
+        if (count($waypoints) >= 2) {
+            $this->invalidateRouteCache($waypoints);
+        }
+    }
+
+    /**
+     * Extract ordered waypoints from Trip.
+     *
+     * @return array<int, array{lat: float, lng: float, name: string, type: string, order: int, stop_id?: int}>
+     */
+    public function extractTripWaypoints(Trip $trip): array
     {
         $trip->loadMissing(['sppg', 'stops.school']);
 
         $sppg = $trip->sppg;
         if (! $sppg || ! $sppg->latitude || ! $sppg->longitude) {
-            throw new InvalidArgumentException('SPPG asal (' . ($sppg?->name ?? 'N/A') . ') belum memiliki koordinat GPS yang sah.');
+            return [];
         }
 
         $waypoints = [
@@ -169,23 +300,35 @@ class OsrmRoutingService
         $sortedStops = $trip->stops->sortBy('sequence_number');
         foreach ($sortedStops as $stop) {
             $school = $stop->school;
-            if (! $school || ! $school->latitude || ! $school->longitude) {
-                throw new InvalidArgumentException("Sekolah tujuan {$school?->name} (Stop #{$stop->sequence_number}) belum memiliki koordinat GPS yang sah.");
+            if ($school && $school->latitude && $school->longitude) {
+                $waypoints[] = [
+                    'lat' => (float) $school->latitude,
+                    'lng' => (float) $school->longitude,
+                    'name' => $school->name,
+                    'type' => 'SCHOOL',
+                    'order' => $stop->sequence_number,
+                    'stop_id' => $stop->id,
+                ];
             }
+        }
 
-            $waypoints[] = [
-                'lat' => (float) $school->latitude,
-                'lng' => (float) $school->longitude,
-                'name' => $school->name,
-                'type' => 'SCHOOL',
-                'order' => $stop->sequence_number,
-                'stop_id' => $stop->id,
-            ];
+        return $waypoints;
+    }
+
+    /**
+     * Calculate and cache route for a Trip model instance.
+     */
+    public function calculateTripRoute(Trip $trip): array
+    {
+        $waypoints = $this->extractTripWaypoints($trip);
+
+        if (count($waypoints) < 2) {
+            throw new InvalidArgumentException('Trip belum memiliki cukup koordinat GPS SPPG dan sekolah tujuan yang sah.');
         }
 
         $routeResult = $this->getRoute($waypoints);
 
-        if ($routeResult['success'] && ! empty($routeResult['geometry'])) {
+        if ($routeResult['success'] && $this->isValidGeoJsonLineString($routeResult['geometry'])) {
             $trip->update([
                 'route_geometry' => json_encode($routeResult['geometry']),
                 'total_distance_m' => $routeResult['distance_m'],

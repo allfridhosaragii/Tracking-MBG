@@ -31,8 +31,8 @@
 
             <div class="flex items-center gap-2">
                 <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#EDF7F2] text-[#1B573E] border border-[#BCE2D0]">
-                    <span class="w-2 h-2 rounded-full bg-[#1B573E] animate-pulse"></span>
-                    <span>Resmi &amp; Terverifikasi</span>
+                    <span class="w-2 h-2 rounded-full bg-[#1B573E]"></span>
+                    <span>Portal Publik Resmi</span>
                 </span>
             </div>
         </div>
@@ -140,9 +140,13 @@
                                 $publicStopLabel = match ($stop->status) {
                                     \App\Enums\TripStopStatus::PENDING => 'Menunggu Giliran',
                                     \App\Enums\TripStopStatus::EN_ROUTE => 'Armada Sedang Menuju Sekolah Ini',
-                                    \App\Enums\TripStopStatus::ARRIVED => 'Armada Telah Tiba',
-                                    \App\Enums\TripStopStatus::HANDED_OVER => 'Makanan Diterima',
+                                    \App\Enums\TripStopStatus::ARRIVED => 'Armada Telah Tiba di Sekolah',
+                                    \App\Enums\TripStopStatus::ARRIVED_AWAITING_CONFIRMATION => 'Tiba, Menunggu Konfirmasi Sekolah',
+                                    \App\Enums\TripStopStatus::HANDED_OVER => 'Makanan Telah Diserahkan',
+                                    \App\Enums\TripStopStatus::COMPLETED => 'Pengantaran Selesai',
                                     \App\Enums\TripStopStatus::SKIPPED => 'Dilewati',
+                                    \App\Enums\TripStopStatus::EXCEPTION => 'Terdapat Kendala Pengantaran',
+                                    default => 'Status Belum Diketahui',
                                 };
                             @endphp
                             <div class="p-3.5 rounded-xl bg-[#FAFBF9] border border-[#DCE5DD]">

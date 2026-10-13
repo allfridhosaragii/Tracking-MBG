@@ -39,9 +39,13 @@ class TripDetailController extends Controller
     }
 
     /**
-     * Provide JSON Map Data for MapLibre multi-stop visualization.
+     * Provide role-scoped JSON Map Data for MapLibre multi-stop visualization.
+     * HIGH GATE D: Enforces strict field-level authorization:
+     * - KEPALA_SPPG / ASISTEN_LAPANGAN: Full operational detail.
+     * - KURIR: Mission details for assigned driver.
+     * - PIC_SEKOLAH: Strict isolation; masks other schools' portions, addresses, and internal driver/vehicle details.
      */
-    public function mapData(Trip $trip): \Illuminate\Http\JsonResponse
+    public function mapData(Request $request, Trip $trip): \Illuminate\Http\JsonResponse
     {
         Gate::authorize('view', $trip);
 
@@ -53,6 +57,11 @@ class TripDetailController extends Controller
             'vehicle',
         ]);
 
+        $user = $request->user();
+        $isPic = $user->role === UserRole::PIC_SEKOLAH;
+        $isDriver = $user->role === UserRole::KURIR;
+        $isSppgStaff = in_array($user->role, [UserRole::KEPALA_SPPG, UserRole::ASISTEN_LAPANGAN, UserRole::PENGAWAS_GIZI], true);
+
         $sppg = $trip->sppg;
         $stops = $trip->stops->sortBy('sequence_number')->values();
 
@@ -61,17 +70,27 @@ class TripDetailController extends Controller
         }) ?: $stops->first();
 
         $geometry = $trip->route_geometry ? json_decode($trip->route_geometry, true) : null;
+        $legs = [];
 
-        if (! $geometry) {
-            try {
-                $routeResult = app(\App\Services\OsrmRoutingService::class)->calculateTripRoute($trip);
-                $geometry = $routeResult['geometry'] ?? null;
-            } catch (\Throwable $e) {
-                // Honest fallback: null geometry if OSRM unreachable
+        // GATE 10: GET requests must NOT mutate database state. Read-only fallback from OSRM cache.
+        try {
+            $routingService = app(\App\Services\OsrmRoutingService::class);
+            $waypoints = $routingService->extractTripWaypoints($trip);
+            if (count($waypoints) >= 2) {
+                $routeResult = $routingService->getRoute($waypoints);
+                if ($routeResult['success']) {
+                    if (! $geometry) {
+                        $geometry = $routeResult['geometry'] ?? null;
+                    }
+                    $legs = $routeResult['legs'] ?? [];
+                }
             }
+        } catch (\Throwable $e) {
+            // Honest fallback: null geometry if OSRM unreachable
         }
 
-        return response()->json([
+        // Base payload common to authorized roles
+        $response = [
             'trip_id' => $trip->id,
             'trip_code' => $trip->trip_code,
             'status' => $trip->status->value,
@@ -83,15 +102,52 @@ class TripDetailController extends Controller
                 'lat' => (float) $sppg->latitude,
                 'lng' => (float) $sppg->longitude,
             ],
-            'vehicle' => [
+            'active_stop_sequence' => $activeStop?->sequence_number ?? 1,
+            'geometry' => $geometry,
+            'legs' => $legs,
+            'total_distance_m' => $trip->total_distance_m,
+            'estimated_duration_s' => $trip->estimated_duration_s,
+        ];
+
+        if ($isPic) {
+            // HIGH GATE D: Sanitize for PIC Sekolah (their school only; mask other schools & internal vehicle/driver details)
+            $userSchoolId = (int) $user->school_id;
+
+            $response['vehicle'] = null;
+            $response['driver'] = null;
+            $response['driver_telemetry'] = null;
+            $response['stops'] = $stops->map(function ($stop) use ($userSchoolId, $activeStop) {
+                $isOwnSchool = (int) $stop->school_id === $userSchoolId;
+
+                return [
+                    'id' => $stop->id,
+                    'sequence_number' => $stop->sequence_number,
+                    'school_id' => $isOwnSchool ? $stop->school_id : null,
+                    'school_name' => $isOwnSchool ? $stop->school->name : "Pemberhentian #{$stop->sequence_number}",
+                    'school_address' => $isOwnSchool ? $stop->school->address : null,
+                    'lat' => (float) $stop->school->latitude,
+                    'lng' => (float) $stop->school->longitude,
+                    'planned_portions' => $isOwnSchool ? ($stop->planned_portions ?: $stop->total_loaded_portions) : null,
+                    'loaded_portions' => $isOwnSchool ? $stop->loaded_portions : null,
+                    'status' => $stop->status->value,
+                    'status_label' => $stop->status->label(),
+                    'is_active' => $activeStop && (int) $activeStop->id === (int) $stop->id,
+                    'is_my_school' => $isOwnSchool,
+                ];
+            });
+        } elseif ($isDriver) {
+            $trackingService = app(\App\Services\GpsTrackingService::class);
+
+            // Kurir perspective
+            $response['vehicle'] = [
                 'name' => $trip->vehicle?->vehicle_name,
                 'plate_number' => $trip->vehicle?->plate_number,
-                'capacity' => $trip->vehicle?->capacity_portions,
-            ],
-            'driver' => [
+            ];
+            $response['driver'] = [
                 'name' => $trip->driver?->name,
-            ],
-            'stops' => $stops->map(function ($stop) use ($activeStop) {
+            ];
+            $response['driver_telemetry'] = $trackingService->getDriverTrackingStatus($trip);
+            $response['stops'] = $stops->map(function ($stop) use ($activeStop) {
                 return [
                     'id' => $stop->id,
                     'sequence_number' => $stop->sequence_number,
@@ -106,11 +162,38 @@ class TripDetailController extends Controller
                     'status_label' => $stop->status->label(),
                     'is_active' => $activeStop && (int) $activeStop->id === (int) $stop->id,
                 ];
-            }),
-            'active_stop_sequence' => $activeStop?->sequence_number ?? 1,
-            'geometry' => $geometry,
-            'total_distance_m' => $trip->total_distance_m,
-            'estimated_duration_s' => $trip->estimated_duration_s,
-        ]);
+            });
+        } else {
+            // Full SPPG Staff / Kepala SPPG perspective
+            $trackingService = app(\App\Services\GpsTrackingService::class);
+            $response['vehicle'] = [
+                'name' => $trip->vehicle?->vehicle_name,
+                'plate_number' => $trip->vehicle?->plate_number,
+                'capacity' => $trip->vehicle?->capacity_portions,
+            ];
+            $response['driver'] = [
+                'name' => $trip->driver?->name,
+                'phone' => $trip->driver?->phone,
+            ];
+            $response['driver_telemetry'] = $trackingService->getDriverTrackingStatus($trip);
+            $response['stops'] = $stops->map(function ($stop) use ($activeStop) {
+                return [
+                    'id' => $stop->id,
+                    'sequence_number' => $stop->sequence_number,
+                    'school_id' => $stop->school_id,
+                    'school_name' => $stop->school->name,
+                    'school_address' => $stop->school->address,
+                    'lat' => (float) $stop->school->latitude,
+                    'lng' => (float) $stop->school->longitude,
+                    'planned_portions' => $stop->planned_portions ?: $stop->total_loaded_portions,
+                    'loaded_portions' => $stop->loaded_portions,
+                    'status' => $stop->status->value,
+                    'status_label' => $stop->status->label(),
+                    'is_active' => $activeStop && (int) $activeStop->id === (int) $stop->id,
+                ];
+            });
+        }
+
+        return response()->json($response);
     }
 }

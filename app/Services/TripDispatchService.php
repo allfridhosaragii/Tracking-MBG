@@ -497,6 +497,15 @@ class TripDispatchService
      * Verifies physical counts of boxes loaded into vehicle per stop & batch.
      * Transitions DeliveryItem status: PENDING_LOADING -> LOADED.
      */
+    /**
+     * Physical Loading Verification by Asisten Lapangan / SPPG Staff.
+     * HARD GATE A & B:
+     * Verifies physical counts of boxes loaded into vehicle per stop & batch.
+     * Transitions DeliveryItem status: PENDING_LOADING -> LOADED.
+     * CRITICAL GATE B: Validates that ALL manifest items belonging to the trip are present,
+     * rejects partial manifests, duplicates, or foreign items.
+     * CRITICAL GATE C: Revokes any prior dispatch approval when loading is modified.
+     */
     public function verifyLoading(Trip $trip, array $loadingData, User $actor): Trip
     {
         return DB::transaction(function () use ($trip, $loadingData, $actor) {
@@ -523,42 +532,88 @@ class TripDispatchService
                 ]);
             }
 
-            $totalLoadedTrip = 0;
-            $vehicle = $lockedTrip->vehicle;
+            // Retrieve all required delivery items for this trip
+            $requiredItems = DeliveryItem::whereHas('tripStop', function ($q) use ($lockedTrip) {
+                $q->where('trip_id', $lockedTrip->id);
+            })->with('foodBatch')->lockForUpdate()->get()->keyBy('id');
 
+            if ($requiredItems->isEmpty()) {
+                throw ValidationException::withMessages([
+                    'items' => ['Perjalanan ini tidak memiliki item alokasi muatan untuk diverifikasi.'],
+                ]);
+            }
+
+            // Normalize items input and detect duplicates
+            $normalizedItems = [];
+            $seenIds = [];
             foreach ($itemsData as $idx => $itemInput) {
                 if (is_array($itemInput)) {
-                    $deliveryItemId = (int) ($itemInput['delivery_item_id'] ?? $idx);
-                    $loadedQuantity = (int) ($itemInput['loaded_portions'] ?? 0);
+                    $itemId = (int) ($itemInput['delivery_item_id'] ?? $idx);
+                    $qty = (int) ($itemInput['loaded_portions'] ?? 0);
                 } else {
-                    $deliveryItemId = (int) $idx;
-                    $loadedQuantity = (int) $itemInput;
+                    $itemId = (int) $idx;
+                    $qty = (int) $itemInput;
                 }
 
+                if (in_array($itemId, $seenIds, true)) {
+                    throw ValidationException::withMessages([
+                        'items' => ["Item muatan #{$itemId} diduplikasi dalam payload verifikasi."],
+                    ]);
+                }
+                $seenIds[] = $itemId;
+                $normalizedItems[$itemId] = $qty;
+            }
+
+            // CRITICAL GATE B: Validate that ALL required items in the trip are present
+            $missingItemIds = $requiredItems->keys()->diff($seenIds);
+            if ($missingItemIds->isNotEmpty()) {
+                throw ValidationException::withMessages([
+                    'items' => [
+                        "Seluruh item manifest muatan perjalanan wajib diverifikasi. Terdapat {$missingItemIds->count()} item alokasi yang belum tercantum dalam data verifikasi fisik.",
+                    ],
+                ]);
+            }
+
+            // Reject foreign items not belonging to this trip
+            $foreignItemIds = collect($seenIds)->diff($requiredItems->keys());
+            if ($foreignItemIds->isNotEmpty()) {
+                throw ValidationException::withMessages([
+                    'items' => [
+                        "Item muatan #{$foreignItemIds->first()} tidak terdaftar dalam perjalanan ini.",
+                    ],
+                ]);
+            }
+
+            $totalLoadedTrip = 0;
+            $batchCommittedPortions = [];
+            $vehicle = $lockedTrip->vehicle;
+
+            foreach ($normalizedItems as $deliveryItemId => $loadedQuantity) {
                 if ($loadedQuantity <= 0) {
                     throw ValidationException::withMessages([
-                        "items.{$idx}.loaded_portions" => ['Kuantitas fisik muatan harus lebih dari nol.'],
+                        "items.{$deliveryItemId}" => ['Kuantitas fisik muatan harus lebih dari nol.'],
                     ]);
                 }
 
-                $deliveryItem = DeliveryItem::where('id', $deliveryItemId)
-                    ->whereHas('tripStop', function ($q) use ($lockedTrip) {
-                        $q->where('trip_id', $lockedTrip->id);
-                    })
-                    ->lockForUpdate()
-                    ->first();
-
-                if (! $deliveryItem) {
-                    throw ValidationException::withMessages([
-                        "items.{$idx}.delivery_item_id" => ['Item alokasi tidak ditemukan dalam perjalanan ini.'],
-                    ]);
-                }
-
+                $deliveryItem = $requiredItems[$deliveryItemId];
                 $availablePortions = (int) $deliveryItem->released_portions;
+
                 if ($loadedQuantity > $availablePortions) {
                     throw ValidationException::withMessages([
-                        "items.{$idx}.loaded_portions" => [
+                        "items.{$deliveryItemId}" => [
                             "Kuantitas muat ({$loadedQuantity} porsi) melebihi kuota rilisan QC yang sah ({$availablePortions} porsi).",
+                        ],
+                    ]);
+                }
+
+                // Cumulative batch check across loaded items
+                $batch = $deliveryItem->foodBatch;
+                $batchId = $batch->id;
+                $batchCommittedPortions[$batchId] = ($batchCommittedPortions[$batchId] ?? 0) + $loadedQuantity;
+                if ($batchCommittedPortions[$batchId] > (int) $batch->accepted_portions) {
+                    throw ValidationException::withMessages([
+                        "items.{$deliveryItemId}" => [
+                            "Akumulasi muatan fisik untuk batch {$batch->batch_code} ({$batchCommittedPortions[$batchId]} porsi) melebihi total porsi lolos QC ({$batch->accepted_portions} porsi).",
                         ],
                     ]);
                 }
@@ -588,17 +643,17 @@ class TripDispatchService
                 ]);
             }
 
+            // CRITICAL GATE C: Invalidate prior dispatch approval upon modifying loaded portions
             $lockedTrip->update([
                 'loading_verified' => true,
                 'loading_verified_at' => Carbon::now(),
                 'loading_verified_by' => $actor->id,
                 'loading_notes' => $loadingData['notes'] ?? null,
+                'dispatch_approved' => false, // Prior approval revoked until re-approved by Head
+                'dispatch_approved_at' => null,
+                'dispatch_approved_by' => null,
+                'status' => $lockedTrip->vehicle_check_passed ? TripStatus::VEHICLE_CHECKED : TripStatus::ASSIGNED,
             ]);
-
-            // Check if all gates passed to transition to READY
-            if ($lockedTrip->vehicle_check_passed && $lockedTrip->dispatch_approved) {
-                $lockedTrip->update(['status' => TripStatus::READY]);
-            }
 
             ActivityLog::record(
                 event: 'trip.loading_verified',
@@ -658,6 +713,9 @@ class TripDispatchService
                     'vehicle_check_passed' => false,
                     'vehicle_checked_at' => Carbon::now(),
                     'vehicle_check_notes' => $notes,
+                    'dispatch_approved' => false, // Invalidate dispatch approval if vehicle check fails
+                    'dispatch_approved_at' => null,
+                    'dispatch_approved_by' => null,
                     'status' => TripStatus::ASSIGNED,
                 ]);
             }
@@ -680,12 +738,14 @@ class TripDispatchService
 
     /**
      * Pre-departure Dispatch Authorization by Kepala SPPG.
-     * HARD GATE B:
+     * HARD GATE B & CRITICAL GATE C:
      * Validates:
      * 1. All batches RELEASED
-     * 2. Physical loading verified
-     * 3. Vehicle check passed
-     * 4. Self-approval prevention (Kepala SPPG cannot approve their own trip if acting as driver)
+     * 2. Physical loading verified for ALL delivery items (status = LOADED, loaded_portions > 0)
+     * 3. Vehicle check passed & vehicle is currently active
+     * 4. Driver is currently active
+     * 5. Stop sequences are valid and complete
+     * 6. Self-approval prevention (Kepala SPPG cannot approve their own trip if acting as driver)
      */
     public function approveDispatch(Trip $trip, User $actor, ?string $notes = null): Trip
     {
@@ -722,17 +782,65 @@ class TripDispatchService
                 ]);
             }
 
-            // Gate 2: Check physical loading is verified
+            // Gate 2: Check physical loading is verified and ALL items are LOADED
             if (! $lockedTrip->loading_verified) {
                 throw ValidationException::withMessages([
                     'dispatch' => ['Kuantitas muatan fisik belum diverifikasi oleh petugas muat (loading verification).'],
                 ]);
             }
 
-            // Gate 3: Check vehicle condition check passed
+            $unloadedItemsCount = DeliveryItem::whereHas('tripStop', function ($q) use ($lockedTrip) {
+                $q->where('trip_id', $lockedTrip->id);
+            })->where(function ($q) {
+                $q->where('status', '!=', 'LOADED')
+                  ->orWhereNull('loaded_portions')
+                  ->orWhere('loaded_portions', '<=', 0);
+            })->count();
+
+            if ($unloadedItemsCount > 0) {
+                throw ValidationException::withMessages([
+                    'dispatch' => ['Masih terdapat item alokasi muatan yang belum selesai diverifikasi secara fisik.'],
+                ]);
+            }
+
+            // Gate 3: Check vehicle condition check passed & vehicle is active
             if (! $lockedTrip->vehicle_check_passed) {
                 throw ValidationException::withMessages([
                     'dispatch' => ['Pemeriksaan kelaikan kendaraan belum dilakukan atau belum dinyatakan lolos oleh kurir.'],
+                ]);
+            }
+
+            $vehicle = $lockedTrip->vehicle;
+            if (! $vehicle || ! $vehicle->is_active) {
+                throw ValidationException::withMessages([
+                    'dispatch' => ['Kendaraan yang ditugaskan tidak aktif atau tidak layak operasional.'],
+                ]);
+            }
+
+            $totalLoadedPortions = (int) DeliveryItem::whereHas('tripStop', function ($q) use ($lockedTrip) {
+                $q->where('trip_id', $lockedTrip->id);
+            })->sum('loaded_portions');
+
+            if ($vehicle->capacity_portions && $totalLoadedPortions > $vehicle->capacity_portions) {
+                throw ValidationException::withMessages([
+                    'dispatch' => ["Total muatan fisik ({$totalLoadedPortions} porsi) melebihi kapasitas kendaraan {$vehicle->plate_number} ({$vehicle->capacity_portions} porsi)."],
+                ]);
+            }
+
+            // Gate 4: Driver is active
+            $driver = $lockedTrip->driver;
+            if (! $driver || ! $driver->is_active) {
+                throw ValidationException::withMessages([
+                    'dispatch' => ['Kurir yang ditugaskan tidak aktif dalam sistem.'],
+                ]);
+            }
+
+            // Gate 5: Check valid stop sequences
+            $stopCount = $lockedTrip->stops()->count();
+            $sequences = $lockedTrip->stops()->pluck('sequence_number')->sort()->values()->all();
+            if ($sequences !== range(1, $stopCount)) {
+                throw ValidationException::withMessages([
+                    'dispatch' => ['Urutan pemberhentian sekolah tidak valid atau terputus.'],
                 ]);
             }
 
@@ -770,6 +878,7 @@ class TripDispatchService
      * Driver starts trip dispatch from kitchen to first school (Swipe-to-depart).
      * Transitions: READY -> IN_PROGRESS. First stop becomes EN_ROUTE.
      * HARD GATE E: tracking_status becomes WAITING_FOR_LOCATION (NOT ACTIVE, no fake GPS!).
+     * CRITICAL GATE C: Re-evaluates all critical gate invariants atomically inside the transaction.
      */
     public function startTrip(Trip $trip, User $driver): Trip
     {
@@ -799,9 +908,61 @@ class TripDispatchService
                 ]);
             }
 
+            $unloadedItemsCount = DeliveryItem::whereHas('tripStop', function ($q) use ($lockedTrip) {
+                $q->where('trip_id', $lockedTrip->id);
+            })->where(function ($q) {
+                $q->where('status', '!=', 'LOADED')
+                  ->orWhereNull('loaded_portions')
+                  ->orWhere('loaded_portions', '<=', 0);
+            })->count();
+
+            if ($unloadedItemsCount > 0) {
+                throw ValidationException::withMessages([
+                    'loading_verified' => ['Terdapat item manifest muatan yang belum selesai diverifikasi.'],
+                ]);
+            }
+
             if (! $lockedTrip->vehicle_check_passed) {
                 throw ValidationException::withMessages([
                     'vehicle_check' => ['Pemeriksaan kendaraan belum dinyatakan lolos memenuhi standar keselamatan.'],
+                ]);
+            }
+
+            if (! $lockedTrip->vehicle || ! $lockedTrip->vehicle->is_active) {
+                throw ValidationException::withMessages([
+                    'vehicle' => ['Armada kendaraan tidak aktif atau ditarik dari operasional.'],
+                ]);
+            }
+
+            if (! $driver->is_active) {
+                throw ValidationException::withMessages([
+                    'driver' => ['Akun kurir berstatus nonaktif dalam sistem.'],
+                ]);
+            }
+
+            $vehicle = $lockedTrip->vehicle;
+            $totalLoadedPortions = (int) DeliveryItem::whereHas('tripStop', function ($q) use ($lockedTrip) {
+                $q->where('trip_id', $lockedTrip->id);
+            })->sum('loaded_portions');
+
+            if ($vehicle && $vehicle->capacity_portions && $totalLoadedPortions > $vehicle->capacity_portions) {
+                throw ValidationException::withMessages([
+                    'capacity' => ["Total muatan fisik ({$totalLoadedPortions} porsi) melebihi kapasitas armada {$vehicle->plate_number} ({$vehicle->capacity_portions} porsi)."],
+                ]);
+            }
+
+            // Re-verify batches are still RELEASED
+            $batchIds = DeliveryItem::whereHas('tripStop', function ($q) use ($lockedTrip) {
+                $q->where('trip_id', $lockedTrip->id);
+            })->pluck('food_batch_id')->unique();
+
+            $unreleasedBatches = FoodBatch::whereIn('id', $batchIds)
+                ->where('status', '!=', FoodBatchStatus::RELEASED)
+                ->count();
+
+            if ($unreleasedBatches > 0) {
+                throw ValidationException::withMessages([
+                    'batch_status' => ['Terdapat batch makanan yang status rilisnya dibatalkan atau ditahan (HOLD).'],
                 ]);
             }
 

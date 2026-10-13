@@ -820,6 +820,9 @@ class TripDispatchHardeningTest extends TestCase
             ],
         ], $this->kepalaA);
 
+        // Under publication policy, public map displays active in-progress/completed trips
+        $trip->update(['status' => TripStatus::IN_PROGRESS]);
+
         // Guest user can view public map without authentication
         $response = $this->get(route('public.trips.map', $trip->trip_code));
         $response->assertStatus(200);

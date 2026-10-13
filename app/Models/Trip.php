@@ -43,6 +43,9 @@ class Trip extends Model
         'tracking_started_at',
         'tracking_ended_at',
         'last_location_at',
+        'last_latitude',
+        'last_longitude',
+        'last_accuracy_m',
         'status',
         'created_by',
     ];
@@ -65,6 +68,9 @@ class Trip extends Model
         'tracking_started_at' => 'datetime',
         'tracking_ended_at' => 'datetime',
         'last_location_at' => 'datetime',
+        'last_latitude' => 'float',
+        'last_longitude' => 'float',
+        'last_accuracy_m' => 'float',
     ];
 
     public function sppg(): BelongsTo
@@ -105,6 +111,16 @@ class Trip extends Model
     public function deliveryItems(): HasManyThrough
     {
         return $this->hasManyThrough(DeliveryItem::class, TripStop::class);
+    }
+
+    public function gpsLocations(): HasMany
+    {
+        return $this->hasMany(GpsLocation::class);
+    }
+
+    public function latestGpsLocation(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(GpsLocation::class)->latestOfMany('recorded_at');
     }
 
     public function scopeForSppg(Builder $query, int $sppgId): Builder
