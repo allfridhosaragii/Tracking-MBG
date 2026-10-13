@@ -75,17 +75,26 @@
                     </div>
                 </div>
 
-                <!-- Readiness Notice (PBI-05 scope) -->
-                <div class="p-3.5 rounded-xl bg-[#EDF7F2] border border-[#BCE2D0] text-xs text-[#1B573E] flex items-start gap-3">
-                    <svg class="w-5 h-5 shrink-0 mt-0.5 text-[#1C6654]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
-                    <div class="leading-relaxed">
-                        <p class="font-bold">Rencana Resmi Telah Diterima</p>
-                        <p class="text-[11px] mt-0.5">
-                            Target produksi sejumlah <strong>{{ number_format($targetPortions) }} porsi</strong> telah disahkan oleh Kepala SPPG ({{ $currentPlan->finalizer?->name }}). Pencatatan tahapan memasak dan batch produksi aktual akan dilakukan melalui modul eksekusi produksi (PBI-06).
-                        </p>
+                <!-- Readiness Notice & PBI-06 Action Button -->
+                <div class="p-4 rounded-xl bg-[#EDF7F2] border border-[#BCE2D0] text-xs text-[#1B573E] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div class="flex items-start gap-3">
+                        <svg class="w-5 h-5 shrink-0 mt-0.5 text-[#1C6654]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <div class="leading-relaxed">
+                            <p class="font-bold">Rencana Resmi Telah Diterima</p>
+                            <p class="text-[11px] mt-0.5">
+                                Target produksi sejumlah <strong>{{ number_format($targetPortions) }} porsi</strong> telah disahkan oleh Kepala SPPG ({{ $currentPlan->finalizer?->name }}).
+                            </p>
+                        </div>
                     </div>
+                    <a href="{{ route('production.plans.execute', $currentPlan) }}" 
+                       class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#1C6654] hover:bg-[#154D3F] text-white text-xs font-bold shadow-xs transition-colors shrink-0 touch-target">
+                        <span>Buka Workspace Eksekusi Dapur</span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+                        </svg>
+                    </a>
                 </div>
             </div>
 

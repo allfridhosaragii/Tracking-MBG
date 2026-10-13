@@ -63,6 +63,11 @@ class Menu extends Model
         return $this->hasMany(ProductionPlan::class);
     }
 
+    public function foodBatches(): HasMany
+    {
+        return $this->hasMany(FoodBatch::class);
+    }
+
     public function scopeForSppg(Builder $query, int $sppgId): Builder
     {
         return $query->where('sppg_id', $sppgId);

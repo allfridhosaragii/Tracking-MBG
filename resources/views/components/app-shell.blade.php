@@ -81,6 +81,10 @@
                                    class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('nutrition.menus.*') ? 'bg-[#EDF2ED] text-[#285F80]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
                                     Menu &amp; Gizi
                                 </a>
+                                <a href="{{ route('nutrition.qc.index') }}" 
+                                   class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('nutrition.qc.*') ? 'bg-[#EDF2ED] text-[#285F80]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
+                                    Uji QC Mutu
+                                </a>
                             @elseif ($roleEnum === \App\Enums\UserRole::ASISTEN_LAPANGAN)
                                 <a href="{{ route('production.dashboard') }}" 
                                    class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('production.dashboard') ? 'bg-[#EDF2ED] text-[#885D1C]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
@@ -249,6 +253,18 @@
                         </svg>
                         <span class="text-[10px] leading-tight">Menu &amp; Gizi</span>
                         @if(request()->routeIs('nutrition.menus.*'))
+                            <span class="w-1.5 h-1.5 rounded-full bg-[#285F80] mt-0.5" aria-hidden="true"></span>
+                        @endif
+                    </a>
+
+                    <a href="{{ route('nutrition.qc.index') }}" 
+                       @if(request()->routeIs('nutrition.qc.*')) aria-current="page" @endif
+                       class="flex flex-col items-center justify-center flex-1 h-full py-1 text-center touch-target smooth-transition {{ request()->routeIs('nutrition.qc.*') ? 'text-[#285F80] font-bold' : 'text-[#53645B] hover:text-[#172923]' }}">
+                        <svg class="w-5 h-5 mb-0.5 {{ request()->routeIs('nutrition.qc.*') ? 'text-[#285F80]' : 'text-[#708177]' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                        </svg>
+                        <span class="text-[10px] leading-tight">QC Mutu</span>
+                        @if(request()->routeIs('nutrition.qc.*'))
                             <span class="w-1.5 h-1.5 rounded-full bg-[#285F80] mt-0.5" aria-hidden="true"></span>
                         @endif
                     </a>

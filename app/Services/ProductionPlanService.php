@@ -132,10 +132,15 @@ class ProductionPlanService
         }
 
         $kitchenCapacity = (int) $sppg->max_daily_portions;
-        $isOverCapacity = $kitchenCapacity > 0 && $totalAllocatedPortions > $kitchenCapacity;
-        if ($isOverCapacity) {
+        $isOverCapacity = false;
+        if ($kitchenCapacity <= 0) {
+            $hasBlockers = true;
+            $blockers[] = "Kapasitas maksimum harian dapur SPPG belum ditetapkan atau bernilai tidak sah (0 porsi).";
+            $isOverCapacity = true;
+        } elseif ($totalAllocatedPortions > $kitchenCapacity) {
             $hasBlockers = true;
             $blockers[] = "Total porsi dialokasikan ({$totalAllocatedPortions}) melebihi batas kapasitas dapur SPPG ({$kitchenCapacity} porsi).";
+            $isOverCapacity = true;
         }
 
         $capacityPercent = $kitchenCapacity > 0 ? min(100, round(($totalAllocatedPortions / $kitchenCapacity) * 100)) : 0;
@@ -273,9 +278,50 @@ class ProductionPlanService
             $sppg = Sppg::where('id', $lockedPlan->sppg_id)->lockForUpdate()->firstOrFail();
             $maxDaily = (int) $sppg->max_daily_portions;
 
+            if ($maxDaily <= 0) {
+                throw ValidationException::withMessages([
+                    'capacity' => ['Kapasitas maksimum harian dapur SPPG belum ditetapkan atau bernilai tidak sah. Finalisasi ditolak demi keselamatan operasional.'],
+                ]);
+            }
+
             if (empty($allocationsData)) {
                 throw ValidationException::withMessages([
                     'allocations' => ['Rencana produksi harus memiliki setidaknya satu alokasi sekolah yang sah.'],
+                ]);
+            }
+
+            $serviceDateStr = $lockedPlan->service_date->format('Y-m-d');
+
+            // HARD GATE A: Invariant Kelengkapan Alokasi dari Database (Bukan Percaya Frontend)
+            $allActiveSchools = School::where('sppg_id', $lockedPlan->sppg_id)
+                ->where('is_active', true)
+                ->with(['portionRequests' => fn ($q) => $q->whereDate('service_date', $serviceDateStr)])
+                ->get();
+
+            $blockingSchools = [];
+            $requiredSchoolIds = [];
+
+            foreach ($allActiveSchools as $activeSchool) {
+                $req = $activeSchool->portionRequests->first();
+
+                if (! $req || $req->isDraft()) {
+                    $blockingSchools[] = "{$activeSchool->name} (Permintaan porsi belum dibuat/masih draf)";
+                } elseif ($req->isRevised()) {
+                    $blockingSchools[] = "{$activeSchool->name} (Revisi porsi menunggu persetujuan)";
+                } elseif ($req->hasUnapprovedException()) {
+                    $blockingSchools[] = "{$activeSchool->name} (Porsi melebihi siswa terdaftar belum disetujui)";
+                } elseif ($req->isCancelled()) {
+                    // Legally cancelled: safe exclusion from allocation
+                    continue;
+                } elseif ($req->isEligibleForProduction()) {
+                    // Legitimate request: MUST be allocated in finalization!
+                    $requiredSchoolIds[$activeSchool->id] = $activeSchool->name;
+                }
+            }
+
+            if (! empty($blockingSchools)) {
+                throw ValidationException::withMessages([
+                    'allocations' => ['Finalisasi diblokir karena masih terdapat sekolah dengan status kebutuhan belum terselesaikan: ' . implode('; ', $blockingSchools)],
                 ]);
             }
 
@@ -283,8 +329,6 @@ class ProductionPlanService
             $seenSchools = [];
             $seenRequests = [];
             $validatedAllocations = [];
-
-            $serviceDateStr = $lockedPlan->service_date->format('Y-m-d');
 
             foreach ($allocationsData as $index => $item) {
                 $schoolId = (int) ($item['school_id'] ?? 0);
@@ -360,6 +404,15 @@ class ProductionPlanService
                     ]);
                 }
 
+                // HARD GATE B: Rekonsiliasi 1:1 antara porsi alokasi dengan permintaan resmi
+                if ($allocatedPortions !== (int) $portionRequest->requested_portions) {
+                    throw ValidationException::withMessages([
+                        "allocations.{$index}.allocated_portions" => [
+                            "Alokasi porsi untuk {$portionRequest->school->name} ({$allocatedPortions} porsi) tidak sesuai dengan kebutuhan resmi terkonfirmasi ({$portionRequest->requested_portions} porsi). Penyesuaian tanpa revisi resmi dilarang.",
+                        ],
+                    ]);
+                }
+
                 $totalRequestedAllocation += $allocatedPortions;
 
                 $validatedAllocations[] = [
@@ -369,15 +422,61 @@ class ProductionPlanService
                 ];
             }
 
+            // HARD GATE A: Verifikasi seluruh sekolah eligible ada dalam payload alokasi
+            $missingSchools = [];
+            foreach ($requiredSchoolIds as $reqSchoolId => $reqSchoolName) {
+                if (! in_array($reqSchoolId, $seenSchools, true)) {
+                    $missingSchools[] = $reqSchoolName;
+                }
+            }
+
+            if (! empty($missingSchools)) {
+                throw ValidationException::withMessages([
+                    'allocations' => ['Finalisasi ditolak. Seluruh sekolah aktif dengan kebutuhan sah wajib dialokasikan. Sekolah berikut belum dialokasikan: ' . implode(', ', $missingSchools)],
+                ]);
+            }
+
             if ($totalRequestedAllocation <= 0) {
                 throw ValidationException::withMessages([
                     'allocations' => ['Total alokasi porsi harus bernilai lebih dari nol.'],
                 ]);
             }
 
-            if ($maxDaily > 0 && $totalRequestedAllocation > $maxDaily) {
+            // HARD GATE C: Multiple Plans & Double Counting Prevention
+            $alreadyAllocatedRequests = ProductionAllocation::whereHas('productionPlan', function ($q) use ($lockedPlan, $serviceDateStr) {
+                $q->where('sppg_id', $lockedPlan->sppg_id)
+                    ->whereDate('service_date', $serviceDateStr)
+                    ->where('id', '!=', $lockedPlan->id)
+                    ->whereIn('status', [
+                        ProductionPlanStatus::FINALIZED->value,
+                        ProductionPlanStatus::IN_PRODUCTION->value,
+                        ProductionPlanStatus::READY_FOR_DISTRIBUTION->value,
+                        ProductionPlanStatus::COMPLETED->value,
+                    ]);
+            })->whereIn('portion_request_id', $seenRequests)->with('school')->get();
+
+            if ($alreadyAllocatedRequests->isNotEmpty()) {
+                $dupSchoolName = $alreadyAllocatedRequests->first()->school->name ?? 'sekolah';
                 throw ValidationException::withMessages([
-                    'capacity' => ["Total alokasi ({$totalRequestedAllocation} porsi) melebihi kapasitas maksimum dapur SPPG ({$maxDaily} porsi)."],
+                    'allocations' => ["Permintaan porsi untuk {$dupSchoolName} sudah dialokasikan pada rencana produksi lain yang telah difinalisasi pada tanggal yang sama."],
+                ]);
+            }
+
+            $alreadyAllocatedSum = (int) ProductionAllocation::whereHas('productionPlan', function ($q) use ($lockedPlan, $serviceDateStr) {
+                $q->where('sppg_id', $lockedPlan->sppg_id)
+                    ->whereDate('service_date', $serviceDateStr)
+                    ->where('id', '!=', $lockedPlan->id)
+                    ->whereIn('status', [
+                        ProductionPlanStatus::FINALIZED->value,
+                        ProductionPlanStatus::IN_PRODUCTION->value,
+                        ProductionPlanStatus::READY_FOR_DISTRIBUTION->value,
+                        ProductionPlanStatus::COMPLETED->value,
+                    ]);
+            })->sum('allocated_portions');
+
+            if (($alreadyAllocatedSum + $totalRequestedAllocation) > $maxDaily) {
+                throw ValidationException::withMessages([
+                    'capacity' => ["Total alokasi lintas rencana produksi ({$alreadyAllocatedSum} + {$totalRequestedAllocation} = " . ($alreadyAllocatedSum + $totalRequestedAllocation) . " porsi) melebihi kapasitas maksimum dapur SPPG ({$maxDaily} porsi)."],
                 ]);
             }
 

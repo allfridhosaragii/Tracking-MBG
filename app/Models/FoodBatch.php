@@ -1,0 +1,125 @@
+<?php
+
+namespace App\Models;
+
+use App\Enums\FoodBatchStatus;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
+
+class FoodBatch extends Model
+{
+    protected $fillable = [
+        'production_plan_id',
+        'menu_id',
+        'batch_code',
+        'portion_category',
+        'planned_portions',
+        'actual_portions',
+        'status',
+        'released_by',
+        'released_at',
+        'created_by',
+        'notes',
+    ];
+
+    protected $casts = [
+        'planned_portions' => 'integer',
+        'actual_portions' => 'integer',
+        'status' => FoodBatchStatus::class,
+        'released_at' => 'datetime',
+    ];
+
+    public function productionPlan(): BelongsTo
+    {
+        return $this->belongsTo(ProductionPlan::class);
+    }
+
+    public function menu(): BelongsTo
+    {
+        return $this->belongsTo(Menu::class);
+    }
+
+    public function stageLogs(): HasMany
+    {
+        return $this->hasMany(ProductionStageLog::class);
+    }
+
+    public function qualityChecks(): HasMany
+    {
+        return $this->hasMany(QualityCheck::class);
+    }
+
+    public function evidencePhotos(): MorphMany
+    {
+        return $this->morphMany(EvidencePhoto::class, 'evidenceable');
+    }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function releaser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'released_by');
+    }
+
+    public function scopeForSppg(Builder $query, int $sppgId): Builder
+    {
+        return $query->whereHas('productionPlan', function ($q) use ($sppgId) {
+            $q->where('sppg_id', $sppgId);
+        });
+    }
+
+    public function scopeReadyForQc(Builder $query): Builder
+    {
+        return $query->where('status', FoodBatchStatus::QC_CHECK);
+    }
+
+    public function scopeReleased(Builder $query): Builder
+    {
+        return $query->where('status', FoodBatchStatus::RELEASED);
+    }
+
+    public function currentStageLog(): ?ProductionStageLog
+    {
+        return ProductionStageLog::where('food_batch_id', $this->id)->latest('id')->first();
+    }
+
+    public function latestQualityCheck(): ?QualityCheck
+    {
+        return QualityCheck::where('food_batch_id', $this->id)->latest('id')->first();
+    }
+
+    public function isReleased(): bool
+    {
+        return $this->status === FoodBatchStatus::RELEASED;
+    }
+
+    public function isOnHold(): bool
+    {
+        return $this->status === FoodBatchStatus::ON_HOLD;
+    }
+
+    public function isReadyForQc(): bool
+    {
+        return $this->status === FoodBatchStatus::QC_CHECK;
+    }
+
+    public function discrepancy(): ?int
+    {
+        if ($this->actual_portions === null) {
+            return null;
+        }
+
+        return (int) $this->actual_portions - (int) $this->planned_portions;
+    }
+
+    public function hasDiscrepancy(): bool
+    {
+        return $this->actual_portions !== null && (int) $this->actual_portions !== (int) $this->planned_portions;
+    }
+}

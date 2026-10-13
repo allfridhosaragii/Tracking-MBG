@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\PortionRequestStatus;
 use App\Models\ActivityLog;
 use App\Models\DailyPortionRequest;
+use App\Models\ProductionAllocation;
 use App\Models\School;
 use App\Models\User;
 use Carbon\Carbon;
@@ -286,6 +287,12 @@ class PortionRequestService
                 ]);
             }
 
+            if ($locked->isUsedInFinalizedProductionPlan()) {
+                throw ValidationException::withMessages([
+                    'status' => ['Permintaan porsi tidak dapat direvisi secara langsung karena telah terikat dalam rencana produksi yang difinalisasi atau sedang berjalan. Gunakan prosedur penyesuaian operasional SPPG.'],
+                ]);
+            }
+
             $reason = trim($data['revision_reason'] ?? '');
             if (empty($reason)) {
                 throw ValidationException::withMessages([
@@ -359,6 +366,12 @@ class PortionRequestService
             if (! $locked->isRevised() || $locked->revised_portions === null) {
                 throw ValidationException::withMessages([
                     'status' => ['Hanya permintaan dengan revisi aktif yang dapat disetujui.'],
+                ]);
+            }
+
+            if ($locked->isUsedInFinalizedProductionPlan()) {
+                throw ValidationException::withMessages([
+                    'status' => ['Persetujuan revisi diblokir karena permintaan ini telah terikat dalam alokasi rencana produksi yang telah difinalisasi.'],
                 ]);
             }
 
@@ -456,6 +469,12 @@ class PortionRequestService
                 ]);
             }
 
+            if ($locked->isUsedInFinalizedProductionPlan()) {
+                throw ValidationException::withMessages([
+                    'status' => ['Status pengecualian tidak dapat diubah karena permintaan telah digunakan dalam rencana produksi final.'],
+                ]);
+            }
+
             $locked->update([
                 'is_exceeds_approved' => true,
                 'exceeds_approved_by' => $actor->id,
@@ -490,6 +509,12 @@ class PortionRequestService
             if (! $locked->isExceedingRegistered()) {
                 throw ValidationException::withMessages([
                     'status' => ['Permintaan ini tidak melebihi kuota siswa terdaftar.'],
+                ]);
+            }
+
+            if ($locked->isUsedInFinalizedProductionPlan()) {
+                throw ValidationException::withMessages([
+                    'status' => ['Status pengecualian tidak dapat diubah karena permintaan telah digunakan dalam rencana produksi final.'],
                 ]);
             }
 
@@ -590,7 +615,9 @@ class PortionRequestService
         $pendingSchools = [];
         $cancelledSchools = [];
         $unapprovedExceptions = [];
-        $totalConfirmedPortions = 0;
+        $totalEligiblePortions = 0;
+        $totalExceptionPendingPortions = 0;
+        $totalAdministrativePortions = 0;
 
         foreach ($schools as $school) {
             $request = $school->portionRequests->first();
@@ -623,6 +650,7 @@ class PortionRequestService
                     'requested_at' => $request->revision_requested_at,
                     'pic_name' => $school->picUsers->first()?->name ?? 'PIC Terdaftar',
                 ];
+                $totalAdministrativePortions += (int) $request->requested_portions;
             } else {
                 // CONFIRMED or LOCKED
                 $hasException = $request->hasUnapprovedException();
@@ -634,7 +662,12 @@ class PortionRequestService
                         'registered_count' => (int) $request->registered_count,
                         'reason' => $request->revision_reason,
                     ];
+                    $totalExceptionPendingPortions += (int) $request->requested_portions;
+                } else {
+                    $totalEligiblePortions += (int) $request->requested_portions;
                 }
+
+                $totalAdministrativePortions += (int) $request->requested_portions;
 
                 $confirmedSchools[] = [
                     'school' => $school,
@@ -646,11 +679,19 @@ class PortionRequestService
                     'confirmed_at' => $request->confirmed_at,
                     'locked_at' => $request->locked_at,
                     'has_unapproved_exception' => $hasException,
+                    'is_eligible' => ! $hasException,
                 ];
-
-                $totalConfirmedPortions += (int) $request->requested_portions;
             }
         }
+
+        $finalizedQuery = ProductionAllocation::whereHas('productionPlan', function ($q) use ($sppgId, $serviceDate) {
+            $q->where('sppg_id', $sppgId)
+                ->whereDate('service_date', $serviceDate)
+                ->whereIn('status', ['FINALIZED', 'IN_PRODUCTION', 'READY_FOR_DISTRIBUTION', 'COMPLETED']);
+        });
+
+        $finalizedCount = $finalizedQuery->count();
+        $totalFinalizedPortions = (int) $finalizedQuery->sum('allocated_portions');
 
         return [
             'service_date' => $serviceDate,
@@ -660,7 +701,12 @@ class PortionRequestService
             'pending_count' => count($pendingSchools),
             'cancelled_count' => count($cancelledSchools),
             'exception_count' => count($unapprovedExceptions),
-            'total_confirmed_portions' => $totalConfirmedPortions,
+            'total_confirmed_portions' => $totalEligiblePortions, // Official eligible portions only
+            'total_eligible_portions' => $totalEligiblePortions,
+            'total_exception_pending_portions' => $totalExceptionPendingPortions,
+            'total_administrative_portions' => $totalAdministrativePortions,
+            'finalized_allocations_count' => $finalizedCount,
+            'total_finalized_portions' => $totalFinalizedPortions,
             'all_confirmed' => (count($pendingSchools) === 0 && count($revisedSchools) === 0 && count($unapprovedExceptions) === 0),
             'confirmed_schools' => $confirmedSchools,
             'revised_schools' => $revisedSchools,

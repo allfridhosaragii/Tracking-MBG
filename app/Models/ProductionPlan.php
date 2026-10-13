@@ -57,9 +57,29 @@ class ProductionPlan extends Model
         return $this->hasMany(ProductionAllocation::class);
     }
 
+    public function foodBatches(): HasMany
+    {
+        return $this->hasMany(FoodBatch::class);
+    }
+
     public function totalAllocatedPortions(): int
     {
         return (int) $this->allocations()->sum('allocated_portions');
+    }
+
+    public function totalActualPortions(): int
+    {
+        return (int) $this->foodBatches()->sum('actual_portions');
+    }
+
+    public function totalPlannedBatchPortions(): int
+    {
+        return (int) $this->foodBatches()->sum('planned_portions');
+    }
+
+    public function totalReleasedPortions(): int
+    {
+        return (int) $this->foodBatches()->where('status', \App\Enums\FoodBatchStatus::RELEASED)->sum('actual_portions');
     }
 
     public function isFinalized(): bool

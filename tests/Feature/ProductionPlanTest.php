@@ -408,6 +408,15 @@ class ProductionPlanTest extends TestCase
             'status' => PortionRequestStatus::CONFIRMED,
         ]);
 
+        DailyPortionRequest::create([
+            'school_id' => $this->schoolC->id,
+            'service_date' => $targetDate,
+            'registered_count' => 410,
+            'requested_portions' => 0,
+            'status' => PortionRequestStatus::CANCELLED,
+            'revision_reason' => 'Libur semester',
+        ]);
+
         // 340 + 276 = 616 > 500!
         $plan = ProductionPlan::create([
             'sppg_id' => $this->sppg->id,
@@ -443,6 +452,24 @@ class ProductionPlanTest extends TestCase
             'status' => PortionRequestStatus::CONFIRMED,
         ]);
 
+        DailyPortionRequest::create([
+            'school_id' => $this->schoolB->id,
+            'service_date' => $targetDate,
+            'registered_count' => 276,
+            'requested_portions' => 0,
+            'status' => PortionRequestStatus::CANCELLED,
+            'revision_reason' => 'Studi lapangan',
+        ]);
+
+        DailyPortionRequest::create([
+            'school_id' => $this->schoolC->id,
+            'service_date' => $targetDate,
+            'registered_count' => 410,
+            'requested_portions' => 0,
+            'status' => PortionRequestStatus::CANCELLED,
+            'revision_reason' => 'Renovasi',
+        ]);
+
         $plan = ProductionPlan::create([
             'sppg_id' => $this->sppg->id,
             'menu_id' => $this->activeMenu->id,
@@ -476,6 +503,24 @@ class ProductionPlanTest extends TestCase
             'registered_count' => 340,
             'requested_portions' => 340,
             'status' => PortionRequestStatus::CONFIRMED,
+        ]);
+
+        DailyPortionRequest::create([
+            'school_id' => $this->schoolB->id,
+            'service_date' => $targetDate,
+            'registered_count' => 276,
+            'requested_portions' => 0,
+            'status' => PortionRequestStatus::CANCELLED,
+            'revision_reason' => 'Kegiatan luar sekolah',
+        ]);
+
+        DailyPortionRequest::create([
+            'school_id' => $this->schoolC->id,
+            'service_date' => $targetDate,
+            'registered_count' => 410,
+            'requested_portions' => 0,
+            'status' => PortionRequestStatus::CANCELLED,
+            'revision_reason' => 'Renovasi dapur',
         ]);
 
         $plan = ProductionPlan::create([

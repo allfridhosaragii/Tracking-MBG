@@ -9,6 +9,8 @@ use App\Http\Controllers\Head\ProductionPlanController;
 use App\Http\Controllers\Head\SchoolManagementController;
 use App\Http\Controllers\Nutrition\DashboardController as NutritionDashboardController;
 use App\Http\Controllers\Nutrition\MenuManagementController;
+use App\Http\Controllers\Nutrition\QualityControlController;
+use App\Http\Controllers\Production\BatchExecutionController;
 use App\Http\Controllers\Production\DashboardController as ProductionDashboardController;
 use App\Http\Controllers\Public\SchoolPublicController;
 use App\Http\Controllers\School\DashboardController as SchoolDashboardController;
@@ -95,6 +97,11 @@ Route::middleware(['auth', 'active'])->group(function () {
             Route::delete('/menus/{menu}/items/{item}', [MenuManagementController::class, 'deleteItem'])->name('menus.items.destroy');
             Route::patch('/menus/{menu}/activate', [MenuManagementController::class, 'activate'])->name('menus.activate');
             Route::post('/menus/{menu}/new-version', [MenuManagementController::class, 'newVersion'])->name('menus.new-version');
+
+            // PBI-06: Quality Control Workspace (Page G03)
+            Route::get('/quality-control', [QualityControlController::class, 'index'])->name('qc.index');
+            Route::get('/quality-control/batches/{batch}', [QualityControlController::class, 'show'])->name('qc.show');
+            Route::post('/quality-control/batches/{batch}/inspect', [QualityControlController::class, 'storeCheck'])->name('qc.inspect');
         });
 
     // 3. Asisten Lapangan Module
@@ -103,6 +110,13 @@ Route::middleware(['auth', 'active'])->group(function () {
         ->middleware('role:ASISTEN_LAPANGAN')
         ->group(function () {
             Route::get('/dashboard', ProductionDashboardController::class)->name('dashboard');
+
+            // PBI-06: Kitchen Execution & Batch Tracking (Page A02)
+            Route::get('/plans/{plan}/execute', [BatchExecutionController::class, 'showExecutionWorkspace'])->name('plans.execute');
+            Route::post('/plans/{plan}/batches', [BatchExecutionController::class, 'storeBatch'])->name('plans.batches.store');
+            Route::post('/batches/{batch}/stage', [BatchExecutionController::class, 'advanceStage'])->name('batches.stage');
+            Route::post('/batches/{batch}/actual', [BatchExecutionController::class, 'recordActual'])->name('batches.actual');
+            Route::post('/batches/{batch}/submit-qc', [BatchExecutionController::class, 'submitToQc'])->name('batches.submit-qc');
         });
 
     // 4. Kurir Module
