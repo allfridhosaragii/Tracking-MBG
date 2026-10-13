@@ -100,7 +100,8 @@ class BatchExecutionController extends Controller
             $batch,
             $request->file('photo'),
             $request->validated()['notes'] ?? null,
-            $request->user()
+            $request->user(),
+            $request->validated()
         );
 
         return redirect()->route('production.plans.execute', $batch->production_plan_id)

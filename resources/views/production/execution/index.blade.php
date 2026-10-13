@@ -248,6 +248,15 @@
                                     </div>
 
                                     <div class="flex flex-wrap items-center gap-2">
+                                        <a href="{{ route('batches.show', $batch) }}" 
+                                           class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-[#DCE5DD] text-xs font-semibold text-[#172923] hover:bg-[#FAFBF9] transition-colors touch-target">
+                                            <svg class="w-3.5 h-3.5 text-[#53645B]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                            </svg>
+                                            <span>Jejak C02</span>
+                                        </a>
+
                                         <!-- Status Badge -->
                                         @php
                                             $statusClasses = match($batch->status->value) {
@@ -413,13 +422,33 @@
                                                     @csrf
                                                     <div>
                                                         <label for="photo_{{ $batch->id }}" class="block text-xs font-semibold text-[#172923] mb-1">
-                                                            Foto Bukti Makanan Siap Kemas (Opsional)
+                                                            Foto Bukti Kesiapan Makanan (FOOD_READY) <span class="text-[#1C6654] font-normal">(Wajib Normal)</span>
                                                         </label>
                                                         <input type="file" 
                                                                id="photo_{{ $batch->id }}" 
                                                                name="photo" 
                                                                accept="image/jpeg,image/png,image/webp" 
                                                                class="w-full text-xs text-[#53645B] file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-white file:text-[#1C6654] file:border file:border-[#DCE5DD] hover:file:bg-[#FAFBF9]">
+                                                        <p class="text-[10px] text-[#53645B] mt-0.5">Format: JPEG, PNG, atau WEBP. Maksimal 5 MB.</p>
+                                                    </div>
+
+                                                    <!-- Prosedur Pengecualian Foto Beralasan -->
+                                                    <div class="p-3 rounded-lg bg-white border border-[#DCE5DD] space-y-2">
+                                                        <label class="inline-flex items-center gap-2 text-xs text-[#172923] cursor-pointer">
+                                                            <input type="checkbox" 
+                                                                   name="has_evidence_exception" 
+                                                                   value="1" 
+                                                                   id="exception_check_{{ $batch->id }}"
+                                                                   class="rounded text-[#885D1C] focus:ring-[#885D1C]">
+                                                            <span class="font-semibold text-[#885D1C]">Gunakan Prosedur Pengecualian Bukti</span>
+                                                            <span class="text-[10px] text-[#53645B]">(Bila kamera rusak/internet kendala)</span>
+                                                        </label>
+                                                        <div>
+                                                            <input type="text" 
+                                                                   name="evidence_exception_reason" 
+                                                                   placeholder="Alasan pengecualian foto resmi (wajib jika tanpa foto, min. 15 karakter)"
+                                                                   class="w-full px-2.5 py-1.5 text-xs rounded-lg bg-[#FAFBF9] border border-[#DCE5DD] text-[#172923] focus:outline-none focus:ring-1 focus:ring-[#885D1C]">
+                                                        </div>
                                                     </div>
 
                                                     <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">

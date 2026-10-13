@@ -377,6 +377,8 @@ class ProductionExecutionTest extends TestCase
 
         $response = $this->actingAs($this->asisten)
             ->post(route('production.batches.submit-qc', $batch), [
+                'has_evidence_exception' => 1,
+                'evidence_exception_reason' => 'Kamera dapur bermasalah saat penyerahan batch.',
                 'notes' => 'Langsung ke QC tanpa hitung',
             ]);
 
@@ -385,6 +387,9 @@ class ProductionExecutionTest extends TestCase
 
     public function test_pengawas_gizi_can_inspect_batch_and_approve_as_safe(): void
     {
+        Storage::fake('local');
+        $photo = UploadedFile::fake()->image('food_ready.jpg');
+
         $this->actingAs($this->asisten)
             ->post(route('production.plans.batches.store', $this->finalizedPlan), [
                 'planned_portions' => 1026,
@@ -398,7 +403,9 @@ class ProductionExecutionTest extends TestCase
             ]);
 
         $this->actingAs($this->asisten)
-            ->post(route('production.batches.submit-qc', $batch));
+            ->post(route('production.batches.submit-qc', $batch), [
+                'photo' => $photo,
+            ]);
 
         $batch->refresh();
         $this->assertEquals(FoodBatchStatus::QC_CHECK, $batch->status);
@@ -409,8 +416,11 @@ class ProductionExecutionTest extends TestCase
                 'appearance_ok' => 1,
                 'aroma_ok' => 1,
                 'texture_ok' => 1,
+                'taste_tested' => 1,
                 'taste_ok' => 1,
                 'temperature_c' => 68.5,
+                'sop_reference' => 'SOP-BGN-MUTU-01',
+                'decision_reason' => 'Makanan matang sempurna, organoleptik segar, suhu di atas 60C.',
                 'conclusion' => QualityCheckConclusion::SAFE->value,
                 'notes' => 'Aroma segar, rasa gurih pas, suhu aman 68.5C.',
             ]);
@@ -428,6 +438,9 @@ class ProductionExecutionTest extends TestCase
 
     public function test_pengawas_gizi_can_put_batch_on_hold_blocking_distribution(): void
     {
+        Storage::fake('local');
+        $photo = UploadedFile::fake()->image('food_ready.jpg');
+
         $this->actingAs($this->asisten)
             ->post(route('production.plans.batches.store', $this->finalizedPlan), [
                 'planned_portions' => 1026,
@@ -441,7 +454,9 @@ class ProductionExecutionTest extends TestCase
             ]);
 
         $this->actingAs($this->asisten)
-            ->post(route('production.batches.submit-qc', $batch));
+            ->post(route('production.batches.submit-qc', $batch), [
+                'photo' => $photo,
+            ]);
 
         // Gizi inspects batch and marks ON_HOLD due to sour aroma
         $response = $this->actingAs($this->gizi)
@@ -449,8 +464,11 @@ class ProductionExecutionTest extends TestCase
                 'appearance_ok' => 1,
                 'aroma_ok' => 0,
                 'texture_ok' => 1,
-                'taste_ok' => 0,
+                'taste_tested' => 0,
+                'taste_skipped_reason' => 'Aroma berbau asam menyengat, tidak aman untuk dicicipi pemeriksa.',
                 'temperature_c' => 45.0,
+                'sop_reference' => 'SOP-BGN-MUTU-01',
+                'decision_reason' => 'Aroma sayur terindikasi asam dan suhu turun ke 45C sehingga diblokir.',
                 'conclusion' => QualityCheckConclusion::HOLD->value,
                 'notes' => 'Aroma sayur terindikasi asam dan suhu turun ke 45C. Dilarang kirim.',
             ]);
@@ -523,14 +541,19 @@ class ProductionExecutionTest extends TestCase
             ]);
 
         $this->actingAs($this->asisten)
-            ->post(route('production.batches.submit-qc', $batch));
+            ->post(route('production.batches.submit-qc', $batch), [
+                'has_evidence_exception' => 1,
+                'evidence_exception_reason' => 'Kamera ponsel staf habis baterai di dapur.',
+            ]);
 
         // Missing texture_ok and conclusion
         $response = $this->actingAs($this->gizi)
             ->post(route('nutrition.qc.inspect', $batch), [
                 'appearance_ok' => 1,
                 'aroma_ok' => 1,
+                'taste_tested' => 1,
                 'taste_ok' => 1,
+                'decision_reason' => 'Pemeriksaan sampel awal.',
             ]);
 
         $response->assertSessionHasErrors(['texture_ok', 'conclusion']);
@@ -538,6 +561,9 @@ class ProductionExecutionTest extends TestCase
 
     public function test_activity_logs_recorded_for_production_execution_lifecycle(): void
     {
+        Storage::fake('local');
+        $photo = UploadedFile::fake()->image('food_ready.jpg');
+
         $this->actingAs($this->asisten)
             ->post(route('production.plans.batches.store', $this->finalizedPlan), [
                 'planned_portions' => 1026,
@@ -556,14 +582,18 @@ class ProductionExecutionTest extends TestCase
             ]);
 
         $this->actingAs($this->asisten)
-            ->post(route('production.batches.submit-qc', $batch));
+            ->post(route('production.batches.submit-qc', $batch), [
+                'photo' => $photo,
+            ]);
 
         $this->actingAs($this->gizi)
             ->post(route('nutrition.qc.inspect', $batch), [
                 'appearance_ok' => 1,
                 'aroma_ok' => 1,
                 'texture_ok' => 1,
+                'taste_tested' => 1,
                 'taste_ok' => 1,
+                'decision_reason' => 'Seluruh parameter organoleptik memenuhi standar mutu prima.',
                 'conclusion' => QualityCheckConclusion::SAFE->value,
             ]);
 

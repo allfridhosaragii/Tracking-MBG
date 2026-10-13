@@ -18,18 +18,24 @@ class FoodBatch extends Model
         'portion_category',
         'planned_portions',
         'actual_portions',
+        'accepted_portions',
         'status',
         'released_by',
         'released_at',
         'created_by',
         'notes',
+        'has_evidence_exception',
+        'evidence_exception_reason',
+        'evidence_exception_approved_by',
     ];
 
     protected $casts = [
         'planned_portions' => 'integer',
         'actual_portions' => 'integer',
+        'accepted_portions' => 'integer',
         'status' => FoodBatchStatus::class,
         'released_at' => 'datetime',
+        'has_evidence_exception' => 'boolean',
     ];
 
     public function productionPlan(): BelongsTo
@@ -57,6 +63,11 @@ class FoodBatch extends Model
         return $this->morphMany(EvidencePhoto::class, 'evidenceable');
     }
 
+    public function deliveryItems(): HasMany
+    {
+        return $this->hasMany(DeliveryItem::class);
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
@@ -65,6 +76,11 @@ class FoodBatch extends Model
     public function releaser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'released_by');
+    }
+
+    public function exceptionApprover(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'evidence_exception_approved_by');
     }
 
     public function scopeForSppg(Builder $query, int $sppgId): Builder
@@ -121,5 +137,34 @@ class FoodBatch extends Model
     public function hasDiscrepancy(): bool
     {
         return $this->actual_portions !== null && (int) $this->actual_portions !== (int) $this->planned_portions;
+    }
+
+    public function hasFoodReadyPhoto(): bool
+    {
+        return $this->evidencePhotos()
+            ->where('evidence_type', 'FOOD_READY')
+            ->exists();
+    }
+
+    public function foodReadyPhoto(): ?EvidencePhoto
+    {
+        return $this->evidencePhotos()
+            ->where('evidence_type', 'FOOD_READY')
+            ->latest('id')
+            ->first();
+    }
+
+    public function hasValidEvidence(): bool
+    {
+        return $this->hasFoodReadyPhoto() || $this->has_evidence_exception;
+    }
+
+    public function acceptedDiscrepancy(): ?int
+    {
+        if ($this->accepted_portions === null || $this->actual_portions === null) {
+            return null;
+        }
+
+        return (int) $this->accepted_portions - (int) $this->actual_portions;
     }
 }

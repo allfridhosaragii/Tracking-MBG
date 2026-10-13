@@ -29,6 +29,14 @@
             </div>
 
             <div class="flex flex-wrap items-center gap-2">
+                <a href="{{ route('batches.show', $batch) }}" 
+                   class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-[#DCE5DD] text-xs font-semibold text-[#172923] hover:bg-[#FAFBF9] transition-colors touch-target">
+                    <svg class="w-4 h-4 text-[#53645B]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                    </svg>
+                    <span>Lihat Jejak Batch (C02)</span>
+                </a>
                 <a href="{{ route('nutrition.qc.index') }}" 
                    class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-[#DCE5DD] text-xs font-semibold text-[#172923] hover:bg-[#FAFBF9] transition-colors touch-target">
                     <svg class="w-4 h-4 text-[#53645B]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -111,53 +119,74 @@
                 </div>
             </div>
 
-            <!-- Bukti Foto Makanan Siap Kemas -->
-            <div class="bg-white rounded-2xl border border-[#DCE5DD] p-5 subtle-shadow">
-                <div class="pb-3 mb-3 border-b border-[#EDF2ED]">
-                    <h2 class="text-sm font-bold text-[#172923]">Bukti Foto Makanan</h2>
-                    <p class="text-xs text-[#53645B] mt-0.5">Dokumentasi fisik dari Asisten Lapangan</p>
+            <!-- Bukti Foto Makanan Siap Kemas (FOOD_READY) -->
+            <div class="bg-white rounded-2xl border border-[#DCE5DD] p-5 subtle-shadow space-y-3">
+                <div class="pb-3 border-b border-[#EDF2ED]">
+                    <h2 class="text-sm font-bold text-[#172923]">Bukti Foto FOOD_READY</h2>
+                    <p class="text-xs text-[#53645B] mt-0.5">Dokumentasi fisik sebelum serah terima QC</p>
                 </div>
 
-                @if ($photos->isEmpty())
-                    <div class="p-4 rounded-xl bg-[#FAFBF9] border border-[#DCE5DD] text-xs text-[#708177] text-center italic">
-                        Tidak ada berkas foto yang dilampirkan oleh kru dapur.
-                    </div>
-                @else
+                @if ($photos->isNotEmpty())
                     <div class="space-y-3">
                         @foreach ($photos as $photo)
                             <div class="rounded-xl border border-[#DCE5DD] overflow-hidden bg-[#FAFBF9]">
-                                <img src="{{ Storage::url($photo->file_path) }}" 
-                                     alt="Bukti Makanan Batch {{ $batch->batch_code }}" 
-                                     class="w-full h-48 object-cover">
+                                <a href="{{ route('evidence-photos.show', $photo) }}" target="_blank" class="block group relative">
+                                    <img src="{{ route('evidence-photos.show', $photo) }}" 
+                                         alt="Bukti Makanan Batch {{ $batch->batch_code }}" 
+                                         class="w-full h-44 object-cover group-hover:opacity-90 transition-opacity">
+                                    <span class="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded backdrop-blur-xs">
+                                        Perbesar Bukti
+                                    </span>
+                                </a>
                                 <div class="p-2.5 text-xs text-[#53645B] space-y-0.5">
                                     <p class="font-semibold text-[#172923]">{{ $photo->notes ?? 'Dokumentasi Makanan Siap Kemas' }}</p>
-                                    <p class="text-[11px] font-mono">Diupload oleh: {{ $photo->uploader->name }} pada {{ $photo->created_at->format('H:i') }} WIB</p>
+                                    <p class="text-[11px] font-mono">Diupload oleh: {{ $photo->uploader->name }} ({{ number_format($photo->file_size / 1024, 1) }} KB)</p>
                                 </div>
                             </div>
                         @endforeach
                     </div>
+                @elseif ($batch->has_evidence_exception)
+                    <div class="p-3.5 rounded-xl bg-[#FAF4EB] border border-[#E8D7BE] text-xs text-[#885D1C] space-y-2">
+                        <div class="flex items-center gap-1.5 font-bold">
+                            <svg class="w-4 h-4 text-[#885D1C]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                            </svg>
+                            <span>Pengecualian Bukti Operasional Resmi</span>
+                        </div>
+                        <p class="text-[11px] leading-relaxed">
+                            Alasan: <strong>"{{ $batch->evidence_exception_reason }}"</strong>
+                        </p>
+                        <p class="text-[10px] font-mono text-[#53645B]">
+                            Disetujui oleh: {{ $batch->exceptionApprover?->name ?? 'Petugas Lapangan' }}
+                        </p>
+                    </div>
+                @else
+                    <div class="p-4 rounded-xl bg-[#FDF2F2] border border-[#F5C2C2] text-xs text-[#9B3232] text-center">
+                        <p class="font-bold">Bukti Foto Belum Dilampirkan</p>
+                        <p class="text-[11px] mt-0.5">Batch tidak memiliki foto FOOD_READY atau alasan pengecualian operasional.</p>
+                    </div>
                 @endif
             </div>
 
-            <!-- Riwayat Catatan QC Sebelumnya (Jika ada) -->
+            <!-- Riwayat Catatan QC Sebelumnya (Append-Only) -->
             @if ($qualityChecks->isNotEmpty())
-                <div class="bg-white rounded-2xl border border-[#DCE5DD] p-5 subtle-shadow">
-                    <div class="pb-3 mb-3 border-b border-[#EDF2ED]">
-                        <h2 class="text-sm font-bold text-[#172923]">Riwayat Pemeriksaan QC</h2>
+                <div class="bg-white rounded-2xl border border-[#DCE5DD] p-5 subtle-shadow space-y-3">
+                    <div class="pb-2 border-b border-[#EDF2ED]">
+                        <h2 class="text-sm font-bold text-[#172923]">Riwayat Keputusan QC</h2>
                     </div>
 
                     <div class="space-y-2 text-xs">
                         @foreach ($qualityChecks as $qc)
-                            <div class="p-3 rounded-xl {{ $qc->isSafe() ? 'bg-[#EDF7F2] border border-[#BCE2D0]' : 'bg-[#FDF2F2] border border-[#F5C2C2]' }}">
-                                <div class="flex items-center justify-between font-bold mb-1">
+                            <div class="p-3 rounded-xl {{ $qc->isSafe() ? 'bg-[#EDF7F2] border border-[#BCE2D0]' : 'bg-[#FDF2F2] border border-[#F5C2C2]' }} space-y-1">
+                                <div class="flex items-center justify-between font-bold">
                                     <span class="{{ $qc->isSafe() ? 'text-[#1B573E]' : 'text-[#9B3232]' }}">
                                         {{ $qc->conclusion->label() }}
                                     </span>
-                                    <span class="font-mono text-[10px] text-[#53645B]">{{ $qc->checked_at->format('H:i') }} WIB</span>
+                                    <span class="font-mono text-[10px] text-[#53645B]">{{ $qc->checked_at->format('d/m H:i') }} WIB</span>
                                 </div>
                                 <p class="text-[11px] text-[#53645B]">Pemeriksa: {{ $qc->inspector->name }}</p>
-                                @if ($qc->notes)
-                                    <p class="text-[11px] text-[#172923] mt-1 italic">{{ $qc->notes }}</p>
+                                @if ($qc->decision_reason)
+                                    <p class="text-[11px] text-[#172923] italic">"{{ $qc->decision_reason }}"</p>
                                 @endif
                             </div>
                         @endforeach
@@ -197,7 +226,7 @@
                         <div>
                             <p class="font-bold">Batch Telah Diotorisasi &amp; Dirilis</p>
                             <p class="text-[11px] mt-0.5">
-                                Batch ini telah dinyatakan <strong>LOLOS QC (SAFE)</strong> oleh {{ $batch->releaser?->name }} pada {{ $batch->released_at?->format('d M Y, H:i') }} WIB dan siap untuk distribusi. Keputusan terminal tidak dapat diubah kembali.
+                                Batch ini telah dinyatakan <strong>LOLOS QC (SAFE)</strong> oleh {{ $batch->releaser?->name }} pada {{ $batch->released_at?->format('d M Y, H:i') }} WIB dengan {{ number_format($batch->accepted_portions ?? $batch->actual_portions) }} porsi lolos. Keputusan terminal tidak dapat diubah kembali.
                             </p>
                         </div>
                     </div>
@@ -206,7 +235,7 @@
                     <form method="POST" action="{{ route('nutrition.qc.inspect', $batch) }}" class="space-y-6">
                         @csrf
 
-                        <!-- 1. Checklist Parameter Organoleptik -->
+                        <!-- 1. Checklist Parameter Organoleptik Sensorik -->
                         <div class="space-y-4">
                             <h3 class="text-xs font-bold uppercase tracking-wider text-[#172923] pb-2 border-b border-[#EDF2ED]">
                                 1. Pengujian Parameter Organoleptik (Sensorik)
@@ -275,40 +304,71 @@
                                 <p class="text-[11px] text-[#9B3232]">{{ $message }}</p>
                             @enderror
 
-                            <!-- Parameter D: Rasa -->
-                            <div class="p-3.5 rounded-xl bg-[#FAFBF9] border border-[#DCE5DD] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                                <div>
-                                    <span class="text-xs font-bold text-[#172923] block">D. Rasa &amp; Keseimbangan Bumbu</span>
-                                    <p class="text-[11px] text-[#53645B] mt-0.5">Uji sampel cicip higienis: rasa seimbang, tidak terlalu asin/manis, dan tidak ada sensasi getir/pahit.</p>
+                            <!-- Parameter D: Uji Rasa (Dengan Perlindungan Keselamatan Petugas) -->
+                            <div class="p-3.5 rounded-xl bg-[#FAFBF9] border border-[#DCE5DD] space-y-3">
+                                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                    <div>
+                                        <span class="text-xs font-bold text-[#172923] block">D. Uji Cicip Rasa Makanan</span>
+                                        <p class="text-[11px] text-[#53645B] mt-0.5">Petugas tidak boleh dipaksa mencicipi jika makanan sudah dicurigai berbau busuk, berlendir, atau terkontaminasi.</p>
+                                    </div>
+                                    <div class="flex items-center gap-4 shrink-0">
+                                        <label class="inline-flex items-center gap-1.5 text-xs font-medium text-[#172923] cursor-pointer">
+                                            <input type="radio" name="taste_tested" value="1" {{ old('taste_tested', '1') == '1' ? 'checked' : '' }} class="text-[#1C6654] focus:ring-[#1C6654]">
+                                            <span>Dilakukan Cicip</span>
+                                        </label>
+                                        <label class="inline-flex items-center gap-1.5 text-xs font-medium text-[#885D1C] cursor-pointer">
+                                            <input type="radio" name="taste_tested" value="0" {{ old('taste_tested') == '0' ? 'checked' : '' }} class="text-[#885D1C] focus:ring-[#885D1C]">
+                                            <span>Dilewati (Risiko Kontaminasi)</span>
+                                        </label>
+                                    </div>
                                 </div>
-                                <div class="flex items-center gap-4 shrink-0">
-                                    <label class="inline-flex items-center gap-1.5 text-xs font-medium text-[#172923] cursor-pointer">
-                                        <input type="radio" name="taste_ok" value="1" {{ old('taste_ok', '1') == '1' ? 'checked' : '' }} class="text-[#1C6654] focus:ring-[#1C6654]">
-                                        <span>Sesuai Resep</span>
-                                    </label>
-                                    <label class="inline-flex items-center gap-1.5 text-xs font-medium text-[#9B3232] cursor-pointer">
-                                        <input type="radio" name="taste_ok" value="0" {{ old('taste_ok') == '0' ? 'checked' : '' }} class="text-[#9B3232] focus:ring-[#9B3232]">
-                                        <span>Menyimpang (Tidak Layak)</span>
-                                    </label>
+
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-[#EDF2ED]">
+                                    <!-- Jika dicicipi -->
+                                    <div>
+                                        <span class="text-[11px] font-semibold text-[#172923] block mb-1">Hasil Uji Rasa (Bila Dicicipi):</span>
+                                        <div class="flex items-center gap-3">
+                                            <label class="inline-flex items-center gap-1.5 text-xs text-[#172923] cursor-pointer">
+                                                <input type="radio" name="taste_ok" value="1" {{ old('taste_ok', '1') == '1' ? 'checked' : '' }} class="text-[#1C6654] focus:ring-[#1C6654]">
+                                                <span>Sesuai Resep</span>
+                                            </label>
+                                            <label class="inline-flex items-center gap-1.5 text-xs text-[#9B3232] cursor-pointer">
+                                                <input type="radio" name="taste_ok" value="0" {{ old('taste_ok') == '0' ? 'checked' : '' }} class="text-[#9B3232] focus:ring-[#9B3232]">
+                                                <span>Menyimpang (Tidak Layak)</span>
+                                            </label>
+                                        </div>
+                                        @error('taste_ok')
+                                            <p class="text-[11px] text-[#9B3232] mt-1">{{ $message }}</p>
+                                        @enderror
+                                    </div>
+
+                                    <!-- Jika dilewati -->
+                                    <div>
+                                        <label for="taste_skipped_reason" class="text-[11px] font-semibold text-[#172923] block mb-1">Alasan Tidak Mencicipi (Jika Dilewati):</label>
+                                        <input type="text" 
+                                               id="taste_skipped_reason" 
+                                               name="taste_skipped_reason" 
+                                               value="{{ old('taste_skipped_reason') }}" 
+                                               placeholder="Contoh: Aroma tercium asam menyengat, membahayakan pemeriksa"
+                                               class="w-full px-2.5 py-1.5 text-xs rounded-xl bg-white border border-[#DCE5DD] text-[#172923] focus:outline-none focus:ring-2 focus:ring-[#885D1C]">
+                                        @error('taste_skipped_reason')
+                                            <p class="text-[11px] text-[#9B3232] mt-1">{{ $message }}</p>
+                                        @enderror
+                                    </div>
                                 </div>
                             </div>
-                            @error('taste_ok')
-                                <p class="text-[11px] text-[#9B3232]">{{ $message }}</p>
-                            @enderror
                         </div>
 
-                        <!-- 2. Parameter Fisik: Suhu Masak / Pengemasan -->
-                        <div class="space-y-3">
+                        <!-- 2. Parameter Fisik: Suhu & Rekonsiliasi Porsi -->
+                        <div class="space-y-4">
                             <h3 class="text-xs font-bold uppercase tracking-wider text-[#172923] pb-2 border-b border-[#EDF2ED]">
-                                2. Pengukuran Suhu Masak &amp; Pengemasan (°C)
+                                2. Suhu Masak, SOP &amp; Rekonsiliasi Porsi Lolos
                             </h3>
 
-                            <div class="p-3.5 rounded-xl bg-[#FAFBF9] border border-[#DCE5DD] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                                <div>
-                                    <label for="temperature_c" class="text-xs font-bold text-[#172923] block">Suhu Inti Makanan Saat Kemas</label>
-                                    <p class="text-[11px] text-[#53645B] mt-0.5">Standar keamanan pangan: Suhu makanan panas > 60°C untuk mencegah proliferasi bakteri.</p>
-                                </div>
-                                <div class="sm:w-48 shrink-0">
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <!-- Suhu Inti (°C) -->
+                                <div class="p-3.5 rounded-xl bg-[#FAFBF9] border border-[#DCE5DD] space-y-1">
+                                    <label for="temperature_c" class="text-xs font-bold text-[#172923] block">Suhu Inti Makanan (°C)</label>
                                     <div class="relative rounded-xl">
                                         <input type="number" 
                                                id="temperature_c" 
@@ -317,21 +377,48 @@
                                                step="0.1" 
                                                min="0" 
                                                max="150" 
-                                               placeholder="Contoh: 65.5" 
                                                class="w-full px-3 py-2 text-xs rounded-xl bg-white border border-[#DCE5DD] text-[#172923] focus:outline-none focus:ring-2 focus:ring-[#285F80]">
                                         <span class="absolute right-3 top-2 text-xs font-bold text-[#53645B]">°C</span>
                                     </div>
+                                    <p class="text-[10px] text-[#53645B]">Hot-holding min. 60°C (Permenkes 1096/2011)</p>
+                                    @error('temperature_c')
+                                        <p class="text-[11px] text-[#9B3232]">{{ $message }}</p>
+                                    @enderror
+                                </div>
+
+                                <!-- Porsi Lolos QC (Reconciliation) -->
+                                <div class="p-3.5 rounded-xl bg-[#FAFBF9] border border-[#DCE5DD] space-y-1">
+                                    <label for="accepted_portions" class="text-xs font-bold text-[#172923] block">Porsi Disetujui Lolos (Accepted)</label>
+                                    <input type="number" 
+                                           id="accepted_portions" 
+                                           name="accepted_portions" 
+                                           value="{{ old('accepted_portions', $batch->actual_portions ?? $batch->planned_portions) }}" 
+                                           min="0" 
+                                           max="{{ $batch->actual_portions ?? $batch->planned_portions }}" 
+                                           class="w-full px-3 py-2 text-xs rounded-xl bg-white border border-[#DCE5DD] text-[#172923] focus:outline-none focus:ring-2 focus:ring-[#1C6654]">
+                                    <p class="text-[10px] text-[#53645B]">Maks. {{ $batch->actual_portions ?? $batch->planned_portions }} porsi aktual</p>
+                                    @error('accepted_portions')
+                                        <p class="text-[11px] text-[#9B3232]">{{ $message }}</p>
+                                    @enderror
+                                </div>
+
+                                <!-- Referensi SOP -->
+                                <div class="p-3.5 rounded-xl bg-[#FAFBF9] border border-[#DCE5DD] space-y-1">
+                                    <label for="sop_reference" class="text-xs font-bold text-[#172923] block">Referensi SOP Pengawasan</label>
+                                    <input type="text" 
+                                           id="sop_reference" 
+                                           name="sop_reference" 
+                                           value="{{ old('sop_reference', 'SOP-BGN-MUTU-01') }}" 
+                                           class="w-full px-3 py-2 text-xs rounded-xl bg-white border border-[#DCE5DD] text-[#172923] focus:outline-none focus:ring-2 focus:ring-[#285F80]">
+                                    <p class="text-[10px] text-[#53645B]">Standar Higiene &amp; Mutu BGN</p>
                                 </div>
                             </div>
-                            @error('temperature_c')
-                                <p class="text-[11px] text-[#9B3232]">{{ $message }}</p>
-                            @enderror
                         </div>
 
                         <!-- 3. Kesimpulan & Otorisasi Keamanan Pangan -->
                         <div class="space-y-3">
                             <h3 class="text-xs font-bold uppercase tracking-wider text-[#172923] pb-2 border-b border-[#EDF2ED]">
-                                3. Keputusan Mutu &amp; Tindakan Distribusi <span class="text-[#9B3232]">*</span>
+                                3. Keputusan Mutu &amp; Tindakan Operasional <span class="text-[#9B3232]">*</span>
                             </h3>
 
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -345,7 +432,7 @@
                                     <div>
                                         <span class="text-xs font-bold text-[#1B573E] block">LOLOS QC (SAFE)</span>
                                         <p class="text-[11px] text-[#1B573E] mt-0.5 leading-relaxed">
-                                            Makanan memenuhi seluruh kriteria mutu dan aman dikonsumsi. Batch diizinkan untuk dimuat ke armada kurir.
+                                            Batch disetujui sesuai prosedur operasional yang berlaku dan memenuhi seluruh kriteria kelayakan konsumsi.
                                         </p>
                                     </div>
                                 </label>
@@ -360,7 +447,7 @@
                                     <div>
                                         <span class="text-xs font-bold text-[#9B3232] block">DITAHAN (ON HOLD)</span>
                                         <p class="text-[11px] text-[#9B3232] mt-0.5 leading-relaxed">
-                                            Ditemukan penyimpangan organoleptik atau indikasi kontaminasi. Batch diblokir dari distribusi hingga perbaikan.
+                                            Ditemukan penyimpangan organoleptik atau indikasi risiko keamanan pangan. Batch diblokir dari distribusi.
                                         </p>
                                     </div>
                                 </label>
@@ -370,16 +457,32 @@
                             @enderror
                         </div>
 
-                        <!-- 4. Catatan Pemeriksaan & Tindakan Korektif -->
+                        <!-- 4. Pertimbangan Keputusan Pengawas Gizi (Wajib Audit) -->
+                        <div class="space-y-1">
+                            <label for="decision_reason" class="block text-xs font-semibold text-[#172923]">
+                                Pertimbangan &amp; Rationale Keputusan Pengawas Gizi <span class="text-[#9B3232]">*</span>
+                            </label>
+                            <textarea id="decision_reason" 
+                                      name="decision_reason" 
+                                      rows="3" 
+                                      placeholder="Jelaskan dasar pertimbangan profesional Anda atas sampel batch ini (minimal 10 karakter)..." 
+                                      class="w-full px-3 py-2 text-xs rounded-xl bg-white border border-[#DCE5DD] text-[#172923] focus:outline-none focus:ring-2 focus:ring-[#285F80]">{{ old('decision_reason') }}</textarea>
+                            @error('decision_reason')
+                                <p class="text-[11px] text-[#9B3232] mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <!-- Catatan Tambahan -->
                         <div>
                             <label for="notes" class="block text-xs font-semibold text-[#172923] mb-1">
-                                Catatan Pemeriksaan / Temuan Khusus (Wajib diisi jika Ditahan)
+                                Catatan Pemeriksaan Tambahan / Tindakan Korektif (Opsional)
                             </label>
-                            <textarea id="notes" 
-                                      name="notes" 
-                                      rows="3" 
-                                      placeholder="Jelaskan kondisi fisik sampel yang diuji atau instruksi tindakan perbaikan bagi kru dapur..." 
-                                      class="w-full px-3 py-2 text-xs rounded-xl bg-white border border-[#DCE5DD] text-[#172923] focus:outline-none focus:ring-2 focus:ring-[#285F80]">{{ old('notes') }}</textarea>
+                            <input type="text" 
+                                   id="notes" 
+                                   name="notes" 
+                                   value="{{ old('notes') }}"
+                                   placeholder="Instruksi tambahan bagi kru dapur atau sekolah penerima..." 
+                                   class="w-full px-3 py-2 text-xs rounded-xl bg-white border border-[#DCE5DD] text-[#172923] focus:outline-none focus:ring-2 focus:ring-[#285F80]">
                             @error('notes')
                                 <p class="text-[11px] text-[#9B3232] mt-1">{{ $message }}</p>
                             @enderror

@@ -6,6 +6,7 @@ use App\Enums\FoodBatchStatus;
 use App\Enums\ProductionPlanStatus;
 use App\Enums\ProductionStage;
 use App\Models\ActivityLog;
+use App\Models\DeliveryItem;
 use App\Models\EvidencePhoto;
 use App\Models\FoodBatch;
 use App\Models\ProductionPlan;
@@ -22,6 +23,13 @@ class FoodBatchService
 {
     /**
      * Create a new food batch from a FINALIZED or IN_PRODUCTION plan.
+     * Enforces:
+     * 1. Plan status must be FINALIZED or IN_PRODUCTION.
+     * 2. Tenant isolation (actor SPPG === plan SPPG).
+     * 3. Target portions must be positive.
+     * 4. CRITICAL GATE C: Cumulative planned portions across all batches for this plan
+     *    cannot exceed the plan's total allocated portions.
+     * 5. PBI-07: Automatically establishes DeliveryItem links to school allocations.
      */
     public function createBatch(ProductionPlan $plan, array $data, User $actor): FoodBatch
     {
@@ -49,7 +57,20 @@ class FoodBatchService
                 ]);
             }
 
-            // Generate unique batch code: BATCH-YYYYMMDD-SPPG-RANDOM
+            // CRITICAL GATE C: Enforce batch target accumulation against plan allocation
+            $currentPlannedSum = (int) FoodBatch::where('production_plan_id', $lockedPlan->id)->sum('planned_portions');
+            $totalAllocated = $lockedPlan->totalAllocatedPortions();
+
+            if ($currentPlannedSum + $plannedPortions > $totalAllocated) {
+                $availableRemaining = max(0, $totalAllocated - $currentPlannedSum);
+                throw ValidationException::withMessages([
+                    'planned_portions' => [
+                        "Akumulasi target porsi batch (" . ($currentPlannedSum + $plannedPortions) . " porsi) melebihi total alokasi rencana produksi ({$totalAllocated} porsi). Sisa porsi yang belum direncanakan ke batch adalah {$availableRemaining} porsi."
+                    ],
+                ]);
+            }
+
+            // Generate unique batch code: BATCH-YYYYMMDD-SPPG-XX
             $datePrefix = $lockedPlan->service_date->format('Ymd');
             $sppgCode = Str::slug($lockedPlan->sppg->code ?? 'SPPG');
             $sequence = FoodBatch::where('production_plan_id', $lockedPlan->id)->count() + 1;
@@ -80,6 +101,9 @@ class FoodBatchService
                 'notes' => 'Mulai persiapan bahan masakan.',
             ]);
 
+            // PBI-07: Establish bidirectional DeliveryItem links to school allocations
+            $this->linkBatchToAllocations($batch, $lockedPlan, $plannedPortions);
+
             // Transition plan status from FINALIZED -> IN_PRODUCTION
             if ($lockedPlan->status === ProductionPlanStatus::FINALIZED) {
                 $lockedPlan->update(['status' => ProductionPlanStatus::IN_PRODUCTION]);
@@ -106,6 +130,57 @@ class FoodBatchService
 
             return $batch;
         });
+    }
+
+    /**
+     * Link portions from a batch to the production plan's school allocations.
+     * Ensures bidirectional traceability: Batch -> DeliveryItem -> School.
+     */
+    protected function linkBatchToAllocations(FoodBatch $batch, ProductionPlan $plan, int $plannedPortions): void
+    {
+        $remainingToDistribute = $plannedPortions;
+        $allocations = $plan->allocations()->orderBy('id', 'asc')->get();
+
+        foreach ($allocations as $allocation) {
+            if ($remainingToDistribute <= 0) {
+                break;
+            }
+
+            $alreadyLinked = (int) DeliveryItem::where('production_allocation_id', $allocation->id)->sum('planned_portions');
+            $neededForThisSchool = max(0, (int) $allocation->allocated_portions - $alreadyLinked);
+
+            if ($neededForThisSchool > 0) {
+                $amount = min($remainingToDistribute, $neededForThisSchool);
+                DeliveryItem::create([
+                    'food_batch_id' => $batch->id,
+                    'production_allocation_id' => $allocation->id,
+                    'trip_stop_id' => null, // Pending dispatch in PBI-08
+                    'planned_portions' => $amount,
+                    'status' => 'PENDING_DISPATCH',
+                ]);
+                $remainingToDistribute -= $amount;
+            }
+        }
+
+        // Fallback: If any portion remains (e.g. all quotas filled or rounding), link to first allocation
+        if ($remainingToDistribute > 0 && $allocations->isNotEmpty()) {
+            $firstAlloc = $allocations->first();
+            $existing = DeliveryItem::where('food_batch_id', $batch->id)
+                ->where('production_allocation_id', $firstAlloc->id)
+                ->first();
+
+            if ($existing) {
+                $existing->increment('planned_portions', $remainingToDistribute);
+            } else {
+                DeliveryItem::create([
+                    'food_batch_id' => $batch->id,
+                    'production_allocation_id' => $firstAlloc->id,
+                    'trip_stop_id' => null,
+                    'planned_portions' => $remainingToDistribute,
+                    'status' => 'PENDING_DISPATCH',
+                ]);
+            }
+        }
     }
 
     /**
@@ -176,13 +251,15 @@ class FoodBatchService
                 ]
             );
 
-            return $lockedBatch->fresh(['stageLogs', 'qualityChecks', 'evidencePhotos']);
+            return $lockedBatch->fresh(['stageLogs', 'qualityChecks', 'evidencePhotos', 'deliveryItems']);
         });
     }
 
     /**
      * Record actual produced portions.
-     * Enforces: actual portions must be non-negative.
+     * Enforces:
+     * 1. Cannot modify if batch is in QC_CHECK, ON_HOLD, or RELEASED.
+     * 2. Actual portions must be non-negative.
      */
     public function recordActualPortions(FoodBatch $batch, int $actualPortions, ?string $notes, User $actor): FoodBatch
     {
@@ -191,9 +268,9 @@ class FoodBatchService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            if ($lockedBatch->isReleased()) {
+            if (in_array($lockedBatch->status, [FoodBatchStatus::QC_CHECK, FoodBatchStatus::ON_HOLD, FoodBatchStatus::RELEASED], true)) {
                 throw ValidationException::withMessages([
-                    'status' => ['Realisasi porsi tidak dapat diubah karena batch telah Lolos QC & Dirilis.'],
+                    'status' => ['Realisasi porsi tidak dapat diubah karena batch telah diserahkan ke QC atau berstatus ' . $lockedBatch->status->label() . '.'],
                 ]);
             }
 
@@ -229,14 +306,15 @@ class FoodBatchService
     /**
      * Submit batch to Quality Control (Pengawas Gizi).
      * Requires:
-     * 1. Batch is in PACKED stage or completing portioning/packing.
-     * 2. Actual portions is recorded.
-     * 3. Optional/required photo evidence is stored cleanly.
-     * 4. Transitions status to QC_CHECK.
+     * 1. Actual portions is recorded.
+     * 2. Batch is not already RELEASED.
+     * 3. CRITICAL GATE B: FOOD_READY photo is normally REQUIRED, or an approved reasoned exception must be present.
+     * 4. Private storage with UUID filename, validated MIME and size.
+     * 5. Transitions status to QC_CHECK.
      */
-    public function submitToQc(FoodBatch $batch, ?UploadedFile $photo, ?string $notes, User $actor): FoodBatch
+    public function submitToQc(FoodBatch $batch, ?UploadedFile $photo, ?string $notes, User $actor, array $exceptionData = []): FoodBatch
     {
-        return DB::transaction(function () use ($batch, $photo, $notes, $actor) {
+        return DB::transaction(function () use ($batch, $photo, $notes, $actor, $exceptionData) {
             $lockedBatch = FoodBatch::where('id', $batch->id)
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -253,6 +331,23 @@ class FoodBatchService
                 ]);
             }
 
+            // CRITICAL GATE B: Evidence Photo verification & Reasoned Exception
+            $hasPhoto = $photo && $photo->isValid();
+            $hasException = ! empty($exceptionData['has_evidence_exception']) && (bool) $exceptionData['has_evidence_exception'];
+            $exceptionReason = trim((string) ($exceptionData['evidence_exception_reason'] ?? ''));
+
+            if (! $hasPhoto && ! $hasException) {
+                throw ValidationException::withMessages([
+                    'photo' => ['Foto bukti kesiapan makanan (FOOD_READY) wajib diunggah pada akhir pengemasan, atau berikan alasan pengecualian operasional resmi minimal 15 karakter jika terdapat kendala kamera.'],
+                ]);
+            }
+
+            if (! $hasPhoto && $hasException && strlen($exceptionReason) < 15) {
+                throw ValidationException::withMessages([
+                    'evidence_exception_reason' => ['Alasan pengecualian bukti foto wajib diisi minimal 15 karakter untuk kebutuhan audit operasional.'],
+                ]);
+            }
+
             // Close current stage log if packing
             $currentLog = $lockedBatch->currentStageLog();
             if ($currentLog && ! $currentLog->isCompleted()) {
@@ -260,9 +355,27 @@ class FoodBatchService
             }
 
             // Handle photo upload if present
-            if ($photo && $photo->isValid()) {
-                $fileName = sprintf('evidence_%s_%s.%s', $lockedBatch->batch_code, time(), $photo->getClientOriginalExtension());
-                $path = $photo->storeAs('evidence_photos/food_ready', $fileName, 'local');
+            if ($hasPhoto) {
+                // Validate mime type strictly against supported formats
+                $allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
+                $clientMime = $photo->getMimeType() ?: $photo->getClientMimeType();
+
+                if (! in_array($clientMime, $allowedMimes, true)) {
+                    throw ValidationException::withMessages([
+                        'photo' => ['Format berkas foto tidak didukung. Gunakan berkas gambar asli dengan format JPEG, PNG, atau WEBP.'],
+                    ]);
+                }
+
+                if ($photo->getSize() > 5 * 1024 * 1024) {
+                    throw ValidationException::withMessages([
+                        'photo' => ['Ukuran berkas foto melebihi batas maksimal 5 MB.'],
+                    ]);
+                }
+
+                // Generate sanitized UUID filename
+                $extension = strtolower($photo->getClientOriginalExtension()) ?: 'jpg';
+                $safeFileName = sprintf('%s.%s', Str::uuid()->toString(), $extension);
+                $path = $photo->storeAs('evidence_photos/food_ready', $safeFileName, 'local');
 
                 EvidencePhoto::create([
                     'evidenceable_type' => FoodBatch::class,
@@ -270,10 +383,17 @@ class FoodBatchService
                     'evidence_type' => 'FOOD_READY',
                     'uploaded_by' => $actor->id,
                     'file_path' => $path,
-                    'mime_type' => $photo->getClientMimeType() ?: 'image/jpeg',
+                    'mime_type' => $clientMime,
                     'file_size' => $photo->getSize(),
                     'captured_at' => now(),
                     'notes' => $notes ?? 'Foto kesiapan makanan sebelum QC dispatch.',
+                ]);
+            } elseif ($hasException) {
+                // Record documented exception
+                $lockedBatch->update([
+                    'has_evidence_exception' => true,
+                    'evidence_exception_reason' => $exceptionReason,
+                    'evidence_exception_approved_by' => $actor->id,
                 ]);
             }
 
@@ -288,7 +408,7 @@ class FoodBatchService
                 'stage' => ProductionStage::READY_FOR_QC,
                 'started_at' => now(),
                 'updated_by' => $actor->id,
-                'notes' => $notes ?? 'Batch diserahkan kepada Pengawas Gizi untuk pemeriksaan organoleptik.',
+                'notes' => $notes ?? ($hasException ? 'Batch diserahkan ke QC dengan pengecualian bukti foto.' : 'Batch diserahkan kepada Pengawas Gizi untuk pemeriksaan organoleptik.'),
             ]);
 
             ActivityLog::record(
@@ -298,10 +418,12 @@ class FoodBatchService
                 newValues: [
                     'status' => FoodBatchStatus::QC_CHECK->value,
                     'actual_portions' => $lockedBatch->actual_portions,
+                    'has_evidence' => $hasPhoto,
+                    'has_exception' => $hasException,
                 ]
             );
 
-            return $lockedBatch->fresh(['stageLogs', 'qualityChecks', 'evidencePhotos']);
+            return $lockedBatch->fresh(['stageLogs', 'qualityChecks', 'evidencePhotos', 'deliveryItems']);
         });
     }
 }

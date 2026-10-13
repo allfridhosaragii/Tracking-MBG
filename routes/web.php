@@ -1,7 +1,9 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\CrossRole\BatchDetailController;
 use App\Http\Controllers\Driver\DashboardController as DriverDashboardController;
+use App\Http\Controllers\EvidencePhotoController;
 use App\Http\Controllers\Head\DashboardController as HeadDashboardController;
 use App\Http\Controllers\Head\EmployeeManagementController;
 use App\Http\Controllers\Head\PortionMonitoringController;
@@ -142,6 +144,12 @@ Route::middleware(['auth', 'active'])->group(function () {
             Route::post('/portions/{portionRequest}/revise', [PortionRequestController::class, 'revise'])->name('portions.revise');
             Route::post('/portions/{portionRequest}/cancel', [PortionRequestController::class, 'cancel'])->name('portions.cancel');
         });
+
+    // Cross-role PBI-07: Batch Traceability (Page C02)
+    Route::get('/batches/{batch}', [BatchDetailController::class, 'show'])->name('batches.show');
+
+    // Private Evidence Photos with Policy Gate enforcement
+    Route::get('/evidence-photos/{evidencePhoto}', [EvidencePhotoController::class, 'show'])->name('evidence-photos.show');
 
     // Resource with Policy Gate enforcement
     Route::get('/schools/{school}', [SchoolOverviewController::class, 'show'])->name('schools.show');
