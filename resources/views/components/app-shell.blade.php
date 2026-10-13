@@ -72,6 +72,10 @@
                                    class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('head.portions.*') ? 'bg-[#EDF2ED] text-[#1C6654]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
                                     Monitoring Porsi
                                 </a>
+                                <a href="{{ route('head.distribution.index') }}" 
+                                   class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('head.distribution.*') ? 'bg-[#EDF2ED] text-[#1C6654]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
+                                    Kontrol Distribusi
+                                </a>
                             @elseif ($roleEnum === \App\Enums\UserRole::PENGAWAS_GIZI)
                                 <a href="{{ route('nutrition.dashboard') }}" 
                                    class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('nutrition.dashboard') ? 'bg-[#EDF2ED] text-[#285F80]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
@@ -94,6 +98,10 @@
                                 <a href="{{ route('driver.dashboard') }}" 
                                    class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('driver.dashboard') ? 'bg-[#EDF2ED] text-[#55327A]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
                                     Mission Kurir
+                                </a>
+                                <a href="{{ route('driver.trips.index') }}" 
+                                   class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('driver.trips.*') ? 'bg-[#EDF2ED] text-[#55327A]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
+                                    Tugas Perjalanan
                                 </a>
                             @elseif ($roleEnum === \App\Enums\UserRole::PIC_SEKOLAH)
                                 <a href="{{ route('school.dashboard') }}" 
@@ -232,6 +240,19 @@
                             <span class="w-1.5 h-1.5 rounded-full bg-[#1C6654] mt-0.5" aria-hidden="true"></span>
                         @endif
                     </a>
+
+                    <!-- Kontrol Distribusi (PBI-08 K05) -->
+                    <a href="{{ route('head.distribution.index') }}" 
+                       @if(request()->routeIs('head.distribution.*')) aria-current="page" @endif
+                       class="flex flex-col items-center justify-center flex-1 h-full py-1 text-center touch-target smooth-transition {{ request()->routeIs('head.distribution.*') ? 'text-[#1C6654] font-bold' : 'text-[#53645B] hover:text-[#172923]' }}">
+                        <svg class="w-5 h-5 mb-0.5 {{ request()->routeIs('head.distribution.*') ? 'text-[#1C6654]' : 'text-[#708177]' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                        </svg>
+                        <span class="text-[10px] leading-tight">Distribusi</span>
+                        @if(request()->routeIs('head.distribution.*'))
+                            <span class="w-1.5 h-1.5 rounded-full bg-[#1C6654] mt-0.5" aria-hidden="true"></span>
+                        @endif
+                    </a>
                 @elseif ($roleEnum === \App\Enums\UserRole::PENGAWAS_GIZI)
                     <a href="{{ route('nutrition.dashboard') }}" 
                        @if(request()->routeIs('nutrition.dashboard')) aria-current="page" @endif
@@ -281,12 +302,26 @@
                 @elseif ($roleEnum === \App\Enums\UserRole::KURIR)
                     <a href="{{ route('driver.dashboard') }}" 
                        @if(request()->routeIs('driver.dashboard')) aria-current="page" @endif
-                       class="flex flex-col items-center justify-center flex-1 h-full py-1 text-center touch-target smooth-transition text-[#55327A] font-bold">
-                        <svg class="w-5 h-5 mb-0.5 text-[#55327A]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                       class="flex flex-col items-center justify-center flex-1 h-full py-1 text-center touch-target smooth-transition {{ request()->routeIs('driver.dashboard') ? 'text-[#55327A] font-bold' : 'text-[#53645B] hover:text-[#172923]' }}">
+                        <svg class="w-5 h-5 mb-0.5 {{ request()->routeIs('driver.dashboard') ? 'text-[#55327A]' : 'text-[#708177]' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                         </svg>
-                        <span class="text-[10px] leading-tight">Mission Kurir</span>
-                        <span class="w-1.5 h-1.5 rounded-full bg-[#55327A] mt-0.5" aria-hidden="true"></span>
+                        <span class="text-[10px] leading-tight">Dashboard</span>
+                        @if(request()->routeIs('driver.dashboard'))
+                            <span class="w-1.5 h-1.5 rounded-full bg-[#55327A] mt-0.5" aria-hidden="true"></span>
+                        @endif
+                    </a>
+                    <a href="{{ route('driver.trips.index') }}" 
+                       @if(request()->routeIs('driver.trips.*')) aria-current="page" @endif
+                       class="flex flex-col items-center justify-center flex-1 h-full py-1 text-center touch-target smooth-transition {{ request()->routeIs('driver.trips.*') ? 'text-[#55327A] font-bold' : 'text-[#53645B] hover:text-[#172923]' }}">
+                        <svg class="w-5 h-5 mb-0.5 {{ request()->routeIs('driver.trips.*') ? 'text-[#55327A]' : 'text-[#708177]' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"/>
+                        </svg>
+                        <span class="text-[10px] leading-tight">Tugas Trip</span>
+                        @if(request()->routeIs('driver.trips.*'))
+                            <span class="w-1.5 h-1.5 rounded-full bg-[#55327A] mt-0.5" aria-hidden="true"></span>
+                        @endif
                     </a>
                 @elseif ($roleEnum === \App\Enums\UserRole::PIC_SEKOLAH)
                     <a href="{{ route('school.dashboard') }}" 

@@ -13,6 +13,7 @@ class DeliveryItem extends Model
         'production_allocation_id',
         'trip_stop_id',
         'planned_portions',
+        'released_portions',
         'loaded_portions',
         'delivered_portions',
         'status',
@@ -20,6 +21,7 @@ class DeliveryItem extends Model
 
     protected $casts = [
         'planned_portions' => 'integer',
+        'released_portions' => 'integer',
         'loaded_portions' => 'integer',
         'delivered_portions' => 'integer',
     ];
@@ -32,6 +34,11 @@ class DeliveryItem extends Model
     public function productionAllocation(): BelongsTo
     {
         return $this->belongsTo(ProductionAllocation::class);
+    }
+
+    public function tripStop(): BelongsTo
+    {
+        return $this->belongsTo(TripStop::class);
     }
 
     public function school(): HasOneThrough

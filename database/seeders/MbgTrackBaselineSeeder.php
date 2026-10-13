@@ -178,5 +178,30 @@ class MbgTrackBaselineSeeder extends Seeder
                 'is_active' => false,
             ]
         );
+
+        // 8. Kendaraan Operasional Logistik PBI-08
+        \App\Models\Vehicle::firstOrCreate(
+            ['plate_number' => 'L 9102 AB'],
+            [
+                'sppg_id' => $sppg->id,
+                'vehicle_name' => 'Blind Van Logistik 01',
+                'vehicle_type' => 'VAN',
+                'capacity_portions' => 800,
+                'capacity_note' => 'Kapasitas maksimal 800 bento box standar MBG',
+                'is_active' => true,
+            ]
+        );
+
+        \App\Models\Vehicle::firstOrCreate(
+            ['plate_number' => 'L 9103 CD'],
+            [
+                'sppg_id' => $sppg->id,
+                'vehicle_name' => 'Pick-up Box Logistik 02',
+                'vehicle_type' => 'PICKUP',
+                'capacity_portions' => 1200,
+                'capacity_note' => 'Kapasitas 1200 bento box dengan pendingin pasif',
+                'is_active' => true,
+            ]
+        );
     }
 }

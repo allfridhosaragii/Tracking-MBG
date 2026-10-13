@@ -52,4 +52,9 @@ class School extends Model
     {
         return $this->hasMany(ProductionAllocation::class);
     }
+
+    public function tripStops(): HasMany
+    {
+        return $this->hasMany(TripStop::class);
+    }
 }

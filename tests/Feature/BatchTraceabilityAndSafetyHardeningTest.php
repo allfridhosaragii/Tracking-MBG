@@ -21,6 +21,8 @@ use App\Models\QualityCheck;
 use App\Models\School;
 use App\Models\Sppg;
 use App\Models\User;
+use App\Services\FoodBatchService;
+use App\Services\QualityControlService;
 use Carbon\Carbon;
 use Database\Seeders\MbgTrackBaselineSeeder;
 use Database\Seeders\MenuBaselineSeeder;
@@ -205,7 +207,17 @@ class BatchTraceabilityAndSafetyHardeningTest extends TestCase
         $this->assertEquals(FoodBatchStatus::QC_CHECK, $batch->status);
         $this->assertTrue($batch->has_evidence_exception);
         $this->assertEquals('Perangkat kamera ponsel staf dapur rusak saat akhir pengemasan.', $batch->evidence_exception_reason);
-        $this->assertEquals($this->asistenA->id, $batch->evidence_exception_approved_by);
+        $this->assertEquals($this->asistenA->id, $batch->evidence_exception_requested_by);
+        $this->assertEquals('PENDING', $batch->evidence_exception_status);
+        $this->assertNull($batch->evidence_exception_approved_by);
+        $this->assertFalse($batch->hasValidEvidence()); // Pending exception cannot be evaluated
+
+        // Authorized supervisor (Pengawas Gizi) reviews and approves the exception
+        app(FoodBatchService::class)->approveEvidenceException($batch, $this->giziA, 'Disetujui berdasarkan verifikasi kendala kamera dapur.');
+
+        $batch->refresh();
+        $this->assertEquals('APPROVED', $batch->evidence_exception_status);
+        $this->assertEquals($this->giziA->id, $batch->evidence_exception_approved_by);
         $this->assertTrue($batch->hasValidEvidence());
     }
 
@@ -339,6 +351,7 @@ class BatchTraceabilityAndSafetyHardeningTest extends TestCase
                 'texture_ok' => 1,
                 'taste_tested' => 1,
                 'taste_ok' => 1,
+                'accepted_portions' => 350,
                 'temperature_c' => 65.0,
                 'sop_reference' => 'SOP-BGN-MUTU-01',
                 'decision_reason' => 'Makanan tampak baik tapi tanpa bukti.',
@@ -362,6 +375,8 @@ class BatchTraceabilityAndSafetyHardeningTest extends TestCase
             'actual_portions' => 350,
             'has_evidence_exception' => true,
             'evidence_exception_reason' => 'Kamera mati saat penyiapan batch di dapur.',
+            'evidence_exception_status' => 'APPROVED',
+            'evidence_exception_approved_by' => $this->kepalaA->id,
             'status' => FoodBatchStatus::QC_CHECK,
             'created_by' => $this->asistenA->id,
         ]);
@@ -373,6 +388,7 @@ class BatchTraceabilityAndSafetyHardeningTest extends TestCase
                 'texture_ok' => 1,
                 'taste_tested' => 1,
                 'taste_ok' => 1,
+                'accepted_portions' => 350,
                 'conclusion' => QualityCheckConclusion::SAFE->value,
             ]);
 
@@ -392,6 +408,8 @@ class BatchTraceabilityAndSafetyHardeningTest extends TestCase
             'actual_portions' => 350,
             'has_evidence_exception' => true,
             'evidence_exception_reason' => 'Kamera mati saat penyiapan batch di dapur.',
+            'evidence_exception_status' => 'APPROVED',
+            'evidence_exception_approved_by' => $this->kepalaA->id,
             'status' => FoodBatchStatus::QC_CHECK,
             'created_by' => $this->asistenA->id,
         ]);
@@ -404,6 +422,7 @@ class BatchTraceabilityAndSafetyHardeningTest extends TestCase
                 'texture_ok' => 1,
                 'taste_tested' => 1,
                 'taste_ok' => 1,
+                'accepted_portions' => 350,
                 'temperature_c' => 75.0, // High temperature
                 'sop_reference' => 'SOP-BGN-MUTU-01',
                 'decision_reason' => 'Suhu panas tapi aroma menyengat tidak wajar.',
@@ -484,6 +503,8 @@ class BatchTraceabilityAndSafetyHardeningTest extends TestCase
             'actual_portions' => 340,
             'has_evidence_exception' => true,
             'evidence_exception_reason' => 'Kamera mati saat penyiapan batch di dapur.',
+            'evidence_exception_status' => 'APPROVED',
+            'evidence_exception_approved_by' => $this->kepalaA->id,
             'status' => FoodBatchStatus::QC_CHECK,
             'created_by' => $this->asistenA->id,
         ]);
@@ -518,6 +539,8 @@ class BatchTraceabilityAndSafetyHardeningTest extends TestCase
             'actual_portions' => 340,
             'has_evidence_exception' => true,
             'evidence_exception_reason' => 'Kamera mati saat penyiapan batch di dapur.',
+            'evidence_exception_status' => 'APPROVED',
+            'evidence_exception_approved_by' => $this->kepalaA->id,
             'status' => FoodBatchStatus::QC_CHECK,
             'created_by' => $this->asistenA->id,
         ]);
@@ -576,6 +599,8 @@ class BatchTraceabilityAndSafetyHardeningTest extends TestCase
             'released_at' => now(),
             'has_evidence_exception' => true,
             'evidence_exception_reason' => 'Pengecualian sah untuk pengujian.',
+            'evidence_exception_status' => 'APPROVED',
+            'evidence_exception_approved_by' => $this->kepalaA->id,
         ]);
 
         // Batch 2 is still PREPARING! Plan must NOT be READY_FOR_DISTRIBUTION
@@ -608,6 +633,7 @@ class BatchTraceabilityAndSafetyHardeningTest extends TestCase
                 'texture_ok' => 1,
                 'taste_tested' => 1,
                 'taste_ok' => 1,
+                'accepted_portions' => 350,
                 'decision_reason' => 'Mencoba inspeksi ulang batch yang sudah dilepas.',
                 'conclusion' => QualityCheckConclusion::SAFE->value,
             ]);
@@ -628,6 +654,8 @@ class BatchTraceabilityAndSafetyHardeningTest extends TestCase
             'actual_portions' => 350,
             'has_evidence_exception' => true,
             'evidence_exception_reason' => 'Pengecualian bukti sah di dapur.',
+            'evidence_exception_status' => 'APPROVED',
+            'evidence_exception_approved_by' => $this->kepalaA->id,
             'status' => FoodBatchStatus::QC_CHECK,
             'created_by' => $this->asistenA->id,
         ]);
@@ -833,5 +861,234 @@ class BatchTraceabilityAndSafetyHardeningTest extends TestCase
         $itemsForSchool2 = DeliveryItem::where('production_allocation_id', $alloc2->id)->get();
         $this->assertCount(1, $itemsForSchool2);
         $this->assertEquals($batch2->id, $itemsForSchool2->first()->food_batch_id);
+    }
+
+    /**
+     * 20. Test: Plan readiness is BLOCKED if batches have shortage against total plan allocations.
+     * (Critical Gate A: Shortage 446 portions prevents premature READY_FOR_DISTRIBUTION).
+     */
+    public function test_plan_readiness_blocked_if_batches_have_shortage_against_total_allocated(): void
+    {
+        $this->planA->update(['status' => ProductionPlanStatus::IN_PRODUCTION]);
+
+        // Plan total allocations is 600 portions (School A1: 350, School A2: 250)
+        // Batch 1: 350 planned, 340 actual, 330 accepted (10 rejected)
+        $batch1 = FoodBatch::create([
+            'production_plan_id' => $this->planA->id,
+            'menu_id' => $this->menuA->id,
+            'batch_code' => 'BATCH-SHORTAGE-01',
+            'planned_portions' => 350,
+            'actual_portions' => 340,
+            'status' => FoodBatchStatus::QC_CHECK,
+            'has_evidence_exception' => true,
+            'evidence_exception_reason' => 'Pengecualian kamera operasional resmi.',
+            'evidence_exception_status' => 'APPROVED',
+            'evidence_exception_approved_by' => $this->kepalaA->id,
+            'created_by' => $this->asistenA->id,
+        ]);
+
+        // Batch 2: 250 planned, 250 actual, 240 accepted (10 rejected)
+        $batch2 = FoodBatch::create([
+            'production_plan_id' => $this->planA->id,
+            'menu_id' => $this->menuA->id,
+            'batch_code' => 'BATCH-SHORTAGE-02',
+            'planned_portions' => 250,
+            'actual_portions' => 250,
+            'status' => FoodBatchStatus::QC_CHECK,
+            'has_evidence_exception' => true,
+            'evidence_exception_reason' => 'Pengecualian kamera operasional resmi.',
+            'evidence_exception_status' => 'APPROVED',
+            'evidence_exception_approved_by' => $this->kepalaA->id,
+            'created_by' => $this->asistenA->id,
+        ]);
+
+        // QC Release Batch 1 with 330 accepted
+        app(QualityControlService::class)->recordQualityCheck($batch1, [
+            'appearance_ok' => 1,
+            'aroma_ok' => 1,
+            'texture_ok' => 1,
+            'taste_tested' => 1,
+            'taste_ok' => 1,
+            'accepted_portions' => 330,
+            'decision_reason' => 'Batch 1 lolos 330 porsi, 10 porsi kemasan rusak.',
+            'conclusion' => QualityCheckConclusion::SAFE->value,
+        ], $this->giziA);
+
+        // QC Release Batch 2 with 240 accepted
+        app(QualityControlService::class)->recordQualityCheck($batch2, [
+            'appearance_ok' => 1,
+            'aroma_ok' => 1,
+            'texture_ok' => 1,
+            'taste_tested' => 1,
+            'taste_ok' => 1,
+            'accepted_portions' => 240,
+            'decision_reason' => 'Batch 2 lolos 240 porsi, 10 porsi kemasan rusak.',
+            'conclusion' => QualityCheckConclusion::SAFE->value,
+        ], $this->giziA);
+
+        // Total accepted is 330 + 240 = 570 < 600 total allocated (30 portions shortage!)
+        // All batches are RELEASED, but the plan MUST NOT be marked READY_FOR_DISTRIBUTION!
+        $this->assertEquals(FoodBatchStatus::RELEASED, $batch1->fresh()->status);
+        $this->assertEquals(FoodBatchStatus::RELEASED, $batch2->fresh()->status);
+        $this->assertNotEquals(ProductionPlanStatus::READY_FOR_DISTRIBUTION, $this->planA->fresh()->status);
+        $this->assertEquals(ProductionPlanStatus::IN_PRODUCTION, $this->planA->fresh()->status);
+    }
+
+    /**
+     * 21. Test: Plan readiness is BLOCKED if some target portions were never batched.
+     */
+    public function test_plan_readiness_blocked_if_target_portions_not_fully_batched(): void
+    {
+        $this->planA->update(['status' => ProductionPlanStatus::IN_PRODUCTION]);
+
+        // Only 1 batch of 350 portions is created and released for a plan allocating 600 portions!
+        $batch = FoodBatch::create([
+            'production_plan_id' => $this->planA->id,
+            'menu_id' => $this->menuA->id,
+            'batch_code' => 'BATCH-PARTIAL-BATCHED',
+            'planned_portions' => 350,
+            'actual_portions' => 350,
+            'status' => FoodBatchStatus::QC_CHECK,
+            'has_evidence_exception' => true,
+            'evidence_exception_reason' => 'Pengecualian kamera operasional resmi.',
+            'evidence_exception_status' => 'APPROVED',
+            'evidence_exception_approved_by' => $this->kepalaA->id,
+            'created_by' => $this->asistenA->id,
+        ]);
+
+        app(QualityControlService::class)->recordQualityCheck($batch, [
+            'appearance_ok' => 1,
+            'aroma_ok' => 1,
+            'texture_ok' => 1,
+            'taste_tested' => 1,
+            'taste_ok' => 1,
+            'accepted_portions' => 350,
+            'decision_reason' => 'Batch lolos seluruh 350 porsi dengan mutu prima.',
+            'conclusion' => QualityCheckConclusion::SAFE->value,
+        ], $this->giziA);
+
+        $this->assertEquals(FoodBatchStatus::RELEASED, $batch->fresh()->status);
+        // Even though 0 unreleased batches exist, only 350 portions were batched! Plan remains IN_PRODUCTION!
+        $this->assertEquals(ProductionPlanStatus::IN_PRODUCTION, $this->planA->fresh()->status);
+    }
+
+    /**
+     * 22. Test: Delivery items are reconciled with accepted portions on partial QC release.
+     */
+    public function test_delivery_items_reconciled_with_actual_accepted_portions(): void
+    {
+        $this->actingAs($this->asistenA)
+            ->post(route('production.plans.batches.store', $this->planA), [
+                'planned_portions' => 350,
+            ]);
+
+        $batch = FoodBatch::where('production_plan_id', $this->planA->id)->firstOrFail();
+        $batch->update([
+            'actual_portions' => 340,
+            'status' => FoodBatchStatus::QC_CHECK,
+            'has_evidence_exception' => true,
+            'evidence_exception_reason' => 'Pengecualian kamera operasional resmi.',
+            'evidence_exception_status' => 'APPROVED',
+            'evidence_exception_approved_by' => $this->kepalaA->id,
+        ]);
+
+        // Pengawas Gizi accepts 330 portions
+        app(QualityControlService::class)->recordQualityCheck($batch, [
+            'appearance_ok' => 1,
+            'aroma_ok' => 1,
+            'texture_ok' => 1,
+            'taste_tested' => 1,
+            'taste_ok' => 1,
+            'accepted_portions' => 330,
+            'decision_reason' => '330 porsi lolos prima, 10 porsi ditolak.',
+            'conclusion' => QualityCheckConclusion::SAFE->value,
+        ], $this->giziA);
+
+        $deliveryItem = $batch->deliveryItems()->firstOrFail();
+        $this->assertEquals(350, $deliveryItem->planned_portions);
+        $this->assertEquals(330, $deliveryItem->released_portions);
+        $this->assertEquals('PENDING_DISPATCH', $deliveryItem->status);
+    }
+
+    /**
+     * 23. Test: Evidence exception cannot be self-approved by the requester.
+     */
+    public function test_evidence_exception_cannot_be_self_approved_by_requester(): void
+    {
+        $batch = FoodBatch::create([
+            'production_plan_id' => $this->planA->id,
+            'menu_id' => $this->menuA->id,
+            'batch_code' => 'BATCH-TEST-SELF-APPROVE',
+            'planned_portions' => 350,
+            'actual_portions' => 350,
+            'has_evidence_exception' => true,
+            'evidence_exception_reason' => 'Kamera mati saat penyiapan batch di dapur.',
+            'evidence_exception_requested_by' => $this->asistenA->id,
+            'evidence_exception_status' => 'PENDING',
+            'status' => FoodBatchStatus::QC_CHECK,
+            'created_by' => $this->asistenA->id,
+        ]);
+
+        // Asisten A tries to self-approve
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        app(FoodBatchService::class)->approveEvidenceException($batch, $this->asistenA);
+    }
+
+    /**
+     * 24. Test: PIC Sekolah A cannot view photo of a batch dedicated to School B.
+     */
+    public function test_pic_sekolah_cannot_view_photo_of_batch_dedicated_to_different_school(): void
+    {
+        Storage::fake('local');
+        $photoFile = UploadedFile::fake()->image('food_ready.jpg');
+
+        $picA1 = User::firstOrCreate(
+            ['email' => 'pic.sdn01@mbgtrack.test'],
+            [
+                'school_id' => $this->schoolA1->id,
+                'name' => 'PIC SDN 01',
+                'password' => bcrypt('password'),
+                'role' => UserRole::PIC_SEKOLAH,
+                'is_active' => true,
+            ]
+        );
+
+        $picA2 = User::firstOrCreate(
+            ['email' => 'pic.smpn02@mbgtrack.test'],
+            [
+                'school_id' => $this->schoolA2->id,
+                'name' => 'PIC SMPN 02',
+                'password' => bcrypt('password'),
+                'role' => UserRole::PIC_SEKOLAH,
+                'is_active' => true,
+            ]
+        );
+
+        // Batch 1 dedicated to School A1 (350 portions)
+        $this->actingAs($this->asistenA)
+            ->post(route('production.plans.batches.store', $this->planA), [
+                'planned_portions' => 350,
+            ]);
+
+        $batch1 = FoodBatch::where('production_plan_id', $this->planA->id)->firstOrFail();
+        $batch1->update(['actual_portions' => 350]);
+
+        $this->actingAs($this->asistenA)
+            ->post(route('production.batches.submit-qc', $batch1), [
+                'photo' => $photoFile,
+            ]);
+
+        $photo = $batch1->foodReadyPhoto();
+        $this->assertNotNull($photo);
+
+        // PIC of School A1 CAN view
+        $responsePic1 = $this->actingAs($picA1)
+            ->get(route('evidence-photos.show', $photo));
+        $responsePic1->assertOk();
+
+        // PIC of School A2 CANNOT view because Batch 1 is dedicated to School A1!
+        $responsePic2 = $this->actingAs($picA2)
+            ->get(route('evidence-photos.show', $photo));
+        $responsePic2->assertForbidden();
     }
 }

@@ -14,6 +14,10 @@ class EvidencePhotoPolicy
      */
     public function view(User $user, EvidencePhoto $photo): bool
     {
+        if (! $user->is_active) {
+            return false;
+        }
+
         // 1. If photo belongs to a FoodBatch
         if ($photo->evidenceable_type === FoodBatch::class) {
             $batch = $photo->evidenceable ?? FoodBatch::find($photo->evidenceable_id);
@@ -32,22 +36,28 @@ class EvidencePhotoPolicy
                 return (int) $user->sppg_id === $sppgId;
             }
 
-            // PIC Sekolah can view if their school receives an allocation from this batch/plan
+            // HIGH GATE E: PIC Sekolah can ONLY view if their specific school receives an allocation from this specific batch
             if ($user->role === UserRole::PIC_SEKOLAH && $user->school_id) {
-                return $batch->productionPlan->allocations()
-                    ->where('school_id', $user->school_id)
+                return $batch->deliveryItems()
+                    ->whereHas('productionAllocation', function ($q) use ($user) {
+                        $q->where('school_id', $user->school_id);
+                    })
                     ->exists();
             }
 
-            // Driver only if assigned to a trip carrying this batch
+            // Driver only if assigned to a trip carrying a delivery item from this batch
             if ($user->role === UserRole::KURIR) {
-                return false; // No trip assigned yet
+                return $batch->deliveryItems()
+                    ->whereHas('tripStop.trip', function ($q) use ($user) {
+                        $q->where('driver_id', $user->id);
+                    })
+                    ->exists();
             }
 
             return false;
         }
 
-        // Default: only same SPPG staff
+        // Default: only same SPPG active staff
         return (int) $user->sppg_id === (int) $photo->uploadedBy?->sppg_id;
     }
 }

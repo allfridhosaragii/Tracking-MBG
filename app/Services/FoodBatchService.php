@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\FoodBatchStatus;
 use App\Enums\ProductionPlanStatus;
 use App\Enums\ProductionStage;
+use App\Enums\UserRole;
 use App\Models\ActivityLog;
 use App\Models\DeliveryItem;
 use App\Models\EvidencePhoto;
@@ -162,24 +163,11 @@ class FoodBatchService
             }
         }
 
-        // Fallback: If any portion remains (e.g. all quotas filled or rounding), link to first allocation
-        if ($remainingToDistribute > 0 && $allocations->isNotEmpty()) {
-            $firstAlloc = $allocations->first();
-            $existing = DeliveryItem::where('food_batch_id', $batch->id)
-                ->where('production_allocation_id', $firstAlloc->id)
-                ->first();
-
-            if ($existing) {
-                $existing->increment('planned_portions', $remainingToDistribute);
-            } else {
-                DeliveryItem::create([
-                    'food_batch_id' => $batch->id,
-                    'production_allocation_id' => $firstAlloc->id,
-                    'trip_stop_id' => null,
-                    'planned_portions' => $remainingToDistribute,
-                    'status' => 'PENDING_DISPATCH',
-                ]);
-            }
+        // CRITICAL GATE B: Strictly prevent over-allocating any school or dangling excess
+        if ($remainingToDistribute > 0) {
+            throw ValidationException::withMessages([
+                'planned_portions' => ["Rencana porsi batch melebihi sisa kebutuhan alokasi sekolah yang belum terpenuhi pada rencana produksi ini ({$remainingToDistribute} porsi berlebih)."],
+            ]);
         }
     }
 
@@ -389,11 +377,13 @@ class FoodBatchService
                     'notes' => $notes ?? 'Foto kesiapan makanan sebelum QC dispatch.',
                 ]);
             } elseif ($hasException) {
-                // Record documented exception
+                // CRITICAL GATE C: Record exception as PENDING supervisor review. Prevent self-approval.
                 $lockedBatch->update([
                     'has_evidence_exception' => true,
                     'evidence_exception_reason' => $exceptionReason,
-                    'evidence_exception_approved_by' => $actor->id,
+                    'evidence_exception_requested_by' => $actor->id,
+                    'evidence_exception_status' => 'PENDING',
+                    'evidence_exception_approved_by' => null,
                 ]);
             }
 
@@ -408,7 +398,7 @@ class FoodBatchService
                 'stage' => ProductionStage::READY_FOR_QC,
                 'started_at' => now(),
                 'updated_by' => $actor->id,
-                'notes' => $notes ?? ($hasException ? 'Batch diserahkan ke QC dengan pengecualian bukti foto.' : 'Batch diserahkan kepada Pengawas Gizi untuk pemeriksaan organoleptik.'),
+                'notes' => $notes ?? ($hasException ? 'Batch diserahkan ke QC dengan permohonan pengecualian bukti foto.' : 'Batch diserahkan kepada Pengawas Gizi untuk pemeriksaan organoleptik.'),
             ]);
 
             ActivityLog::record(
@@ -420,6 +410,106 @@ class FoodBatchService
                     'actual_portions' => $lockedBatch->actual_portions,
                     'has_evidence' => $hasPhoto,
                     'has_exception' => $hasException,
+                    'exception_status' => $hasException ? 'PENDING' : null,
+                ]
+            );
+
+            return $lockedBatch->fresh(['stageLogs', 'qualityChecks', 'evidencePhotos', 'deliveryItems']);
+        });
+    }
+
+    /**
+     * Approve evidence photo exception by an authorized supervisor (Kepala SPPG or Pengawas Gizi).
+     * Prevents self-approval: requester cannot approve their own exception.
+     */
+    public function approveEvidenceException(FoodBatch $batch, User $supervisor, ?string $notes = null): FoodBatch
+    {
+        return DB::transaction(function () use ($batch, $supervisor, $notes) {
+            $lockedBatch = FoodBatch::where('id', $batch->id)->lockForUpdate()->firstOrFail();
+
+            if (! in_array($supervisor->role, [UserRole::KEPALA_SPPG, UserRole::PENGAWAS_GIZI], true)) {
+                throw ValidationException::withMessages([
+                    'authorization' => ['Persetujuan pengecualian bukti foto hanya dapat disahkan oleh Kepala SPPG atau Pengawas Gizi.'],
+                ]);
+            }
+
+            if ((int) $supervisor->sppg_id !== (int) $lockedBatch->productionPlan->sppg_id) {
+                throw ValidationException::withMessages([
+                    'authorization' => ['Anda tidak berwenang mengesahkan pengecualian batch SPPG lain.'],
+                ]);
+            }
+
+            if ((int) $supervisor->id === (int) $lockedBatch->evidence_exception_requested_by) {
+                throw ValidationException::withMessages([
+                    'authorization' => ['Petugas pengaju tidak dapat menyetujui pengecualiannya sendiri (larangan self-approval).'],
+                ]);
+            }
+
+            if (! $lockedBatch->has_evidence_exception || $lockedBatch->evidence_exception_status !== 'PENDING') {
+                throw ValidationException::withMessages([
+                    'status' => ['Tidak terdapat pengajuan pengecualian bukti foto yang berstatus menunggu persetujuan (PENDING).'],
+                ]);
+            }
+
+            $lockedBatch->update([
+                'evidence_exception_status' => 'APPROVED',
+                'evidence_exception_approved_by' => $supervisor->id,
+            ]);
+
+            ActivityLog::record(
+                event: 'evidence_exception.approved',
+                auditable: $lockedBatch,
+                actor: $supervisor,
+                newValues: [
+                    'evidence_exception_status' => 'APPROVED',
+                    'approved_by' => $supervisor->id,
+                    'reason' => $lockedBatch->evidence_exception_reason,
+                    'notes' => $notes,
+                ]
+            );
+
+            return $lockedBatch->fresh(['stageLogs', 'qualityChecks', 'evidencePhotos', 'deliveryItems']);
+        });
+    }
+
+    /**
+     * Reject evidence photo exception by an authorized supervisor.
+     */
+    public function rejectEvidenceException(FoodBatch $batch, User $supervisor, string $rejectionReason): FoodBatch
+    {
+        return DB::transaction(function () use ($batch, $supervisor, $rejectionReason) {
+            $lockedBatch = FoodBatch::where('id', $batch->id)->lockForUpdate()->firstOrFail();
+
+            if (! in_array($supervisor->role, [UserRole::KEPALA_SPPG, UserRole::PENGAWAS_GIZI], true)) {
+                throw ValidationException::withMessages([
+                    'authorization' => ['Penolakan pengecualian bukti foto hanya dapat dilakukan oleh Kepala SPPG atau Pengawas Gizi.'],
+                ]);
+            }
+
+            if ((int) $supervisor->sppg_id !== (int) $lockedBatch->productionPlan->sppg_id) {
+                throw ValidationException::withMessages([
+                    'authorization' => ['Anda tidak berwenang menolak pengecualian batch SPPG lain.'],
+                ]);
+            }
+
+            if (strlen(trim($rejectionReason)) < 10) {
+                throw ValidationException::withMessages([
+                    'rejection_reason' => ['Alasan penolakan pengecualian wajib dicatat minimal 10 karakter.'],
+                ]);
+            }
+
+            $lockedBatch->update([
+                'evidence_exception_status' => 'REJECTED',
+                'evidence_exception_approved_by' => null,
+            ]);
+
+            ActivityLog::record(
+                event: 'evidence_exception.rejected',
+                auditable: $lockedBatch,
+                actor: $supervisor,
+                newValues: [
+                    'evidence_exception_status' => 'REJECTED',
+                    'rejection_reason' => $rejectionReason,
                 ]
             );
 

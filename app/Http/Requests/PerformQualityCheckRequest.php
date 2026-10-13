@@ -29,7 +29,7 @@ class PerformQualityCheckRequest extends FormRequest
             'taste_ok' => ['nullable', 'required_if:taste_tested,1,true', 'boolean'],
             'taste_skipped_reason' => ['nullable', 'required_if:taste_tested,0,false', 'string', 'min:10', 'max:500'],
             'temperature_c' => ['nullable', 'numeric', 'min:0', 'max:150'],
-            'accepted_portions' => ['nullable', 'integer', 'min:0'],
+            'accepted_portions' => ['nullable', 'required_if:conclusion,' . QualityCheckConclusion::SAFE->value, 'integer', 'min:0'],
             'sop_reference' => ['nullable', 'string', 'max:100'],
             'decision_reason' => ['required', 'string', 'min:10', 'max:1000'],
             'conclusion' => ['required', Rule::enum(QualityCheckConclusion::class)],
@@ -48,6 +48,7 @@ class PerformQualityCheckRequest extends FormRequest
             'taste_skipped_reason.required_if' => 'Alasan tidak mencicipi wajib diisi jika makanan dicurigai terkontaminasi atau rusak.',
             'decision_reason.required' => 'Penjelasan/alasan keputusan profesional Pengawas Gizi wajib dicatat.',
             'decision_reason.min' => 'Penjelasan keputusan Pengawas Gizi minimal 10 karakter.',
+            'accepted_portions.required_if' => 'Jumlah porsi yang dinyatakan lolos (accepted) wajib diisi secara eksplisit saat keputusan mutu SAFE.',
             'conclusion.required' => 'Keputusan kesimpulan mutu wajib ditentukan (SAFE, HOLD, atau UNSAFE).',
         ];
     }

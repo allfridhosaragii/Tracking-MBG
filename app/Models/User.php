@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\TripStatus;
 use App\Enums\UserRole;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Builder;
@@ -112,16 +113,31 @@ class User extends Authenticatable
         return $this->hasMany(ActivityLog::class, 'actor_id');
     }
 
+    public function driverTrips(): HasMany
+    {
+        return $this->hasMany(Trip::class, 'driver_id');
+    }
+
     /**
      * Check if driver is currently assigned to an active trip.
      */
-    public function hasActiveTrips(): bool
+    public function hasActiveTrips(?string $serviceDate = null): bool
     {
         if (Schema::hasTable('trips')) {
-            return DB::table('trips')
+            $query = DB::table('trips')
                 ->where('driver_id', $this->id)
-                ->whereIn('status', ['DISPATCHED', 'EN_ROUTE', 'IN_TRANSIT', 'DELIVERING'])
-                ->exists();
+                ->whereIn('status', [
+                    TripStatus::ASSIGNED->value,
+                    TripStatus::VEHICLE_CHECKED->value,
+                    TripStatus::READY->value,
+                    TripStatus::IN_PROGRESS->value,
+                ]);
+
+            if ($serviceDate) {
+                $query->whereDate('service_date', $serviceDate);
+            }
+
+            return $query->exists();
         }
 
         return false;

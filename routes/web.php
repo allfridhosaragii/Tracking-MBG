@@ -2,9 +2,12 @@
 
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\CrossRole\BatchDetailController;
+use App\Http\Controllers\CrossRole\TripDetailController;
 use App\Http\Controllers\Driver\DashboardController as DriverDashboardController;
+use App\Http\Controllers\Driver\DriverTripController;
 use App\Http\Controllers\EvidencePhotoController;
 use App\Http\Controllers\Head\DashboardController as HeadDashboardController;
+use App\Http\Controllers\Head\DistributionController;
 use App\Http\Controllers\Head\EmployeeManagementController;
 use App\Http\Controllers\Head\PortionMonitoringController;
 use App\Http\Controllers\Head\ProductionPlanController;
@@ -79,6 +82,11 @@ Route::middleware(['auth', 'active'])->group(function () {
             Route::post('/production/revisions/{portionRequest}/approve', [ProductionPlanController::class, 'approveRevision'])->name('production.revisions.approve');
             Route::post('/production/revisions/{portionRequest}/reject', [ProductionPlanController::class, 'rejectRevision'])->name('production.revisions.reject');
             Route::post('/production/exceptions/{portionRequest}/approve', [ProductionPlanController::class, 'approveException'])->name('production.exceptions.approve');
+
+            // PBI-08: Distribution & Fleet Control (Page K05)
+            Route::get('/distribution', [DistributionController::class, 'index'])->name('distribution.index');
+            Route::post('/distribution/trips', [DistributionController::class, 'storeTrip'])->name('distribution.trips.store');
+            Route::post('/distribution/trips/{trip}/cancel', [DistributionController::class, 'cancelTrip'])->name('distribution.trips.cancel');
         });
 
     // 2. Pengawas Gizi Module
@@ -127,6 +135,12 @@ Route::middleware(['auth', 'active'])->group(function () {
         ->middleware('role:KURIR')
         ->group(function () {
             Route::get('/dashboard', DriverDashboardController::class)->name('dashboard');
+
+            // PBI-08: Driver Trips & Pre-trip Inspection (Pages D01, D02)
+            Route::get('/trips', [DriverTripController::class, 'index'])->name('trips.index');
+            Route::get('/trips/{trip}/prepare', [DriverTripController::class, 'prepare'])->name('trips.prepare');
+            Route::post('/trips/{trip}/vehicle-check', [DriverTripController::class, 'vehicleCheck'])->name('trips.vehicle-check');
+            Route::post('/trips/{trip}/start', [DriverTripController::class, 'start'])->name('trips.start');
         });
 
     // 5. PIC Sekolah Module
@@ -147,6 +161,9 @@ Route::middleware(['auth', 'active'])->group(function () {
 
     // Cross-role PBI-07: Batch Traceability (Page C02)
     Route::get('/batches/{batch}', [BatchDetailController::class, 'show'])->name('batches.show');
+
+    // Cross-role PBI-08: Trip Detail & Multi-stop (Page C03)
+    Route::get('/trips/{trip}', [TripDetailController::class, 'show'])->name('trips.show');
 
     // Private Evidence Photos with Policy Gate enforcement
     Route::get('/evidence-photos/{evidencePhoto}', [EvidencePhotoController::class, 'show'])->name('evidence-photos.show');

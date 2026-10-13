@@ -418,6 +418,7 @@ class ProductionExecutionTest extends TestCase
                 'texture_ok' => 1,
                 'taste_tested' => 1,
                 'taste_ok' => 1,
+                'accepted_portions' => 350,
                 'temperature_c' => 68.5,
                 'sop_reference' => 'SOP-BGN-MUTU-01',
                 'decision_reason' => 'Makanan matang sempurna, organoleptik segar, suhu di atas 60C.',
@@ -432,8 +433,8 @@ class ProductionExecutionTest extends TestCase
         $this->assertEquals($this->gizi->id, $batch->released_by);
         $this->assertNotNull($batch->released_at);
 
-        // Plan status must transition to READY_FOR_DISTRIBUTION because all batches are released!
-        $this->assertEquals(ProductionPlanStatus::READY_FOR_DISTRIBUTION, $this->finalizedPlan->fresh()->status);
+        // Plan status remains IN_PRODUCTION because only 350 portions were produced and released out of 1026 allocated!
+        $this->assertEquals(ProductionPlanStatus::IN_PRODUCTION, $this->finalizedPlan->fresh()->status);
     }
 
     public function test_pengawas_gizi_can_put_batch_on_hold_blocking_distribution(): void
@@ -593,6 +594,7 @@ class ProductionExecutionTest extends TestCase
                 'texture_ok' => 1,
                 'taste_tested' => 1,
                 'taste_ok' => 1,
+                'accepted_portions' => 350,
                 'decision_reason' => 'Seluruh parameter organoleptik memenuhi standar mutu prima.',
                 'conclusion' => QualityCheckConclusion::SAFE->value,
             ]);
@@ -602,6 +604,6 @@ class ProductionExecutionTest extends TestCase
         $this->assertDatabaseHas('activity_logs', ['event' => 'food_batch.actual_portions_recorded']);
         $this->assertDatabaseHas('activity_logs', ['event' => 'food_batch.submitted_to_qc']);
         $this->assertDatabaseHas('activity_logs', ['event' => 'quality_check.released']);
-        $this->assertDatabaseHas('activity_logs', ['event' => 'production_plan.ready_for_distribution']);
+        $this->assertDatabaseHas('activity_logs', ['event' => 'production_plan.partial_qc_progress']);
     }
 }

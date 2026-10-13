@@ -167,15 +167,19 @@ class QualityControlService
                 }
             }
 
-            // CRITICAL GATE C: Portion reconciliation
+            // CRITICAL GATE C & D: Explicit portion reconciliation (accepted <= actual)
             $actualPortions = (int) ($lockedBatch->actual_portions ?? 0);
             $acceptedPortions = null;
             $rejectedPortions = 0;
 
             if ($conclusion === QualityCheckConclusion::SAFE) {
-                $requestedAccepted = isset($data['accepted_portions']) && $data['accepted_portions'] !== ''
-                    ? (int) $data['accepted_portions']
-                    : $actualPortions;
+                if (! isset($data['accepted_portions']) || $data['accepted_portions'] === '') {
+                    throw ValidationException::withMessages([
+                        'accepted_portions' => ['Jumlah porsi lolos QC (accepted) wajib dinyatakan secara eksplisit saat kesimpulan mutu SAFE.'],
+                    ]);
+                }
+
+                $requestedAccepted = (int) $data['accepted_portions'];
 
                 if ($requestedAccepted < 0) {
                     throw ValidationException::withMessages([
@@ -236,6 +240,24 @@ class QualityControlService
                     'released_at' => now(),
                 ]);
 
+                // CRITICAL GATE B: Reconcile delivery items with verified accepted portions
+                $remainingAccepted = $acceptedPortions;
+                foreach ($lockedBatch->deliveryItems()->orderBy('id', 'asc')->get() as $deliveryItem) {
+                    if ($remainingAccepted > 0) {
+                        $allocated = min((int) $deliveryItem->planned_portions, $remainingAccepted);
+                        $deliveryItem->update([
+                            'released_portions' => $allocated,
+                            'status' => 'PENDING_DISPATCH',
+                        ]);
+                        $remainingAccepted -= $allocated;
+                    } else {
+                        $deliveryItem->update([
+                            'released_portions' => 0,
+                            'status' => 'SHORTAGE',
+                        ]);
+                    }
+                }
+
                 ActivityLog::record(
                     event: 'quality_check.released',
                     auditable: $lockedBatch,
@@ -253,12 +275,25 @@ class QualityControlService
                     ]
                 );
 
-                // Check if all batches for this plan are released and portions meet the plan
+                // CRITICAL GATE A: Invariant readiness check
+                // Plan is ONLY marked READY_FOR_DISTRIBUTION if:
+                // 1. At least 1 batch exists
+                // 2. All created batches are RELEASED
+                // 3. Cumulative planned portions of batches covers the total plan allocated portions (all target portions were batched)
+                // 4. Cumulative accepted portions equals or covers total plan allocated portions (no shortage!)
+                $batchesCount = FoodBatch::where('production_plan_id', $plan->id)->count();
                 $unreleasedCount = FoodBatch::where('production_plan_id', $plan->id)
                     ->where('status', '!=', FoodBatchStatus::RELEASED->value)
                     ->count();
 
-                if ($unreleasedCount === 0) {
+                $totalPlanAllocated = (int) $plan->allocations()->sum('allocated_portions');
+                $totalBatchPlanned = (int) FoodBatch::where('production_plan_id', $plan->id)->sum('planned_portions');
+                $totalBatchAccepted = (int) FoodBatch::where('production_plan_id', $plan->id)->sum('accepted_portions');
+
+                $isFullyBatched = $totalBatchPlanned >= $totalPlanAllocated;
+                $hasNoShortage = $totalBatchAccepted >= $totalPlanAllocated;
+
+                if ($batchesCount > 0 && $unreleasedCount === 0 && $isFullyBatched && $hasNoShortage) {
                     $plan->update(['status' => ProductionPlanStatus::READY_FOR_DISTRIBUTION]);
 
                     ActivityLog::record(
@@ -268,6 +303,25 @@ class QualityControlService
                         newValues: [
                             'status' => ProductionPlanStatus::READY_FOR_DISTRIBUTION->value,
                             'all_batches_released' => true,
+                            'total_plan_allocated' => $totalPlanAllocated,
+                            'total_batch_accepted' => $totalBatchAccepted,
+                        ]
+                    );
+                } else {
+                    // Plan remains in IN_PRODUCTION if partial batching or shortage exists.
+                    // Individual batches remain RELEASED and eligible for partial dispatch if needed.
+                    ActivityLog::record(
+                        event: 'production_plan.partial_qc_progress',
+                        auditable: $plan,
+                        actor: $actor,
+                        newValues: [
+                            'status' => $plan->status->value,
+                            'batches_count' => $batchesCount,
+                            'unreleased_count' => $unreleasedCount,
+                            'total_plan_allocated' => $totalPlanAllocated,
+                            'total_batch_planned' => $totalBatchPlanned,
+                            'total_batch_accepted' => $totalBatchAccepted,
+                            'shortage' => max(0, $totalPlanAllocated - $totalBatchAccepted),
                         ]
                     );
                 }
@@ -277,6 +331,14 @@ class QualityControlService
                     'status' => FoodBatchStatus::ON_HOLD,
                     'accepted_portions' => 0,
                 ]);
+
+                // Update delivery items to ON_HOLD
+                foreach ($lockedBatch->deliveryItems as $deliveryItem) {
+                    $deliveryItem->update([
+                        'released_portions' => 0,
+                        'status' => 'ON_HOLD',
+                    ]);
+                }
 
                 ActivityLog::record(
                     event: 'quality_check.held',

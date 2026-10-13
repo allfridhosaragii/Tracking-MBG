@@ -1,0 +1,109 @@
+<?php
+
+namespace App\Policies;
+
+use App\Enums\UserRole;
+use App\Models\Trip;
+use App\Models\User;
+
+class TripPolicy
+{
+    /**
+     * Determine whether the user can view the list of trips.
+     */
+    public function viewAny(User $user): bool
+    {
+        if (! $user->is_active) {
+            return false;
+        }
+
+        return in_array($user->role, [
+            UserRole::KEPALA_SPPG,
+            UserRole::ASISTEN_LAPANGAN,
+            UserRole::KURIR,
+        ], true);
+    }
+
+    /**
+     * Determine whether the user can view a specific trip.
+     * Enforces tenant and role scoping.
+     */
+    public function view(User $user, Trip $trip): bool
+    {
+        if (! $user->is_active) {
+            return false;
+        }
+
+        // Kepala SPPG & Asisten Lapangan can view trips in their SPPG
+        if (in_array($user->role, [UserRole::KEPALA_SPPG, UserRole::ASISTEN_LAPANGAN], true)) {
+            return (int) $user->sppg_id === (int) $trip->sppg_id;
+        }
+
+        // Kurir can only view their own assigned trip
+        if ($user->role === UserRole::KURIR) {
+            return (int) $user->id === (int) $trip->driver_id;
+        }
+
+        // PIC Sekolah can view only if their school is a destination stop on this trip
+        if ($user->role === UserRole::PIC_SEKOLAH) {
+            if (! $user->school_id) {
+                return false;
+            }
+            return $trip->stops()->where('school_id', $user->school_id)->exists();
+        }
+
+        return false;
+    }
+
+    /**
+     * Determine whether the user can plan and create a new trip.
+     * Only active Kepala SPPG of the tenant.
+     */
+    public function create(User $user): bool
+    {
+        return $user->is_active && $user->role === UserRole::KEPALA_SPPG;
+    }
+
+    /**
+     * Determine whether the user can update/reassign a trip.
+     */
+    public function update(User $user, Trip $trip): bool
+    {
+        return $user->is_active
+            && $user->role === UserRole::KEPALA_SPPG
+            && (int) $user->sppg_id === (int) $trip->sppg_id;
+    }
+
+    /**
+     * Determine whether the user can perform the pre-trip vehicle check.
+     * Strictly assigned driver only.
+     */
+    public function checkVehicle(User $user, Trip $trip): bool
+    {
+        return $user->is_active
+            && $user->role === UserRole::KURIR
+            && (int) $user->id === (int) $trip->driver_id;
+    }
+
+    /**
+     * Determine whether the user can start dispatching the trip.
+     * Strictly assigned driver only.
+     */
+    public function start(User $user, Trip $trip): bool
+    {
+        return $user->is_active
+            && $user->role === UserRole::KURIR
+            && (int) $user->id === (int) $trip->driver_id;
+    }
+
+    /**
+     * Determine whether the user can cancel a trip.
+     * Kepala SPPG only.
+     */
+    public function cancel(User $user, Trip $trip): bool
+    {
+        return $user->is_active
+            && $user->role === UserRole::KEPALA_SPPG
+            && (int) $user->sppg_id === (int) $trip->sppg_id;
+    }
+}

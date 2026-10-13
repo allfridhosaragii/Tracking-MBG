@@ -23,9 +23,13 @@ class EvidencePhotoController extends Controller
         }
 
         $fullPath = Storage::disk('local')->path($evidencePhoto->file_path);
+        $extension = pathinfo($fullPath, PATHINFO_EXTENSION) ?: 'jpg';
+        $safeFilename = sprintf('evidence-%d.%s', $evidencePhoto->id, $extension);
 
         return response()->file($fullPath, [
             'Content-Type' => $evidencePhoto->mime_type ?: 'image/jpeg',
+            'Content-Disposition' => 'inline; filename="' . $safeFilename . '"',
+            'X-Content-Type-Options' => 'nosniff',
             'Cache-Control' => 'private, no-cache, must-revalidate',
         ]);
     }

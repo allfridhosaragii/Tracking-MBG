@@ -26,6 +26,8 @@ class FoodBatch extends Model
         'notes',
         'has_evidence_exception',
         'evidence_exception_reason',
+        'evidence_exception_requested_by',
+        'evidence_exception_status',
         'evidence_exception_approved_by',
     ];
 
@@ -46,6 +48,11 @@ class FoodBatch extends Model
     public function menu(): BelongsTo
     {
         return $this->belongsTo(Menu::class);
+    }
+
+    public function recipeMenu(): BelongsTo
+    {
+        return $this->belongsTo(Menu::class, 'menu_id');
     }
 
     public function stageLogs(): HasMany
@@ -81,6 +88,11 @@ class FoodBatch extends Model
     public function exceptionApprover(): BelongsTo
     {
         return $this->belongsTo(User::class, 'evidence_exception_approved_by');
+    }
+
+    public function exceptionRequester(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'evidence_exception_requested_by');
     }
 
     public function scopeForSppg(Builder $query, int $sppgId): Builder
@@ -156,7 +168,11 @@ class FoodBatch extends Model
 
     public function hasValidEvidence(): bool
     {
-        return $this->hasFoodReadyPhoto() || $this->has_evidence_exception;
+        return $this->hasFoodReadyPhoto() || (
+            $this->has_evidence_exception
+            && $this->evidence_exception_status === 'APPROVED'
+            && $this->evidence_exception_approved_by !== null
+        );
     }
 
     public function acceptedDiscrepancy(): ?int
