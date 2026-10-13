@@ -72,15 +72,16 @@ class GpsTrackingService
                 ]);
             }
 
-            // 4. Time skew validation
+            // 4. Time skew validation (Gate B)
             $now = Carbon::now();
             $recordedAt = isset($data['recorded_at'])
                 ? Carbon::parse($data['recorded_at'])
                 : $now;
 
-            if ($recordedAt->gt($now->copy()->addMinutes(5))) {
+            // Strict future timestamp rejection (within max 1 minute clock drift)
+            if ($recordedAt->gt($now->copy()->addMinute())) {
                 throw ValidationException::withMessages([
-                    'recorded_at' => ['Timestamp GPS berada di masa depan melebihi toleransi waktu sinkronisasi (5 menit).'],
+                    'recorded_at' => ['Timestamp GPS berada di masa depan melebihi toleransi sinkronisasi (1 menit).'],
                 ]);
             }
 
@@ -90,33 +91,95 @@ class GpsTrackingService
                 ]);
             }
 
-            // 5. Accuracy & speed sanitization
-            $accuracy = isset($data['accuracy']) ? filter_var($data['accuracy'], FILTER_VALIDATE_FLOAT) : null;
-            $speed = isset($data['speed']) ? filter_var($data['speed'], FILTER_VALIDATE_FLOAT) : null;
-            $heading = isset($data['heading']) ? filter_var($data['heading'], FILTER_VALIDATE_FLOAT) : null;
+            // 5. Accuracy, speed, and heading sanitization & range enforcement (Gate C)
+            $accuracy = null;
+            if (isset($data['accuracy'])) {
+                $val = filter_var($data['accuracy'], FILTER_VALIDATE_FLOAT);
+                if ($val === false || $val < 0) {
+                    throw ValidationException::withMessages([
+                        'accuracy' => ['Nilai akurasi GPS tidak boleh negatif.'],
+                    ]);
+                }
+                $accuracy = $val;
+            }
 
-            // Create record
+            $speed = null;
+            if (isset($data['speed'])) {
+                $val = filter_var($data['speed'], FILTER_VALIDATE_FLOAT);
+                if ($val === false || $val < 0) {
+                    throw ValidationException::withMessages([
+                        'speed' => ['Kecepatan armada tidak boleh bernilai negatif.'],
+                    ]);
+                }
+                $speed = $val;
+            }
+
+            $heading = null;
+            if (isset($data['heading']) && $data['heading'] !== null) {
+                $val = filter_var($data['heading'], FILTER_VALIDATE_FLOAT);
+                if ($val === false || $val < 0 || $val > 360) {
+                    throw ValidationException::withMessages([
+                        'heading' => ['Sudut arah (heading) harus berada dalam rentang 0 hingga 360 derajat.'],
+                    ]);
+                }
+                $heading = $val;
+            }
+
+            // 6. Duplicate detection (Gate C)
+            $existing = GpsLocation::where('trip_id', $lockedTrip->id)
+                ->where('recorded_at', $recordedAt)
+                ->where('latitude', $lat)
+                ->where('longitude', $lng)
+                ->first();
+            if ($existing) {
+                return $existing;
+            }
+
+            // 7. Telemetry outlier detection (Gate C)
+            if ($lockedTrip->last_latitude !== null && $lockedTrip->last_longitude !== null && $lockedTrip->last_location_at !== null) {
+                $distanceMeters = $this->calculateDistanceMeters(
+                    (float) $lockedTrip->last_latitude,
+                    (float) $lockedTrip->last_longitude,
+                    $lat,
+                    $lng
+                );
+                $elapsedSeconds = abs($recordedAt->diffInSeconds($lockedTrip->last_location_at));
+
+                // If distance jump is > 500m and implied speed exceeds physical limits (> 60 m/s = ~216 km/h)
+                if ($distanceMeters > 500 && ($elapsedSeconds === 0 || ($distanceMeters / max(1, $elapsedSeconds)) > 60)) {
+                    throw ValidationException::withMessages([
+                        'coordinates' => ['Lompatan koordinat GPS tidak wajar (outlier) terdeteksi terhadap waktu tempuh sebelumnya.'],
+                    ]);
+                }
+            }
+
+            // 8. Create historical telemetry record
             $gpsLocation = GpsLocation::create([
                 'trip_id' => $lockedTrip->id,
                 'driver_id' => $driver->id,
                 'latitude' => $lat,
                 'longitude' => $lng,
-                'accuracy_m' => $accuracy !== false ? $accuracy : null,
-                'speed_mps' => $speed !== false ? $speed : null,
-                'heading_deg' => $heading !== false ? $heading : null,
+                'accuracy_m' => $accuracy,
+                'speed_mps' => $speed,
+                'heading_deg' => $heading,
                 'recorded_at' => $recordedAt,
                 'received_at' => $now,
             ]);
 
-            // Update trip cached latest telemetry
-            $lockedTrip->update([
-                'last_latitude' => $lat,
-                'last_longitude' => $lng,
-                'last_accuracy_m' => $accuracy !== false ? $accuracy : null,
-                'last_location_at' => $recordedAt,
-                'tracking_status' => 'ONLINE',
-                'tracking_started_at' => $lockedTrip->tracking_started_at ?: $now,
-            ]);
+            // 9. Chronological ordering enforcement for trip cache (Gate B)
+            // Only update latest trip location cache if this telemetry point is newer than existing latest
+            $isNewer = $lockedTrip->last_location_at === null || $recordedAt->gt($lockedTrip->last_location_at);
+
+            if ($isNewer) {
+                $lockedTrip->update([
+                    'last_latitude' => $lat,
+                    'last_longitude' => $lng,
+                    'last_accuracy_m' => $accuracy,
+                    'last_location_at' => $recordedAt,
+                    'tracking_status' => 'ONLINE',
+                    'tracking_started_at' => $lockedTrip->tracking_started_at ?: $now,
+                ]);
+            }
 
             return $gpsLocation;
         });
@@ -258,6 +321,28 @@ class GpsTrackingService
                 return $lockedStop; // Idempotent
             }
 
+            // Enforce sequential stop arrival order (Gate D)
+            // Prior stops must have arrived or completed before subsequent stops can arrive
+            $precedingIncomplete = TripStop::where('trip_id', $trip->id)
+                ->where('sequence_number', '<', $lockedStop->sequence_number)
+                ->whereNotIn('status', [
+                    TripStopStatus::ARRIVED,
+                    TripStopStatus::ARRIVED_AWAITING_CONFIRMATION,
+                    TripStopStatus::HANDED_OVER,
+                    TripStopStatus::COMPLETED,
+                    TripStopStatus::SKIPPED,
+                ])
+                ->orderBy('sequence_number')
+                ->first();
+
+            if ($precedingIncomplete) {
+                throw ValidationException::withMessages([
+                    'stop' => [
+                        "Pemberhentian #{$lockedStop->sequence_number} ({$lockedStop->school->name}) tidak dapat ditandai tiba sebelum pemberhentian #{$precedingIncomplete->sequence_number} tiba atau diselesaikan.",
+                    ],
+                ]);
+            }
+
             $lockedStop->update([
                 'status' => TripStopStatus::ARRIVED_AWAITING_CONFIRMATION,
                 'arrived_at' => Carbon::now(),
@@ -276,5 +361,20 @@ class GpsTrackingService
 
             return $lockedStop;
         });
+    }
+
+    /**
+     * Calculate approximate surface distance between two coordinates in meters (Haversine formula).
+     */
+    private function calculateDistanceMeters(float $lat1, float $lon1, float $lat2, float $lon2): float
+    {
+        $earthRadius = 6371000; // meters
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLon = deg2rad($lon2 - $lon1);
+        $a = sin($dLat / 2) * sin($dLat / 2) +
+             cos(deg2rad($lat1)) * cos(deg2rad($lat2)) *
+             sin($dLon / 2) * sin($dLon / 2);
+        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+        return $earthRadius * $c;
     }
 }

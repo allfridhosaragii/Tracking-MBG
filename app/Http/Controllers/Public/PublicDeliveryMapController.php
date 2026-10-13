@@ -68,6 +68,18 @@ class PublicDeliveryMapController extends Controller
         };
 
         $geometry = $trip->route_geometry ? json_decode($trip->route_geometry, true) : null;
+        try {
+            $routingService = app(\App\Services\OsrmRoutingService::class);
+            $waypoints = $routingService->extractTripWaypoints($trip);
+            if (count($waypoints) >= 2) {
+                $routeResult = $routingService->getRoute($waypoints);
+                if ($routeResult['success'] && ! $geometry) {
+                    $geometry = $routeResult['geometry'] ?? null;
+                }
+            }
+        } catch (\Throwable $e) {
+            // Graceful fallback
+        }
 
         return response()->json([
             'trip_code' => $trip->trip_code,
@@ -75,7 +87,7 @@ class PublicDeliveryMapController extends Controller
             'delivery_stage' => $publicStage,
             'status' => $trip->status->value,
             'status_label' => $trip->status->label(),
-            'last_updated' => now()->toIso8601String(),
+            'last_updated' => ($trip->updated_at ?? $trip->created_at)->toIso8601String(),
             'sppg' => [
                 'name' => $sppg->name,
                 'lat' => (float) $sppg->latitude,

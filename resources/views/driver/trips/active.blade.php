@@ -53,47 +53,49 @@
         </div>
     @endif
 
-    <!-- Banner Status GPS Telemetri Perangkat -->
-    <div id="gps-status-card" class="mb-6 p-4 rounded-2xl bg-white border border-[#DCE5DD] shadow-2xs">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div class="flex items-center gap-3">
-                <div id="gps-indicator-dot" class="w-4 h-4 rounded-full bg-amber-400 animate-pulse shrink-0"></div>
-                <div>
-                    <div class="flex items-center gap-2">
-                        <span class="text-xs font-bold text-[#172923]">Status Telemetri GPS Perangkat:</span>
-                        <span id="gps-status-text" class="text-xs font-semibold px-2 py-0.5 rounded border {{ $trackingStatus['badge_class'] }}">
-                            {{ $trackingStatus['label'] }}
-                        </span>
-                    </div>
-                    <p id="gps-status-detail" class="text-[11px] text-[#53645B] mt-0.5">
-                        {{ $trackingStatus['age_human'] }}
-                    </p>
+    <!-- Banner Status & Persetujuan Berbagi GPS (Critical Gate A) -->
+    <div id="gps-status-card" class="mb-6 p-5 rounded-2xl bg-white border border-[#DCE5DD] shadow-xs">
+        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div class="space-y-1">
+                <div class="flex items-center gap-2">
+                    <div id="gps-indicator-dot" class="w-3.5 h-3.5 rounded-full bg-slate-400 shrink-0"></div>
+                    <span class="text-sm font-bold text-[#172923]">Berbagi Lokasi GPS Perjalanan</span>
+                    <span id="gps-status-text" class="text-xs font-semibold px-2.5 py-0.5 rounded-md border bg-slate-100 text-slate-700 border-slate-300">
+                        Menunggu Tindakan Kurir (Belum Aktif)
+                    </span>
                 </div>
+                <p id="gps-status-detail" class="text-xs text-[#53645B]">
+                    Klik tombol di samping untuk mulai membagikan lokasi armada selama pengantaran.
+                </p>
             </div>
 
-            <!-- Kontrol Berbagi Lokasi -->
-            <div class="flex items-center gap-2">
+            <!-- Kontrol Aksi Jelas Kurir (Critical Gate A) -->
+            <div class="shrink-0 flex items-center gap-2">
                 <button type="button" id="btn-toggle-gps" 
-                        class="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#1C6654] text-white hover:bg-[#154E40] transition-colors flex items-center gap-1.5 touch-target">
+                        class="px-4 py-2 rounded-xl text-xs font-bold bg-[#1C6654] text-white hover:bg-[#154E40] transition-colors flex items-center gap-2 shadow-xs touch-target cursor-pointer">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
                     </svg>
-                    <span id="btn-gps-label">Bagikan Lokasi GPS</span>
+                    <span id="btn-gps-label">Mulai Bagikan Lokasi</span>
                 </button>
             </div>
         </div>
 
-        <!-- Penjelasan Keterbatasan Browser Mobile -->
-        <div class="mt-3 pt-3 border-t border-[#E8EEE9] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-[11px] text-[#708177]">
-            <p>
-                <strong>Catatan Pelacakan Web:</strong> GPS dikirim berkala saat layar peramban aktif. Jika layar terkunci, pengiriman lokasi terhenti sementara dan penanda akan berada pada titik terakhir (stale).
-            </p>
-            <span id="gps-accuracy-display" class="font-mono text-xs text-[#1C6654] shrink-0">
-                @if($trackingStatus['accuracy_m'])
-                    Akurasi: ±{{ round($trackingStatus['accuracy_m']) }}m
-                @endif
-            </span>
+        <!-- Penjelasan Transparansi Privasi & Keterbatasan Browser (Critical Gate A) -->
+        <div class="mt-4 pt-3.5 border-t border-[#E8EEE9] grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px] text-[#53645B]">
+            <div class="flex items-start gap-2">
+                <svg class="w-4 h-4 text-[#1C6654] shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                <span><strong>Privasi & Keamanan:</strong> Lokasi digunakan khusus memantau rute pengantaran. Hanya Kepala SPPG dan sistem berwenang yang dapat melihat koordinat presisi.</span>
+            </div>
+            <div class="flex items-start gap-2">
+                <svg class="w-4 h-4 text-amber-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                <span><strong>Batasan Peramban:</strong> Pelacakan web dapat terhenti jika layar ponsel terkunci. Kurir dapat menghentikan berbagi lokasi sewaktu-waktu.</span>
+            </div>
+        </div>
+
+        <div id="gps-accuracy-container" class="mt-2 text-right">
+            <span id="gps-accuracy-display" class="font-mono text-[11px] text-[#1C6654]"></span>
         </div>
     </div>
 
@@ -287,20 +289,34 @@
                 }
             }
 
+            // Critical Gate A: Tracking ONLY starts upon explicit user click
+            // Never automatically invoke startTracking() on DOMContentLoaded!
             function startTracking() {
                 if (!navigator.geolocation) {
                     statusText.textContent = 'Browser Tidak Mendukung GPS';
+                    statusText.className = 'text-xs font-semibold px-2 py-0.5 rounded border bg-rose-50 text-rose-700 border-rose-200';
+                    statusDetail.textContent = 'Perangkat peramban ini tidak mendukung Geolocation API.';
                     return;
                 }
 
-                btnGpsLabel.textContent = 'Hentikan Berbagi Lokasi';
-                btnToggleGps.className = 'px-3.5 py-1.5 rounded-xl text-xs font-bold bg-rose-700 text-white hover:bg-rose-800 transition-colors flex items-center gap-1.5 touch-target';
+                statusText.textContent = 'Meminta Izin Lokasi...';
+                statusText.className = 'text-xs font-semibold px-2 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200';
+                statusDetail.textContent = 'Harap izinkan akses lokasi pada dialog peramban.';
+                btnGpsLabel.textContent = 'Menghubungkan...';
 
-                watchId = navigator.geolocation.watchPosition(sendLocation, handleGeoError, {
-                    enableHighAccuracy: true,
-                    maximumAge: 10000,
-                    timeout: 20000
-                });
+                watchId = navigator.geolocation.watchPosition(
+                    (pos) => {
+                        sendLocation(pos);
+                    },
+                    (err) => {
+                        handleGeoError(err);
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        maximumAge: 10000,
+                        timeout: 20000
+                    }
+                );
             }
 
             function stopTracking() {
@@ -308,11 +324,13 @@
                     navigator.geolocation.clearWatch(watchId);
                     watchId = null;
                 }
-                btnGpsLabel.textContent = 'Bagikan Lokasi GPS';
-                btnToggleGps.className = 'px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#1C6654] text-white hover:bg-[#154E40] transition-colors flex items-center gap-1.5 touch-target';
-                statusText.textContent = 'Pelacakan Dinonaktifkan Sementara';
+                btnGpsLabel.textContent = 'Mulai Bagikan Lokasi';
+                btnToggleGps.className = 'px-4 py-2 rounded-xl text-xs font-bold bg-[#1C6654] text-white hover:bg-[#154E40] transition-colors flex items-center gap-2 shadow-xs touch-target cursor-pointer';
+                statusText.textContent = 'Berbagi Lokasi Dihentikan';
                 statusText.className = 'text-xs font-semibold px-2 py-0.5 rounded border bg-slate-100 text-slate-700 border-slate-300';
-                indicatorDot.className = 'w-4 h-4 rounded-full bg-slate-400 shrink-0';
+                statusDetail.textContent = 'Pelacakan dihentikan oleh kurir. Klik "Mulai Bagikan Lokasi" untuk mengaktifkan kembali.';
+                indicatorDot.className = 'w-3.5 h-3.5 rounded-full bg-slate-400 shrink-0';
+                if (accuracyDisplay) accuracyDisplay.textContent = '';
             }
 
             btnToggleGps?.addEventListener('click', function() {
@@ -323,8 +341,13 @@
                 }
             });
 
-            // Automatically attempt geolocation sharing on load
-            startTracking();
+            // Clean up watcher when leaving page
+            window.addEventListener('beforeunload', function() {
+                if (watchId !== null) {
+                    navigator.geolocation.clearWatch(watchId);
+                    watchId = null;
+                }
+            });
         });
     </script>
 </x-app-shell>

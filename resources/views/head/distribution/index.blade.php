@@ -492,7 +492,8 @@
                             document.addEventListener('DOMContentLoaded', function() {
                                 if (window.initDispatchMap) {
                                     window.initDispatchMap('dispatch-control-map', {
-                                        dataUrl: '{{ route('trips.map-data', $selectedTrip) }}'
+                                        dataUrl: '{{ route('trips.map-data', $selectedTrip) }}',
+                                        pollInterval: {{ $selectedTrip->status === \App\Enums\TripStatus::IN_PROGRESS ? 10000 : 0 }}
                                     });
                                 }
                             });

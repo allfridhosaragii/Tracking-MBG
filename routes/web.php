@@ -188,3 +188,8 @@ Route::get('/public/trips/{tripCode}/map-data', [\App\Http\Controllers\Public\Pu
     ->name('public.trips.map-data')
     ->middleware('throttle:60,1');
 
+// Development Isolated Map Diagnostics
+Route::get('/dev/map-test', function () {
+    return view('dev.map-test');
+})->name('dev.map-test');
+

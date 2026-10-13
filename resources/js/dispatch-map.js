@@ -1,5 +1,11 @@
-import { Map, Marker, Popup, NavigationControl, LngLatBounds } from 'maplibre-gl';
+import { Map, Marker, Popup, NavigationControl, LngLatBounds, setWorkerUrl } from 'maplibre-gl';
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import 'maplibre-gl/dist/maplibre-gl.css';
+
+// Configure MapLibre Web Worker explicitly for Vite bundle
+if (typeof setWorkerUrl === 'function' && maplibreWorkerUrl) {
+    setWorkerUrl(maplibreWorkerUrl);
+}
 
 function isWebGlSupported() {
     try {
@@ -38,10 +44,14 @@ export function initDispatchMap(containerId, options = {}) {
         initialData = null,
         interactive = true,
         onStopSelected = null,
+        pollInterval = 0,
+        onTelemetryUpdate = null,
     } = options;
 
     let map = null;
     let markers = [];
+    let isInitialRender = true;
+    let pollTimer = null;
 
     const defaultCenter = [112.735, -7.288]; // Surabaya default center
     const defaultZoom = 12;
@@ -245,8 +255,29 @@ export function initDispatchMap(containerId, options = {}) {
             hasPoints = true;
         }
 
-        // 3. Add Hybrid Multi-Stop Polyline Route Geometry from OSRM
-        if (data.geometry && data.geometry.coordinates) {
+        // 3. Add Hybrid Multi-Stop Polyline Route Geometry (OSRM or Graceful Straight Segments)
+        let geometryToRender = (data.geometry && data.geometry.coordinates) ? data.geometry : null;
+        let isFallbackGeometry = false;
+
+        // Fallback: If OSRM is offline or null, construct sequenced dashed polyline
+        if (!geometryToRender && data.sppg && Array.isArray(data.stops) && data.stops.length > 0) {
+            const fallbackCoords = [];
+            if (data.sppg.lng && data.sppg.lat) {
+                fallbackCoords.push([data.sppg.lng, data.sppg.lat]);
+            }
+            data.stops.forEach(s => {
+                if (s.lng && s.lat) fallbackCoords.push([s.lng, s.lat]);
+            });
+            if (fallbackCoords.length >= 2) {
+                geometryToRender = {
+                    type: 'LineString',
+                    coordinates: fallbackCoords,
+                };
+                isFallbackGeometry = true;
+            }
+        }
+
+        if (geometryToRender && geometryToRender.coordinates) {
             // Determine active leg index
             let activeLegIndex = 0;
             if (Array.isArray(data.stops)) {
@@ -268,7 +299,7 @@ export function initDispatchMap(containerId, options = {}) {
             const previewGeoJson = {
                 type: 'Feature',
                 properties: {},
-                geometry: data.geometry,
+                geometry: geometryToRender,
             };
 
             if (map.getSource('route-preview-line')) {
@@ -296,64 +327,99 @@ export function initDispatchMap(containerId, options = {}) {
                 });
             }
 
-            // Prominent active leg line (Forest Pine #1C6654)
-            const activeLineData = {
-                type: 'Feature',
-                properties: {},
-                geometry: activeLegGeometry || data.geometry,
-            };
+            // Prominent active leg line (Forest Pine #1C6654) - only when detailed OSRM leg exists
+            if (activeLegGeometry && !isFallbackGeometry) {
+                const activeLineData = {
+                    type: 'Feature',
+                    properties: {},
+                    geometry: activeLegGeometry,
+                };
 
-            if (map.getSource('route-active-line')) {
-                map.getSource('route-active-line').setData(activeLineData);
-            } else {
-                map.addSource('route-active-line', {
-                    type: 'geojson',
-                    data: activeLineData,
-                });
+                if (map.getSource('route-active-line')) {
+                    map.getSource('route-active-line').setData(activeLineData);
+                } else {
+                    map.addSource('route-active-line', {
+                        type: 'geojson',
+                        data: activeLineData,
+                    });
 
-                map.addLayer({
-                    id: 'route-active-casing',
-                    type: 'line',
-                    source: 'route-active-line',
-                    layout: {
-                        'line-join': 'round',
-                        'line-cap': 'round',
-                    },
-                    paint: {
-                        'line-color': '#FFFFFF',
-                        'line-width': 8,
-                        'line-opacity': 0.5,
-                    },
-                });
+                    map.addLayer({
+                        id: 'route-active-casing',
+                        type: 'line',
+                        source: 'route-active-line',
+                        layout: {
+                            'line-join': 'round',
+                            'line-cap': 'round',
+                        },
+                        paint: {
+                            'line-color': '#FFFFFF',
+                            'line-width': 8,
+                            'line-opacity': 0.5,
+                        },
+                    });
 
-                map.addLayer({
-                    id: 'route-active-layer',
-                    type: 'line',
-                    source: 'route-active-line',
-                    layout: {
-                        'line-join': 'round',
-                        'line-cap': 'round',
-                    },
-                    paint: {
-                        'line-color': '#1C6654',
-                        'line-width': 6,
-                        'line-opacity': 0.95,
-                    },
-                });
+                    map.addLayer({
+                        id: 'route-active-layer',
+                        type: 'line',
+                        source: 'route-active-line',
+                        layout: {
+                            'line-join': 'round',
+                            'line-cap': 'round',
+                        },
+                        paint: {
+                            'line-color': '#1C6654',
+                            'line-width': 6,
+                            'line-opacity': 0.95,
+                        },
+                    });
+                }
             }
         }
 
-        // Fit bounds
-        if (hasPoints && !bounds.isEmpty()) {
+        // Fit bounds only on initial render to preserve user pan/zoom during live polling updates
+        if (hasPoints && !bounds.isEmpty() && isInitialRender) {
             map.fitBounds(bounds, {
                 padding: { top: 50, bottom: 50, left: 50, right: 50 },
                 maxZoom: 15,
                 duration: 800,
             });
+            isInitialRender = false;
+        }
+    }
+
+    function fetchAndRender() {
+        if (!dataUrl || document.hidden) return;
+        fetch(dataUrl, {
+            headers: { 'Accept': 'application/json' },
+        })
+            .then(res => res.json())
+            .then(data => {
+                renderMapData(data);
+                if (typeof onTelemetryUpdate === 'function') {
+                    onTelemetryUpdate(data);
+                }
+            })
+            .catch(err => {
+                console.warn('Map polling update failed:', err);
+            });
+    }
+
+    function startPolling(intervalMs) {
+        if (pollTimer) clearInterval(pollTimer);
+        const ms = intervalMs || pollInterval || 10000;
+        pollTimer = setInterval(fetchAndRender, ms);
+    }
+
+    function stopPolling() {
+        if (pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
         }
     }
 
     map.on('load', () => {
+        map.resize();
+
         if (initialData) {
             renderMapData(initialData);
         } else if (dataUrl) {
@@ -361,20 +427,33 @@ export function initDispatchMap(containerId, options = {}) {
                 headers: { 'Accept': 'application/json' },
             })
                 .then(res => res.json())
-                .then(data => renderMapData(data))
+                .then(data => {
+                    renderMapData(data);
+                    if (typeof onTelemetryUpdate === 'function') {
+                        onTelemetryUpdate(data);
+                    }
+                })
                 .catch(err => {
-                    console.warn('Failed to fetch map data:', err);
+                    console.warn('Failed to fetch initial map data:', err);
                 });
+        }
+
+        if (pollInterval && pollInterval > 0) {
+            startPolling(pollInterval);
         }
     });
 
     return {
         map,
         updateData: renderMapData,
+        startPolling,
+        stopPolling,
         destroy: () => {
+            stopPolling();
             if (map) map.remove();
         },
     };
 }
 
 window.initDispatchMap = initDispatchMap;
+window.maplibregl = { Map, Marker, Popup, NavigationControl, LngLatBounds };

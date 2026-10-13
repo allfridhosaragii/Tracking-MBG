@@ -789,6 +789,7 @@ class TripDispatchHardeningTest extends TestCase
 
         Http::fake([
             'router.project-osrm.org/*' => Http::response(null, 500),
+            'routing.openstreetmap.de/*' => Http::response(null, 500),
         ]);
 
         $fallbackRoute = $osrmService->getRoute([

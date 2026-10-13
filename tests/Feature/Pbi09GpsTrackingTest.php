@@ -22,6 +22,7 @@ use App\Models\QualityCheck;
 use App\Models\School;
 use App\Models\Sppg;
 use App\Models\Trip;
+use App\Models\TripStop;
 use App\Models\User;
 use App\Models\Vehicle;
 use App\Services\GpsTrackingService;
@@ -376,5 +377,235 @@ class Pbi09GpsTrackingTest extends TestCase
             'event' => 'trip_stop.arrived',
             'auditable_id' => $stop->id,
         ]);
+    }
+
+    /**
+     * Critical Gate A: Active trip navigation page does NOT auto-request GPS on load.
+     * Requires explicit driver action via "Mulai Bagikan Lokasi" button.
+     */
+    public function test_active_trip_page_does_not_request_gps_automatically(): void
+    {
+        $response = $this->actingAs($this->driverA)
+            ->get(route('driver.trips.active', $this->inProgressTrip));
+
+        $response->assertStatus(200);
+        $content = $response->getContent();
+
+        // Must have explicit consent button
+        $this->assertStringContainsString('Mulai Bagikan Lokasi', $content);
+        $this->assertStringContainsString('Berbagi Lokasi GPS Perjalanan', $content);
+        $this->assertStringContainsString('Menunggu Tindakan Kurir (Belum Aktif)', $content);
+
+        // Must NOT call startTracking() automatically on load / DOMContentLoaded
+        $this->assertStringNotContainsString('// Automatically attempt geolocation sharing on load', $content);
+        $this->assertStringContainsString('btnToggleGps?.addEventListener(\'click\'', $content);
+        $this->assertStringContainsString('startTracking();', $content);
+    }
+
+    /**
+     * Critical Gate B: Out-of-order delayed GPS telemetry does NOT roll back Trip cached latest location.
+     */
+    public function test_out_of_order_stale_telemetry_does_not_overwrite_newer_cached_location(): void
+    {
+        $timeNewer = Carbon::now()->subMinutes(2);
+        $timeOlder = Carbon::now()->subMinutes(10);
+
+        // 1. Submit newer telemetry (12:05)
+        $res1 = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
+                'latitude' => -7.288543,
+                'longitude' => 112.735123,
+                'accuracy' => 10.0,
+                'recorded_at' => $timeNewer->toIso8601String(),
+            ]);
+        $res1->assertStatus(200);
+
+        $this->inProgressTrip->refresh();
+        $this->assertEquals(-7.288543, (float) $this->inProgressTrip->last_latitude);
+        $this->assertEquals(112.735123, (float) $this->inProgressTrip->last_longitude);
+
+        // 2. Submit older delayed network telemetry (11:57)
+        $res2 = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
+                'latitude' => -7.291234,
+                'longitude' => 112.721456,
+                'accuracy' => 15.0,
+                'recorded_at' => $timeOlder->toIso8601String(),
+            ]);
+        $res2->assertStatus(200);
+
+        // Verify that GpsLocation has both records for audit trail
+        $this->assertEquals(2, GpsLocation::where('trip_id', $this->inProgressTrip->id)->count());
+
+        // But Trip latest cached position MUST NOT be rolled back to older point!
+        $this->inProgressTrip->refresh();
+        $this->assertEquals(-7.288543, (float) $this->inProgressTrip->last_latitude, 'Trip last_latitude must not roll back to older telemetry');
+        $this->assertEquals(112.735123, (float) $this->inProgressTrip->last_longitude, 'Trip last_longitude must not roll back to older telemetry');
+        $this->assertEquals($timeNewer->toIso8601String(), $this->inProgressTrip->last_location_at->toIso8601String(), 'Trip last_location_at must remain at the newer timestamp');
+    }
+
+    /**
+     * Critical Gate C: Telemetry with negative accuracy is rejected.
+     */
+    public function test_negative_accuracy_rejected(): void
+    {
+        $response = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
+                'latitude' => -7.288543,
+                'longitude' => 112.735123,
+                'accuracy' => -5.0,
+                'recorded_at' => Carbon::now()->toIso8601String(),
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['accuracy']);
+    }
+
+    /**
+     * Critical Gate C: Telemetry with negative speed is rejected.
+     */
+    public function test_negative_speed_rejected(): void
+    {
+        $response = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
+                'latitude' => -7.288543,
+                'longitude' => 112.735123,
+                'accuracy' => 10.0,
+                'speed' => -2.5,
+                'recorded_at' => Carbon::now()->toIso8601String(),
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['speed']);
+    }
+
+    /**
+     * Critical Gate C: Telemetry with out-of-range heading is rejected.
+     */
+    public function test_invalid_heading_rejected(): void
+    {
+        $response = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
+                'latitude' => -7.288543,
+                'longitude' => 112.735123,
+                'accuracy' => 10.0,
+                'heading' => 450.0,
+                'recorded_at' => Carbon::now()->toIso8601String(),
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['heading']);
+    }
+
+    /**
+     * Critical Gate C: Coordinate teleportation/outlier jump is rejected.
+     */
+    public function test_telemetry_outlier_jump_rejected(): void
+    {
+        $time1 = Carbon::now()->subSeconds(10);
+        $time2 = Carbon::now()->subSeconds(5);
+
+        // 1. Initial valid location in Wonokromo, Surabaya
+        $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
+                'latitude' => -7.288543,
+                'longitude' => 112.735123,
+                'accuracy' => 10.0,
+                'recorded_at' => $time1->toIso8601String(),
+            ]);
+
+        // 2. 5 seconds later, impossible jump to Jakarta (-6.2000, 106.8166) ~ 650 km
+        $response = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
+                'latitude' => -6.200000,
+                'longitude' => 106.816667,
+                'accuracy' => 10.0,
+                'recorded_at' => $time2->toIso8601String(),
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['coordinates']);
+    }
+
+    /**
+     * Critical Gate C: Duplicate telemetry payload is idempotent without duplicating records.
+     */
+    public function test_duplicate_telemetry_payload_is_idempotent(): void
+    {
+        $time = Carbon::now()->subSeconds(20);
+        $payload = [
+            'latitude' => -7.288543,
+            'longitude' => 112.735123,
+            'accuracy' => 10.0,
+            'recorded_at' => $time->toIso8601String(),
+        ];
+
+        $res1 = $this->actingAs($this->driverA)->postJson(route('driver.trips.telemetry', $this->inProgressTrip), $payload);
+        $res1->assertStatus(200);
+
+        $res2 = $this->actingAs($this->driverA)->postJson(route('driver.trips.telemetry', $this->inProgressTrip), $payload);
+        $res2->assertStatus(200);
+
+        $this->assertEquals(1, GpsLocation::where('trip_id', $this->inProgressTrip->id)->count());
+    }
+
+    /**
+     * Critical Gate D: Stop 2 cannot be marked ARRIVED before Stop 1 has arrived.
+     */
+    public function test_subsequent_stop_cannot_arrive_before_first_stop(): void
+    {
+        $stop2 = TripStop::create([
+            'trip_id' => $this->inProgressTrip->id,
+            'school_id' => $this->schoolA2->id,
+            'sequence_number' => 2,
+            'planned_portions' => 150,
+            'status' => TripStopStatus::PENDING,
+        ]);
+
+        $stops = $this->inProgressTrip->stops()->orderBy('sequence_number')->get();
+        $stop1 = $stops[0];
+        $this->assertEquals(1, $stop1->sequence_number);
+        $this->assertEquals(2, $stop2->sequence_number);
+
+        // Attempt marking stop 2 arrived while stop 1 is still EN_ROUTE / PENDING
+        $response = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.stops.arrive', [$this->inProgressTrip, $stop2]));
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['stop']);
+    }
+
+    /**
+     * Critical Gate D: Double-submit arrival on active stop is idempotent.
+     */
+    public function test_double_submit_arrival_is_idempotent(): void
+    {
+        $stop1 = $this->inProgressTrip->stops()->orderBy('sequence_number')->first();
+
+        $res1 = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.stops.arrive', [$this->inProgressTrip, $stop1]));
+        $res1->assertStatus(200);
+
+        $res2 = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.stops.arrive', [$this->inProgressTrip, $stop1]));
+        $res2->assertStatus(200);
+
+        $logsCount = ActivityLog::where('event', 'trip_stop.arrived')
+            ->where('auditable_id', $stop1->id)
+            ->count();
+        $this->assertEquals(1, $logsCount, 'Idempotent arrival must not create duplicate activity logs.');
+    }
+
+    /**
+     * Critical Gate 8: Public map data uses actual model updated_at timestamp, not request time.
+     */
+    public function test_public_map_data_uses_actual_updated_at_timestamp_not_now(): void
+    {
+        $expectedTime = $this->inProgressTrip->updated_at->toIso8601String();
+
+        $response = $this->getJson(route('public.trips.map-data', $this->inProgressTrip->trip_code));
+
+        $response->assertStatus(200);
+        $this->assertEquals($expectedTime, $response->json('last_updated'));
     }
 }

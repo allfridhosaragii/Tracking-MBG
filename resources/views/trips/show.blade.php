@@ -260,7 +260,8 @@
         document.addEventListener('DOMContentLoaded', function() {
             if (window.initDispatchMap) {
                 window.initDispatchMap('trip-dossier-map', {
-                    dataUrl: '{{ route('trips.map-data', $trip) }}'
+                    dataUrl: '{{ route('trips.map-data', $trip) }}',
+                    pollInterval: {{ $trip->status === \App\Enums\TripStatus::IN_PROGRESS ? 10000 : 0 }}
                 });
             }
         });

@@ -16,9 +16,12 @@ class OsrmRoutingService
     protected int $cacheTtl;
     protected int $failureCacheTtl;
 
+    protected string $fallbackUrl;
+
     public function __construct()
     {
-        $this->baseUrl = rtrim(config('services.osrm.base_url', 'https://router.project-osrm.org'), '/');
+        $this->baseUrl = rtrim(config('services.osrm.base_url', 'https://routing.openstreetmap.de/routed-car'), '/');
+        $this->fallbackUrl = rtrim(config('services.osrm.fallback_url', 'https://router.project-osrm.org'), '/');
         $this->profile = config('services.osrm.profile', 'driving');
         $this->timeout = (int) config('services.osrm.timeout', 4);
         $this->cacheTtl = (int) config('services.osrm.cache_ttl', 7200); // 2 hours default
@@ -91,6 +94,17 @@ class OsrmRoutingService
             $response = Http::timeout($this->timeout)
                 ->acceptJson()
                 ->get($url);
+
+            if (! $response->successful() && $this->fallbackUrl && $this->fallbackUrl !== $this->baseUrl) {
+                $fallbackFullUrl = "{$this->fallbackUrl}/route/v1/{$this->profile}/{$coordString}?overview=full&geometries=geojson&steps=true";
+                try {
+                    $response = Http::timeout($this->timeout)
+                        ->acceptJson()
+                        ->get($fallbackFullUrl);
+                } catch (\Throwable $e) {
+                    // Fallback also failed, proceed with original response check
+                }
+            }
 
             if (! $response->successful()) {
                 Log::warning('OSRM request unsuccessful', [
