@@ -178,5 +178,19 @@
                 </svg>
             </a>
         </div>
+
+        <div class="mt-3 p-4 rounded-xl bg-[#F0F7F4] border border-[#BCE2D0] text-[#1B573E] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+                <span class="font-bold text-xs block text-[#172923]">Penerimaan Makanan & Uji Organoleptik (P04)</span>
+                <span class="text-xs text-[#53645B] mt-0.5 block">Verifikasi porsi fisik ompreng saat armada kurir tiba dan sahkan berita acara serah terima.</span>
+            </div>
+            <a href="{{ route('school.receipts.index') }}" 
+               class="min-h-[44px] px-4 py-2 rounded-xl bg-[#1C6654] hover:bg-[#154D40] text-white text-xs font-bold transition-colors inline-flex items-center justify-center gap-2 subtle-shadow shrink-0 focus:outline-none focus:ring-2 focus:ring-[#1C6654] focus:ring-offset-2">
+                <span>Buka Penerimaan Makanan</span>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+                </svg>
+            </a>
+        </div>
     </x-card>
 </x-app-shell>

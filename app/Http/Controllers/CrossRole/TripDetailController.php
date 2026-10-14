@@ -66,8 +66,13 @@ class TripDetailController extends Controller
         $stops = $trip->stops->sortBy('sequence_number')->values();
 
         $activeStop = $stops->first(function ($stop) {
-            return in_array($stop->status, [\App\Enums\TripStopStatus::EN_ROUTE, \App\Enums\TripStopStatus::PENDING], true);
-        }) ?: $stops->first();
+            return in_array($stop->status, [
+                \App\Enums\TripStopStatus::EN_ROUTE,
+                \App\Enums\TripStopStatus::ARRIVED,
+                \App\Enums\TripStopStatus::ARRIVED_AWAITING_CONFIRMATION,
+                \App\Enums\TripStopStatus::PENDING,
+            ], true);
+        }) ?: $stops->last();
 
         $geometry = $trip->route_geometry ? json_decode($trip->route_geometry, true) : null;
         $legs = [];
@@ -103,6 +108,7 @@ class TripDetailController extends Controller
                 'lng' => (float) $sppg->longitude,
             ],
             'active_stop_sequence' => $activeStop?->sequence_number ?? 1,
+            'active_stop_id' => $activeStop?->id,
             'geometry' => $geometry,
             'legs' => $legs,
             'total_distance_m' => $trip->total_distance_m,

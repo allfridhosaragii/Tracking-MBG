@@ -56,7 +56,7 @@ class GpsTrackingService
 
             $lockedTrip->update([
                 'active_tracking_session_id' => $sessionId,
-                'tracking_status' => 'ONLINE',
+                'tracking_status' => 'WAITING_FOR_LOCATION',
                 'tracking_started_at' => $now,
                 'tracking_ended_at' => null,
             ]);
@@ -66,7 +66,7 @@ class GpsTrackingService
                 auditable: $lockedTrip,
                 actor: $driver,
                 newValues: [
-                    'tracking_status' => 'ONLINE',
+                    'tracking_status' => 'WAITING_FOR_LOCATION',
                     'session_id' => $sessionId,
                     'started_at' => $now->toIso8601String(),
                 ]
@@ -75,7 +75,7 @@ class GpsTrackingService
             return [
                 'session_id' => $sessionId,
                 'started_at' => $now->toIso8601String(),
-                'tracking_status' => 'ONLINE',
+                'tracking_status' => 'WAITING_FOR_LOCATION',
             ];
         });
     }
@@ -114,7 +114,33 @@ class GpsTrackingService
                 ]);
             }
 
-            // 3. Coordinate validation
+            // 3. GATE A: Strict Server-Authoritative Session Validation BEFORE coordinate storage
+            if (empty($lockedTrip->active_tracking_session_id)) {
+                throw ValidationException::withMessages([
+                    'session_id' => ['Tidak ada sesi pelacakan GPS aktif pada perjalanan ini. Kurir harus memulai sesi terlebih dahulu.'],
+                ]);
+            }
+
+            $sessionId = isset($data['session_id']) && $data['session_id'] !== '' ? (string) $data['session_id'] : null;
+            if (empty($sessionId)) {
+                throw ValidationException::withMessages([
+                    'session_id' => ['Parameter session_id wajib disertakan dalam permintaan telemetri GPS.'],
+                ]);
+            }
+
+            if (!hash_equals($lockedTrip->active_tracking_session_id, $sessionId)) {
+                throw ValidationException::withMessages([
+                    'session_id' => ['Sesi pelacakan GPS tidak sah atau telah digantikan oleh sesi baru.'],
+                ]);
+            }
+
+            if ($lockedTrip->tracking_status === 'SHARING_STOPPED' || $lockedTrip->tracking_ended_at !== null) {
+                throw ValidationException::withMessages([
+                    'session_id' => ['Sesi pelacakan telah dihentikan oleh kurir.'],
+                ]);
+            }
+
+            // 4. Coordinate validation
             $lat = filter_var($data['latitude'] ?? null, FILTER_VALIDATE_FLOAT);
             $lng = filter_var($data['longitude'] ?? null, FILTER_VALIDATE_FLOAT);
 
@@ -137,7 +163,7 @@ class GpsTrackingService
                 ]);
             }
 
-            // 4. Time skew validation (Gate B)
+            // 5. Time skew validation (Gate B)
             $now = Carbon::now();
             $recordedAt = isset($data['recorded_at'])
                 ? Carbon::parse($data['recorded_at'])
@@ -156,7 +182,7 @@ class GpsTrackingService
                 ]);
             }
 
-            // 5. Accuracy, speed, and heading sanitization & range enforcement (Gate C)
+            // 6. Accuracy, speed, and heading sanitization & range enforcement
             $accuracy = null;
             if (isset($data['accuracy'])) {
                 $val = filter_var($data['accuracy'], FILTER_VALIDATE_FLOAT);
@@ -190,7 +216,7 @@ class GpsTrackingService
                 $heading = $val;
             }
 
-            // 6. Duplicate detection (Gate C)
+            // 7. Duplicate detection
             $existing = GpsLocation::where('trip_id', $lockedTrip->id)
                 ->where('recorded_at', $recordedAt)
                 ->where('latitude', $lat)
@@ -200,7 +226,7 @@ class GpsTrackingService
                 return $existing;
             }
 
-            // 7. Telemetry outlier detection (Gate C)
+            // 8. Telemetry outlier detection
             if ($lockedTrip->last_latitude !== null && $lockedTrip->last_longitude !== null && $lockedTrip->last_location_at !== null) {
                 $distanceMeters = $this->calculateDistanceMeters(
                     (float) $lockedTrip->last_latitude,
@@ -218,9 +244,7 @@ class GpsTrackingService
                 }
             }
 
-            // 8. Create historical telemetry record (always persisted for audit trail)
-            $sessionId = isset($data['session_id']) && $data['session_id'] !== '' ? (string) $data['session_id'] : null;
-
+            // 9. Persist validated telemetry record
             $gpsLocation = GpsLocation::create([
                 'trip_id' => $lockedTrip->id,
                 'driver_id' => $driver->id,
@@ -234,24 +258,12 @@ class GpsTrackingService
                 'session_id' => $sessionId,
             ]);
 
-            // 9. Chronological ordering & Server-Authoritative Session Enforcement (Gate B & C)
-            // Session integrity check:
-            // Telemetry can only update active trip location and set status to ONLINE if:
-            // (a) If active_tracking_session_id is set on trip, the telemetry session_id MUST match it.
-            // (b) If active_tracking_session_id is NULL, old telemetry from a closed session must NOT revive ONLINE status.
-            // (c) The trip is not explicitly stopped (tracking_status != 'SHARING_STOPPED' and (tracking_ended_at is null or recorded_at > tracking_ended_at)).
-            // (d) The telemetry recorded_at is newer than the trip's last_location_at.
-            $isMatchingSession = false;
-            if ($lockedTrip->active_tracking_session_id !== null) {
-                $isMatchingSession = ($sessionId !== null && hash_equals($lockedTrip->active_tracking_session_id, $sessionId));
-            } else {
-                $isMatchingSession = ($lockedTrip->tracking_status !== 'SHARING_STOPPED' && $lockedTrip->tracking_ended_at === null);
-            }
+            // 10. Update trip location cache and transition status to ONLINE
+            $isNewer = $lockedTrip->last_location_at === null 
+                || $recordedAt->gt($lockedTrip->last_location_at)
+                || $lockedTrip->tracking_status === 'WAITING_FOR_LOCATION';
 
-            $isNewer = $lockedTrip->last_location_at === null || $recordedAt->gt($lockedTrip->last_location_at);
-            $isNotStopped = $lockedTrip->tracking_status !== 'SHARING_STOPPED' && ($lockedTrip->tracking_ended_at === null || $recordedAt->gt($lockedTrip->tracking_ended_at));
-
-            if ($isMatchingSession && $isNotStopped && $isNewer) {
+            if ($isNewer) {
                 $lockedTrip->update([
                     'last_latitude' => $lat,
                     'last_longitude' => $lng,
@@ -260,14 +272,6 @@ class GpsTrackingService
                     'tracking_status' => 'ONLINE',
                     'tracking_started_at' => $lockedTrip->tracking_started_at ?: $now,
                     'tracking_ended_at' => null,
-                ]);
-            } elseif ($isMatchingSession && $isNewer) {
-                // Update coordinates for audit trail, but maintain SHARING_STOPPED status
-                $lockedTrip->update([
-                    'last_latitude' => $lat,
-                    'last_longitude' => $lng,
-                    'last_accuracy_m' => $accuracy,
-                    'last_location_at' => $recordedAt,
                 ]);
             }
 
@@ -339,20 +343,25 @@ class GpsTrackingService
             ];
         }
 
-        if ($trip->status !== TripStatus::IN_PROGRESS || ! $trip->last_location_at) {
+        if ($trip->status !== TripStatus::IN_PROGRESS || $trip->tracking_status === 'WAITING_FOR_LOCATION' || ! $trip->last_location_at) {
+            $ageSeconds = $trip->last_location_at
+                ? max(0, Carbon::now()->getTimestamp() - ($trip->last_location_at instanceof Carbon ? $trip->last_location_at->getTimestamp() : Carbon::parse($trip->last_location_at)->getTimestamp()))
+                : null;
+
             return [
                 'status' => 'WAITING_FOR_LOCATION',
                 'label' => 'Menunggu Sinyal GPS Kurir',
                 'badge_class' => 'bg-amber-50 text-amber-800 border-amber-200',
-                'latitude' => null,
-                'longitude' => null,
-                'accuracy_m' => null,
-                'last_location_at' => null,
-                'age_seconds' => null,
-                'age_human' => 'Belum ada telemetri lokasi',
+                'latitude' => $trip->last_latitude ? (float) $trip->last_latitude : null,
+                'longitude' => $trip->last_longitude ? (float) $trip->last_longitude : null,
+                'accuracy_m' => $trip->last_accuracy_m ? (float) $trip->last_accuracy_m : null,
+                'last_location_at' => $trip->last_location_at ? ($trip->last_location_at instanceof Carbon ? $trip->last_location_at->toIso8601String() : Carbon::parse($trip->last_location_at)->toIso8601String()) : null,
+                'age_seconds' => $ageSeconds,
+                'age_human' => $trip->last_location_at ? 'Lokasi historis tersimpan (' . Carbon::parse($trip->last_location_at)->diffForHumans() . ')' : 'Belum ada telemetri lokasi',
                 'is_online' => false,
                 'is_stale' => false,
                 'is_offline' => false,
+                'is_stopped' => false,
                 'is_waiting' => true,
             ];
         }
@@ -561,6 +570,15 @@ class GpsTrackingService
                 'status' => TripStopStatus::ARRIVED_AWAITING_CONFIRMATION,
                 'arrived_at' => Carbon::now(),
             ]);
+
+            $expectedPortions = $lockedStop->total_loaded_portions ?: (int) $lockedStop->planned_portions;
+            \App\Models\SchoolServiceRecord::firstOrCreate(
+                ['trip_stop_id' => $lockedStop->id],
+                [
+                    'expected_portions' => $expectedPortions,
+                    'status' => \App\Enums\SchoolReceiptStatus::WAITING,
+                ]
+            );
 
             ActivityLog::record(
                 event: 'trip_stop.arrived',

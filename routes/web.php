@@ -21,6 +21,7 @@ use App\Http\Controllers\Public\SchoolPublicController;
 use App\Http\Controllers\School\DashboardController as SchoolDashboardController;
 use App\Http\Controllers\School\PortionRequestController;
 use App\Http\Controllers\School\SchoolOverviewController;
+use App\Http\Controllers\School\SchoolReceiptController;
 use Illuminate\Support\Facades\Route;
 
 // Redirect root to login
@@ -151,6 +152,10 @@ Route::middleware(['auth', 'active'])->group(function () {
             Route::post('/trips/{trip}/telemetry/stop', [DriverTripController::class, 'stopTelemetry'])->name('trips.telemetry.stop');
             Route::get('/trips/{trip}/telemetry/status', [DriverTripController::class, 'telemetryStatus'])->name('trips.telemetry.status');
             Route::post('/trips/{trip}/stops/{stop}/arrive', [DriverTripController::class, 'arrive'])->name('trips.stops.arrive');
+
+            // PBI-10: Courier Handover at School Stop (Page D04)
+            Route::get('/trips/{trip}/stops/{stop}/handover', [DriverTripController::class, 'handover'])->name('trips.stops.handover');
+            Route::post('/trips/{trip}/stops/{stop}/handover-evidence', [DriverTripController::class, 'handoverEvidence'])->name('trips.stops.handover-evidence');
         });
 
     // 5. PIC Sekolah Module
@@ -167,6 +172,11 @@ Route::middleware(['auth', 'active'])->group(function () {
             Route::post('/portions/{portionRequest}/confirm', [PortionRequestController::class, 'confirm'])->name('portions.confirm');
             Route::post('/portions/{portionRequest}/revise', [PortionRequestController::class, 'revise'])->name('portions.revise');
             Route::post('/portions/{portionRequest}/cancel', [PortionRequestController::class, 'cancel'])->name('portions.cancel');
+
+            // PBI-10: School Handover & Receipt Verification (Page P04)
+            Route::get('/receipts', [SchoolReceiptController::class, 'index'])->name('receipts.index');
+            Route::get('/trip-stops/{stop}/receipt', [SchoolReceiptController::class, 'show'])->name('receipts.show');
+            Route::post('/trip-stops/{stop}/receipt', [SchoolReceiptController::class, 'confirm'])->name('receipts.confirm');
         });
 
     // Cross-role PBI-07: Batch Traceability (Page C02)

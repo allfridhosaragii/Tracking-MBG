@@ -58,6 +58,21 @@ class TripStop extends Model
         return $this->hasMany(DeliveryItem::class);
     }
 
+    public function schoolServiceRecord(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(SchoolServiceRecord::class);
+    }
+
+    public function qualityChecks(): HasMany
+    {
+        return $this->hasMany(QualityCheck::class);
+    }
+
+    public function evidencePhotos(): \Illuminate\Database\Eloquent\Relations\MorphMany
+    {
+        return $this->morphMany(EvidencePhoto::class, 'evidenceable');
+    }
+
     public function getTotalLoadedPortionsAttribute(): int
     {
         return (int) $this->deliveryItems->sum('loaded_portions');

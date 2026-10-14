@@ -286,6 +286,59 @@ class DriverTripController extends Controller
             ->route('driver.trips.active', $trip)
             ->with('success', "Tiba di {$updatedStop->school->name}. Menunggu konfirmasi serah terima.");
     }
+
+    /**
+     * Driver handover workspace at school destination (Page D04).
+     */
+    public function handover(Request $request, Trip $trip, \App\Models\TripStop $stop): \Illuminate\View\View
+    {
+        Gate::authorize('view', $trip);
+
+        if ((int) $trip->driver_id !== (int) $request->user()->id) {
+            abort(403, 'Anda bukan kurir yang ditugaskan untuk pemberhentian ini.');
+        }
+
+        $stop->loadMissing([
+            'trip.vehicle',
+            'school',
+            'deliveryItems.foodBatch.menu',
+            'schoolServiceRecord',
+            'evidencePhotos',
+        ]);
+
+        return view('driver.trips.handover', [
+            'stop' => $stop,
+            'trip' => $trip,
+            'school' => $stop->school,
+            'serviceRecord' => $stop->schoolServiceRecord,
+        ]);
+    }
+
+    /**
+     * Driver uploads photo evidence during handover at school stop (Page D04).
+     */
+    public function handoverEvidence(Request $request, Trip $trip, \App\Models\TripStop $stop): \Illuminate\Http\JsonResponse|\Illuminate\Http\RedirectResponse
+    {
+        Gate::authorize('view', $trip);
+
+        $request->validate([
+            'photo' => ['required', 'file', 'image', 'max:5120'],
+            'notes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $handoverService = app(\App\Services\SchoolHandoverService::class);
+        $handoverService->markStopArrival($stop, $request->user(), $request->file('photo'), $request->input('notes'));
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Bukti serah terima berhasil diunggah.',
+                'stop_status' => $stop->fresh()->status->value,
+            ]);
+        }
+
+        return back()->with('success', 'Bukti serah terima berhasil diunggah.');
+    }
 }
 
 

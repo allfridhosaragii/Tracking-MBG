@@ -169,9 +169,18 @@
                             </button>
                         </form>
                     @elseif (in_array($activeStop->status, [\App\Enums\TripStopStatus::ARRIVED, \App\Enums\TripStopStatus::ARRIVED_AWAITING_CONFIRMATION], true))
-                        <div class="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium text-center">
-                            <span class="font-bold block mb-0.5">Armada Telah Tiba</span>
-                            Menunggu pemeriksaan organoleptik dan konfirmasi serah terima dari pihak PIC Sekolah.
+                        <div class="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium text-center space-y-2.5">
+                            <div>
+                                <span class="font-bold block mb-0.5">Armada Telah Tiba</span>
+                                Menunggu pemeriksaan organoleptik dan konfirmasi serah terima dari pihak PIC Sekolah.
+                            </div>
+                            <a href="{{ route('driver.trips.stops.handover', [$trip, $activeStop]) }}" 
+                               class="inline-flex items-center justify-center gap-1.5 w-full py-2.5 px-3 rounded-lg font-bold text-xs bg-[#1C6654] text-white hover:bg-[#154E40] transition-colors shadow-xs touch-target">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                </svg>
+                                <span>Lembar Serah Terima & Unggah Foto (D04)</span>
+                            </a>
                         </div>
                     @else
                         <div class="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium text-center">

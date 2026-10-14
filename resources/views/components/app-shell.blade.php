@@ -106,7 +106,11 @@
                             @elseif ($roleEnum === \App\Enums\UserRole::PIC_SEKOLAH)
                                 <a href="{{ route('school.dashboard') }}" 
                                    class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('school.dashboard') ? 'bg-[#EDF2ED] text-[#21684B]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
-                                    Penerimaan Sekolah
+                                    Dashboard
+                                </a>
+                                <a href="{{ route('school.receipts.index') }}" 
+                                   class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('school.receipts.*') ? 'bg-[#EDF2ED] text-[#21684B]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
+                                    Penerimaan Makanan
                                 </a>
                                 <a href="{{ route('school.portions.index') }}" 
                                    class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('school.portions.*') ? 'bg-[#EDF2ED] text-[#21684B]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
@@ -328,10 +332,22 @@
                        @if(request()->routeIs('school.dashboard')) aria-current="page" @endif
                        class="flex flex-col items-center justify-center flex-1 h-full py-1 text-center touch-target smooth-transition {{ request()->routeIs('school.dashboard') ? 'text-[#21684B] font-bold' : 'text-[#53645B] hover:text-[#172923]' }}">
                         <svg class="w-5 h-5 mb-0.5 {{ request()->routeIs('school.dashboard') ? 'text-[#21684B]' : 'text-[#708177]' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                        </svg>
+                        <span class="text-[10px] leading-tight">Beranda</span>
+                        @if(request()->routeIs('school.dashboard'))
+                            <span class="w-1.5 h-1.5 rounded-full bg-[#21684B] mt-0.5" aria-hidden="true"></span>
+                        @endif
+                    </a>
+
+                    <a href="{{ route('school.receipts.index') }}" 
+                       @if(request()->routeIs('school.receipts.*')) aria-current="page" @endif
+                       class="flex flex-col items-center justify-center flex-1 h-full py-1 text-center touch-target smooth-transition {{ request()->routeIs('school.receipts.*') ? 'text-[#21684B] font-bold' : 'text-[#53645B] hover:text-[#172923]' }}">
+                        <svg class="w-5 h-5 mb-0.5 {{ request()->routeIs('school.receipts.*') ? 'text-[#21684B]' : 'text-[#708177]' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                         </svg>
                         <span class="text-[10px] leading-tight">Penerimaan</span>
-                        @if(request()->routeIs('school.dashboard'))
+                        @if(request()->routeIs('school.receipts.*'))
                             <span class="w-1.5 h-1.5 rounded-full bg-[#21684B] mt-0.5" aria-hidden="true"></span>
                         @endif
                     </a>

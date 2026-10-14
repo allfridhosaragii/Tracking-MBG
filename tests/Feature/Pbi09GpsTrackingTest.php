@@ -178,6 +178,12 @@ class Pbi09GpsTrackingTest extends TestCase
      */
     public function test_driver_can_record_valid_gps_telemetry(): void
     {
+        $startRes = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $startRes->assertStatus(200);
+        $sessionId = $startRes->json('session_id');
+        $this->assertNotEmpty($sessionId);
+
         $response = $this->actingAs($this->driverA)
             ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
                 'latitude' => -7.288543,
@@ -186,6 +192,7 @@ class Pbi09GpsTrackingTest extends TestCase
                 'speed' => 8.2,
                 'heading' => 145.0,
                 'recorded_at' => Carbon::now()->toIso8601String(),
+                'session_id' => $sessionId,
             ]);
 
         $response->assertStatus(200);
@@ -200,6 +207,7 @@ class Pbi09GpsTrackingTest extends TestCase
         $this->assertDatabaseHas('gps_locations', [
             'trip_id' => $this->inProgressTrip->id,
             'driver_id' => $this->driverA->id,
+            'session_id' => $sessionId,
         ]);
 
         $this->inProgressTrip->refresh();
@@ -207,6 +215,7 @@ class Pbi09GpsTrackingTest extends TestCase
         $this->assertEquals(112.735123, (float) $this->inProgressTrip->last_longitude);
         $this->assertEquals(12.5, (float) $this->inProgressTrip->last_accuracy_m);
         $this->assertNotNull($this->inProgressTrip->last_location_at);
+        $this->assertEquals('ONLINE', $this->inProgressTrip->tracking_status);
     }
 
     /**
@@ -248,6 +257,10 @@ class Pbi09GpsTrackingTest extends TestCase
      */
     public function test_telemetry_with_invalid_coordinates_rejected(): void
     {
+        $startRes = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $sessionId = $startRes->json('session_id');
+
         // 1. Placeholder (0,0)
         $response1 = $this->actingAs($this->driverA)
             ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
@@ -255,6 +268,7 @@ class Pbi09GpsTrackingTest extends TestCase
                 'longitude' => 0.0,
                 'accuracy' => 10.0,
                 'recorded_at' => Carbon::now()->toIso8601String(),
+                'session_id' => $sessionId,
             ]);
         $response1->assertStatus(422);
 
@@ -265,6 +279,7 @@ class Pbi09GpsTrackingTest extends TestCase
                 'longitude' => 112.735,
                 'accuracy' => 10.0,
                 'recorded_at' => Carbon::now()->toIso8601String(),
+                'session_id' => $sessionId,
             ]);
         $response2->assertStatus(422);
     }
@@ -274,12 +289,17 @@ class Pbi09GpsTrackingTest extends TestCase
      */
     public function test_telemetry_with_extreme_future_time_skew_rejected(): void
     {
+        $startRes = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $sessionId = $startRes->json('session_id');
+
         $response = $this->actingAs($this->driverA)
             ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
                 'latitude' => -7.288543,
                 'longitude' => 112.735123,
                 'accuracy' => 10.0,
                 'recorded_at' => Carbon::now()->addHours(2)->toIso8601String(), // 2 hours future
+                'session_id' => $sessionId,
             ]);
 
         $response->assertStatus(422);
@@ -298,6 +318,7 @@ class Pbi09GpsTrackingTest extends TestCase
             'last_longitude' => 112.735123,
             'last_accuracy_m' => 10.0,
             'last_location_at' => Carbon::now()->subSeconds(30),
+            'tracking_status' => 'ONLINE',
         ]);
         $this->inProgressTrip->refresh();
         $status1 = $trackingService->getDriverTrackingStatus($this->inProgressTrip);
@@ -307,6 +328,7 @@ class Pbi09GpsTrackingTest extends TestCase
         // 2. Stale location (3 minutes ago) -> STALE
         $this->inProgressTrip->update([
             'last_location_at' => Carbon::now()->subMinutes(3),
+            'tracking_status' => 'ONLINE',
         ]);
         $this->inProgressTrip->refresh();
         $status2 = $trackingService->getDriverTrackingStatus($this->inProgressTrip);
@@ -316,6 +338,7 @@ class Pbi09GpsTrackingTest extends TestCase
         // 3. Offline location (15 minutes ago) -> OFFLINE
         $this->inProgressTrip->update([
             'last_location_at' => Carbon::now()->subMinutes(15),
+            'tracking_status' => 'ONLINE',
         ]);
         $this->inProgressTrip->refresh();
         $status3 = $trackingService->getDriverTrackingStatus($this->inProgressTrip);
@@ -407,6 +430,10 @@ class Pbi09GpsTrackingTest extends TestCase
      */
     public function test_out_of_order_stale_telemetry_does_not_overwrite_newer_cached_location(): void
     {
+        $startRes = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $sessionId = $startRes->json('session_id');
+
         $timeNewer = Carbon::now()->subMinutes(2);
         $timeOlder = Carbon::now()->subMinutes(10);
 
@@ -417,6 +444,7 @@ class Pbi09GpsTrackingTest extends TestCase
                 'longitude' => 112.735123,
                 'accuracy' => 10.0,
                 'recorded_at' => $timeNewer->toIso8601String(),
+                'session_id' => $sessionId,
             ]);
         $res1->assertStatus(200);
 
@@ -431,6 +459,7 @@ class Pbi09GpsTrackingTest extends TestCase
                 'longitude' => 112.721456,
                 'accuracy' => 15.0,
                 'recorded_at' => $timeOlder->toIso8601String(),
+                'session_id' => $sessionId,
             ]);
         $res2->assertStatus(200);
 
@@ -449,12 +478,17 @@ class Pbi09GpsTrackingTest extends TestCase
      */
     public function test_negative_accuracy_rejected(): void
     {
+        $startRes = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $sessionId = $startRes->json('session_id');
+
         $response = $this->actingAs($this->driverA)
             ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
                 'latitude' => -7.288543,
                 'longitude' => 112.735123,
                 'accuracy' => -5.0,
                 'recorded_at' => Carbon::now()->toIso8601String(),
+                'session_id' => $sessionId,
             ]);
 
         $response->assertStatus(422);
@@ -466,6 +500,10 @@ class Pbi09GpsTrackingTest extends TestCase
      */
     public function test_negative_speed_rejected(): void
     {
+        $startRes = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $sessionId = $startRes->json('session_id');
+
         $response = $this->actingAs($this->driverA)
             ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
                 'latitude' => -7.288543,
@@ -473,6 +511,7 @@ class Pbi09GpsTrackingTest extends TestCase
                 'accuracy' => 10.0,
                 'speed' => -2.5,
                 'recorded_at' => Carbon::now()->toIso8601String(),
+                'session_id' => $sessionId,
             ]);
 
         $response->assertStatus(422);
@@ -484,6 +523,10 @@ class Pbi09GpsTrackingTest extends TestCase
      */
     public function test_invalid_heading_rejected(): void
     {
+        $startRes = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $sessionId = $startRes->json('session_id');
+
         $response = $this->actingAs($this->driverA)
             ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
                 'latitude' => -7.288543,
@@ -491,6 +534,7 @@ class Pbi09GpsTrackingTest extends TestCase
                 'accuracy' => 10.0,
                 'heading' => 450.0,
                 'recorded_at' => Carbon::now()->toIso8601String(),
+                'session_id' => $sessionId,
             ]);
 
         $response->assertStatus(422);
@@ -502,6 +546,10 @@ class Pbi09GpsTrackingTest extends TestCase
      */
     public function test_telemetry_outlier_jump_rejected(): void
     {
+        $startRes = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $sessionId = $startRes->json('session_id');
+
         $time1 = Carbon::now()->subSeconds(10);
         $time2 = Carbon::now()->subSeconds(5);
 
@@ -512,6 +560,7 @@ class Pbi09GpsTrackingTest extends TestCase
                 'longitude' => 112.735123,
                 'accuracy' => 10.0,
                 'recorded_at' => $time1->toIso8601String(),
+                'session_id' => $sessionId,
             ]);
 
         // 2. 5 seconds later, impossible jump to Jakarta (-6.2000, 106.8166) ~ 650 km
@@ -521,6 +570,7 @@ class Pbi09GpsTrackingTest extends TestCase
                 'longitude' => 106.816667,
                 'accuracy' => 10.0,
                 'recorded_at' => $time2->toIso8601String(),
+                'session_id' => $sessionId,
             ]);
 
         $response->assertStatus(422);
@@ -532,12 +582,17 @@ class Pbi09GpsTrackingTest extends TestCase
      */
     public function test_duplicate_telemetry_payload_is_idempotent(): void
     {
+        $startRes = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $sessionId = $startRes->json('session_id');
+
         $time = Carbon::now()->subSeconds(20);
         $payload = [
             'latitude' => -7.288543,
             'longitude' => 112.735123,
             'accuracy' => 10.0,
             'recorded_at' => $time->toIso8601String(),
+            'session_id' => $sessionId,
         ];
 
         $res1 = $this->actingAs($this->driverA)->postJson(route('driver.trips.telemetry', $this->inProgressTrip), $payload);
@@ -614,6 +669,10 @@ class Pbi09GpsTrackingTest extends TestCase
      */
     public function test_driver_can_explicitly_stop_gps_telemetry_sharing(): void
     {
+        $startRes = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $sessionId = $startRes->json('session_id');
+
         // 1. Submit initial telemetry
         $this->actingAs($this->driverA)
             ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
@@ -621,12 +680,15 @@ class Pbi09GpsTrackingTest extends TestCase
                 'longitude' => 112.735123,
                 'accuracy' => 10.0,
                 'recorded_at' => Carbon::now()->toIso8601String(),
+                'session_id' => $sessionId,
             ])
             ->assertStatus(200);
 
         // 2. Stop sharing
         $response = $this->actingAs($this->driverA)
-            ->postJson(route('driver.trips.telemetry.stop', $this->inProgressTrip));
+            ->postJson(route('driver.trips.telemetry.stop', $this->inProgressTrip), [
+                'session_id' => $sessionId,
+            ]);
 
         $response->assertStatus(200);
         $response->assertJson([
@@ -900,6 +962,7 @@ class Pbi09GpsTrackingTest extends TestCase
             'last_location_at' => $stopTime->copy()->subMinutes(2),
             'tracking_status' => 'SHARING_STOPPED',
             'tracking_ended_at' => $stopTime,
+            'active_tracking_session_id' => null,
         ]);
 
         // Telemetry recorded BEFORE the stop event arriving delayed
@@ -913,18 +976,14 @@ class Pbi09GpsTrackingTest extends TestCase
                 'recorded_at' => $delayedRecordedAt->toIso8601String(),
             ]);
 
-        $response->assertStatus(200);
-        $response->assertJson([
-            'success' => true,
-            'tracking_status' => 'SHARING_STOPPED',
-            'is_stale_telemetry' => true,
-        ]);
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['session_id']);
 
         $this->inProgressTrip->refresh();
         $this->assertEquals('SHARING_STOPPED', $this->inProgressTrip->tracking_status);
         $this->assertEquals($stopTime->toIso8601String(), $this->inProgressTrip->tracking_ended_at->toIso8601String());
-        // Verify location was saved for audit trail
-        $this->assertDatabaseHas('gps_locations', [
+        // Verify invalid telemetry does NOT create coordinate in database
+        $this->assertDatabaseMissing('gps_locations', [
             'trip_id' => $this->inProgressTrip->id,
             'latitude' => -7.251000,
             'longitude' => 112.769000,
@@ -945,7 +1004,7 @@ class Pbi09GpsTrackingTest extends TestCase
 
         $this->inProgressTrip->refresh();
         $this->assertEquals($sessionIdA, $this->inProgressTrip->active_tracking_session_id);
-        $this->assertEquals('ONLINE', $this->inProgressTrip->tracking_status);
+        $this->assertEquals('WAITING_FOR_LOCATION', $this->inProgressTrip->tracking_status);
 
         // 2. Client captures stop request data for Session A, but request is delayed on network
         $stopTimeA = Carbon::now()->toIso8601String();
@@ -969,14 +1028,14 @@ class Pbi09GpsTrackingTest extends TestCase
         $stopResA->assertStatus(200);
         $stopResA->assertJson([
             'success' => true,
-            'tracking_status' => 'ONLINE',
+            'tracking_status' => 'WAITING_FOR_LOCATION',
             'is_stale_stop' => true,
         ]);
 
         // 5. Assert Session B remains ACTIVE and untouched
         $this->inProgressTrip->refresh();
         $this->assertEquals($sessionIdB, $this->inProgressTrip->active_tracking_session_id);
-        $this->assertEquals('ONLINE', $this->inProgressTrip->tracking_status);
+        $this->assertEquals('WAITING_FOR_LOCATION', $this->inProgressTrip->tracking_status);
         $this->assertNull($this->inProgressTrip->tracking_ended_at);
     }
 
@@ -1008,7 +1067,7 @@ class Pbi09GpsTrackingTest extends TestCase
         $this->assertEquals('SHARING_STOPPED', $this->inProgressTrip->tracking_status);
         $this->assertNull($this->inProgressTrip->active_tracking_session_id);
 
-        // 3. Delayed telemetry from Session A arrives
+        // 3. Delayed telemetry from Session A arrives -> rejected under Gate A
         $telemetryRes = $this->actingAs($this->driverA)
             ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
                 'latitude' => -7.252000,
@@ -1017,17 +1076,18 @@ class Pbi09GpsTrackingTest extends TestCase
                 'recorded_at' => Carbon::now()->subSeconds(10)->toIso8601String(),
                 'session_id' => $sessionIdA,
             ]);
-        $telemetryRes->assertStatus(200);
-        $telemetryRes->assertJson([
-            'success' => true,
-            'tracking_status' => 'SHARING_STOPPED',
-            'is_stale_telemetry' => true,
-        ]);
+        $telemetryRes->assertStatus(422);
+        $telemetryRes->assertJsonValidationErrors(['session_id']);
 
-        // 4. Status must NOT revive to ONLINE
+        // 4. Status must NOT revive to ONLINE and no coordinate stored
         $this->inProgressTrip->refresh();
         $this->assertEquals('SHARING_STOPPED', $this->inProgressTrip->tracking_status);
         $this->assertNull($this->inProgressTrip->active_tracking_session_id);
+        $this->assertDatabaseMissing('gps_locations', [
+            'trip_id' => $this->inProgressTrip->id,
+            'latitude' => -7.252000,
+            'longitude' => 112.768000,
+        ]);
     }
 
     /**
@@ -1092,7 +1152,7 @@ class Pbi09GpsTrackingTest extends TestCase
         $this->inProgressTrip->refresh();
         $this->assertEquals($session2, $this->inProgressTrip->active_tracking_session_id);
 
-        // Tab 1 tries to send telemetry with old session1
+        // Tab 1 tries to send telemetry with old session1 -> rejected with 422 under Gate A
         $telemetryTab1 = $this->actingAs($this->driverA)
             ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
                 'latitude' => -7.254000,
@@ -1101,10 +1161,14 @@ class Pbi09GpsTrackingTest extends TestCase
                 'recorded_at' => Carbon::now()->toIso8601String(),
                 'session_id' => $session1,
             ]);
-        $telemetryTab1->assertStatus(200);
-        $telemetryTab1->assertJson(['is_stale_telemetry' => true]);
+        $telemetryTab1->assertStatus(422);
+        $telemetryTab1->assertJsonValidationErrors(['session_id']);
+        $this->assertDatabaseMissing('gps_locations', [
+            'trip_id' => $this->inProgressTrip->id,
+            'latitude' => -7.254000,
+        ]);
 
-        // Tab 1 closes and fires stop for session1
+        // Tab 1 closes and fires stop for session1 -> ignored because session2 is active
         $stopTab1 = $this->actingAs($this->driverA)
             ->postJson(route('driver.trips.telemetry.stop', $this->inProgressTrip), [
                 'session_id' => $session1,
@@ -1116,7 +1180,21 @@ class Pbi09GpsTrackingTest extends TestCase
         // Tab 2's session2 remains completely active
         $this->inProgressTrip->refresh();
         $this->assertEquals($session2, $this->inProgressTrip->active_tracking_session_id);
+        $this->assertEquals('WAITING_FOR_LOCATION', $this->inProgressTrip->tracking_status);
+
+        // Tab 2 sends valid telemetry for session2 -> transitions to ONLINE
+        $telemetryTab2 = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
+                'latitude' => -7.255000,
+                'longitude' => 112.771000,
+                'accuracy' => 10.0,
+                'recorded_at' => Carbon::now()->toIso8601String(),
+                'session_id' => $session2,
+            ]);
+        $telemetryTab2->assertStatus(200);
+        $this->inProgressTrip->refresh();
         $this->assertEquals('ONLINE', $this->inProgressTrip->tracking_status);
+        $this->assertEquals(-7.255000, (float) $this->inProgressTrip->last_latitude);
     }
 
     /**
@@ -1197,6 +1275,343 @@ class Pbi09GpsTrackingTest extends TestCase
             ]);
         $resEmpty->assertStatus(200);
         $resEmpty->assertJson(['success' => true]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | GATE C: EXPLICIT REGRESSION TEST SUITE (PBI-09 FINAL SESSION GATE)
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Gate C.1: Telemetry tanpa sesi aktif ditolak.
+     */
+    public function test_gate_c_01_telemetry_without_active_session_rejected(): void
+    {
+        $this->inProgressTrip->update([
+            'active_tracking_session_id' => null,
+            'tracking_status' => 'WAITING_FOR_LOCATION',
+        ]);
+
+        $response = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
+                'latitude' => -7.288543,
+                'longitude' => 112.735123,
+                'accuracy' => 10.0,
+                'recorded_at' => Carbon::now()->toIso8601String(),
+                'session_id' => (string) \Illuminate\Support\Str::uuid(),
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['session_id']);
+    }
+
+    /**
+     * Gate C.2: Telemetry tanpa UUID ditolak.
+     */
+    public function test_gate_c_02_telemetry_without_uuid_rejected(): void
+    {
+        $startRes = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $startRes->assertStatus(200);
+
+        $response = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
+                'latitude' => -7.288543,
+                'longitude' => 112.735123,
+                'accuracy' => 10.0,
+                'recorded_at' => Carbon::now()->toIso8601String(),
+                // Omitting session_id
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['session_id']);
+    }
+
+    /**
+     * Gate C.3: Telemetry UUID salah ditolak.
+     */
+    public function test_gate_c_03_telemetry_with_wrong_uuid_rejected(): void
+    {
+        $startRes = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $startRes->assertStatus(200);
+        $activeSessionId = $startRes->json('session_id');
+
+        $wrongSessionId = (string) \Illuminate\Support\Str::uuid();
+        $this->assertNotEquals($activeSessionId, $wrongSessionId);
+
+        $response = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
+                'latitude' => -7.288543,
+                'longitude' => 112.735123,
+                'accuracy' => 10.0,
+                'recorded_at' => Carbon::now()->toIso8601String(),
+                'session_id' => $wrongSessionId,
+            ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['session_id']);
+    }
+
+    /**
+     * Gate C.4: Telemetry UUID lama tidak mengubah cache.
+     */
+    public function test_gate_c_04_telemetry_with_old_uuid_does_not_change_cache(): void
+    {
+        // Session 1 started and sends valid coordinate
+        $start1 = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $session1 = $start1->json('session_id');
+
+        $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
+                'latitude' => -7.288543,
+                'longitude' => 112.735123,
+                'accuracy' => 10.0,
+                'recorded_at' => Carbon::now()->toIso8601String(),
+                'session_id' => $session1,
+            ])->assertStatus(200);
+
+        $this->inProgressTrip->refresh();
+        $this->assertEquals(-7.288543, (float) $this->inProgressTrip->last_latitude);
+
+        // Session 2 replaces Session 1
+        $start2 = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $session2 = $start2->json('session_id');
+        $this->assertNotEquals($session1, $session2);
+
+        // Stale Session 1 telemetry arrives trying to report a different coordinate
+        $response = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
+                'latitude' => -7.111111,
+                'longitude' => 112.222222,
+                'accuracy' => 5.0,
+                'recorded_at' => Carbon::now()->toIso8601String(),
+                'session_id' => $session1,
+            ]);
+
+        $response->assertStatus(422);
+        $this->inProgressTrip->refresh();
+        $this->assertEquals(-7.288543, (float) $this->inProgressTrip->last_latitude, 'Old session telemetry must not overwrite cached latitude');
+        $this->assertEquals(112.735123, (float) $this->inProgressTrip->last_longitude, 'Old session telemetry must not overwrite cached longitude');
+    }
+
+    /**
+     * Gate C.5: Request tidak valid tidak menciptakan koordinat sah di database.
+     */
+    public function test_gate_c_05_invalid_request_does_not_create_coordinate_in_database(): void
+    {
+        $startRes = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $sessionId = $startRes->json('session_id');
+
+        $initialCount = GpsLocation::where('trip_id', $this->inProgressTrip->id)->count();
+
+        // 1. Invalid coordinates (0,0)
+        $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
+                'latitude' => 0.0,
+                'longitude' => 0.0,
+                'accuracy' => 10.0,
+                'recorded_at' => Carbon::now()->toIso8601String(),
+                'session_id' => $sessionId,
+            ])->assertStatus(422);
+
+        // 2. Negative speed
+        $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
+                'latitude' => -7.288543,
+                'longitude' => 112.735123,
+                'accuracy' => 10.0,
+                'speed' => -5.0,
+                'recorded_at' => Carbon::now()->toIso8601String(),
+                'session_id' => $sessionId,
+            ])->assertStatus(422);
+
+        // 3. Outlier jump
+        $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
+                'latitude' => -6.200000,
+                'longitude' => 106.816667,
+                'accuracy' => 10.0,
+                'recorded_at' => Carbon::now()->toIso8601String(),
+                'session_id' => 'wrong-session-id',
+            ])->assertStatus(422);
+
+        $finalCount = GpsLocation::where('trip_id', $this->inProgressTrip->id)->count();
+        $this->assertEquals($initialCount, $finalCount, 'No invalid telemetry requests may persist coordinates into the database.');
+    }
+
+    /**
+     * Gate C.6: Start session tidak langsung menampilkan ONLINE.
+     */
+    public function test_gate_c_06_start_session_does_not_immediately_display_online(): void
+    {
+        $response = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+
+        $response->assertStatus(200);
+        $response->assertJson([
+            'success' => true,
+            'tracking_status' => 'WAITING_FOR_LOCATION',
+        ]);
+
+        $this->inProgressTrip->refresh();
+        $this->assertEquals('WAITING_FOR_LOCATION', $this->inProgressTrip->tracking_status);
+
+        $trackingService = app(GpsTrackingService::class);
+        $status = $trackingService->getDriverTrackingStatus($this->inProgressTrip);
+
+        $this->assertEquals('WAITING_FOR_LOCATION', $status['status']);
+        $this->assertFalse($status['is_online'], 'Start session must NOT immediately report is_online = true');
+        $this->assertTrue($status['is_waiting'], 'Start session must report is_waiting = true');
+    }
+
+    /**
+     * Gate C.7: GPS permission denied tidak menghasilkan status live.
+     */
+    public function test_gate_c_07_gps_permission_denied_does_not_result_in_live_status(): void
+    {
+        // Session started, but driver denies GPS permission (no telemetry packet ever arrives)
+        $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip))
+            ->assertStatus(200);
+
+        $this->inProgressTrip->refresh();
+        $trackingService = app(GpsTrackingService::class);
+        $status = $trackingService->getDriverTrackingStatus($this->inProgressTrip);
+
+        $this->assertFalse($status['is_online']);
+        $this->assertNotEquals('ONLINE', $status['status']);
+        $this->assertEquals('WAITING_FOR_LOCATION', $status['status']);
+    }
+
+    /**
+     * Gate C.8: Koordinat sesi lama tidak digunakan sebagai bukti sesi baru aktif.
+     */
+    public function test_gate_c_08_old_session_coordinates_not_used_as_proof_of_new_active_session(): void
+    {
+        // Previous run recorded location an hour ago
+        $oldTime = Carbon::now()->subHour();
+        $this->inProgressTrip->update([
+            'last_latitude' => -7.288543,
+            'last_longitude' => 112.735123,
+            'last_accuracy_m' => 15.0,
+            'last_location_at' => $oldTime,
+            'tracking_status' => 'SHARING_STOPPED',
+            'tracking_ended_at' => $oldTime,
+            'active_tracking_session_id' => null,
+        ]);
+
+        // Driver starts a new session
+        $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip))
+            ->assertStatus(200);
+
+        $this->inProgressTrip->refresh();
+        $trackingService = app(GpsTrackingService::class);
+        $status = $trackingService->getDriverTrackingStatus($this->inProgressTrip);
+
+        // Must report WAITING_FOR_LOCATION, not ONLINE!
+        $this->assertEquals('WAITING_FOR_LOCATION', $status['status']);
+        $this->assertFalse($status['is_online']);
+        $this->assertTrue($status['is_waiting']);
+        $this->assertStringContainsString('Lokasi historis tersimpan', $status['age_human']);
+    }
+
+    /**
+     * Gate C.9: Koordinat valid pertama mengubah WAITING menjadi ONLINE.
+     */
+    public function test_gate_c_09_first_valid_coordinate_transitions_waiting_to_online(): void
+    {
+        $startRes = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $sessionId = $startRes->json('session_id');
+
+        $this->inProgressTrip->refresh();
+        $this->assertEquals('WAITING_FOR_LOCATION', $this->inProgressTrip->tracking_status);
+
+        // First valid coordinate arrives
+        $response = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
+                'latitude' => -7.288543,
+                'longitude' => 112.735123,
+                'accuracy' => 10.0,
+                'recorded_at' => Carbon::now()->toIso8601String(),
+                'session_id' => $sessionId,
+            ]);
+
+        $response->assertStatus(200);
+        $response->assertJson([
+            'success' => true,
+            'tracking_status' => 'ONLINE',
+        ]);
+
+        $this->inProgressTrip->refresh();
+        $this->assertEquals('ONLINE', $this->inProgressTrip->tracking_status);
+
+        $trackingService = app(GpsTrackingService::class);
+        $status = $trackingService->getDriverTrackingStatus($this->inProgressTrip);
+        $this->assertEquals('ONLINE', $status['status']);
+        $this->assertTrue($status['is_online']);
+    }
+
+    /**
+     * Gate C.10: Stop lama tidak menghentikan sesi baru.
+     */
+    public function test_gate_c_10_old_stop_does_not_stop_new_session(): void
+    {
+        $start1 = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $session1 = $start1->json('session_id');
+
+        $start2 = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $session2 = $start2->json('session_id');
+
+        // Old stop request for session1 arrives
+        $stopRes = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.stop', $this->inProgressTrip), [
+                'session_id' => $session1,
+                'stopped_at' => Carbon::now()->toIso8601String(),
+            ]);
+
+        $stopRes->assertStatus(200);
+        $stopRes->assertJson(['is_stale_stop' => true]);
+
+        $this->inProgressTrip->refresh();
+        $this->assertEquals($session2, $this->inProgressTrip->active_tracking_session_id);
+        $this->assertNull($this->inProgressTrip->tracking_ended_at);
+    }
+
+    /**
+     * Gate C.11: Stop yang sah menghentikan sesi aktif.
+     */
+    public function test_gate_c_11_valid_stop_stops_active_session(): void
+    {
+        $startRes = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $sessionId = $startRes->json('session_id');
+
+        $stopRes = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.stop', $this->inProgressTrip), [
+                'session_id' => $sessionId,
+                'stopped_at' => Carbon::now()->toIso8601String(),
+            ]);
+
+        $stopRes->assertStatus(200);
+        $stopRes->assertJson([
+            'success' => true,
+            'tracking_status' => 'SHARING_STOPPED',
+            'is_stale_stop' => false,
+        ]);
+
+        $this->inProgressTrip->refresh();
+        $this->assertNull($this->inProgressTrip->active_tracking_session_id);
+        $this->assertEquals('SHARING_STOPPED', $this->inProgressTrip->tracking_status);
+        $this->assertNotNull($this->inProgressTrip->tracking_ended_at);
     }
 }
 
