@@ -10,6 +10,8 @@ use App\Enums\TripStatus;
 use App\Enums\TripStopStatus;
 use App\Models\ActivityLog;
 use App\Models\Incident;
+use App\Models\SchoolServiceRecord;
+use App\Models\TrayReturn;
 use App\Models\Trip;
 use App\Models\TripStop;
 use App\Models\User;
@@ -461,25 +463,34 @@ class TripClosureService
 
             // 4. Gate F: Authority & Separation of Duties check
             $stopIds = $lockedTrip->stops()->pluck('id');
-            $hasOpenIncidents = Incident::where(function ($q) use ($lockedTrip, $stopIds) {
+            $serviceRecordIds = SchoolServiceRecord::whereIn('trip_stop_id', $stopIds)->pluck('id');
+            $trayReturnIds = \App\Models\TrayReturn::whereIn('school_service_record_id', $serviceRecordIds)->pluck('id');
+
+            $hasUnresolvedIncidents = Incident::where(function ($q) use ($lockedTrip, $stopIds, $serviceRecordIds, $trayReturnIds) {
                 $q->where(function ($q2) use ($lockedTrip) {
                     $q2->where('subject_type', Trip::class)
                        ->where('subject_id', $lockedTrip->id);
                 })->orWhere(function ($q2) use ($stopIds) {
                     $q2->where('subject_type', TripStop::class)
                        ->whereIn('subject_id', $stopIds);
+                })->orWhere(function ($q2) use ($serviceRecordIds) {
+                    $q2->where('subject_type', SchoolServiceRecord::class)
+                       ->whereIn('subject_id', $serviceRecordIds);
+                })->orWhere(function ($q2) use ($trayReturnIds) {
+                    $q2->where('subject_type', \App\Models\TrayReturn::class)
+                       ->whereIn('subject_id', $trayReturnIds);
                 });
-            })->where('status', IncidentStatus::OPEN)->exists();
+            })->whereNotIn('status', [IncidentStatus::RESOLVED, IncidentStatus::CLOSED])->exists();
 
-            if ($actor->role === \App\Enums\UserRole::KURIR && $hasOpenIncidents) {
+            if ($actor->role === \App\Enums\UserRole::KURIR && $hasUnresolvedIncidents) {
                 throw ValidationException::withMessages([
-                    'incidents' => ['Perjalanan memiliki insiden aktif yang masih terbuka (OPEN). Penutupan perjalanan memerlukan pengesahan administratif resmi oleh Kepala SPPG.'],
+                    'incidents' => ['Perjalanan memiliki insiden aktif yang belum terselesaikan (OPEN, ACKNOWLEDGED, IN_PROGRESS, atau REOPENED). Penutupan perjalanan memerlukan pengesahan administratif resmi oleh Kepala SPPG.'],
                 ]);
             }
 
-            if ($actor->role === \App\Enums\UserRole::KEPALA_SPPG && $hasOpenIncidents && (int) $lockedTrip->driver_id === (int) $actor->id) {
+            if ($actor->role === \App\Enums\UserRole::KEPALA_SPPG && $hasUnresolvedIncidents && (int) $lockedTrip->driver_id === (int) $actor->id) {
                 throw ValidationException::withMessages([
-                    'separation_of_duties' => ['Kepala SPPG yang bertindak sebagai pengemudi tidak dapat melakukan self-approval penutupan perjalanan yang memiliki insiden terbuka.'],
+                    'separation_of_duties' => ['Kepala SPPG yang bertindak sebagai pengemudi tidak dapat melakukan self-approval penutupan perjalanan yang memiliki insiden belum terselesaikan.'],
                 ]);
             }
 
@@ -652,24 +663,35 @@ class TripClosureService
             $blockers[] = 'Rekonsiliasi fisik ompreng belum dicatat (wajib sebelum penutupan).';
         }
 
-        // Check open incidents
+        // Check unresolved incidents
         $stopIds = $stops->pluck('id');
-        $hasOpenIncidents = Incident::where(function ($q) use ($trip, $stopIds) {
+        $serviceRecordIds = SchoolServiceRecord::whereIn('trip_stop_id', $stopIds)->pluck('id');
+        $trayReturnIds = \App\Models\TrayReturn::whereIn('school_service_record_id', $serviceRecordIds)->pluck('id');
+
+        $hasUnresolvedIncidents = Incident::where(function ($q) use ($trip, $stopIds, $serviceRecordIds, $trayReturnIds) {
             $q->where(function ($q2) use ($trip) {
                 $q2->where('subject_type', Trip::class)
                    ->where('subject_id', $trip->id);
             })->orWhere(function ($q2) use ($stopIds) {
                 $q2->where('subject_type', TripStop::class)
                    ->whereIn('subject_id', $stopIds);
+            })->orWhere(function ($q2) use ($serviceRecordIds) {
+                $q2->where('subject_type', SchoolServiceRecord::class)
+                   ->whereIn('subject_id', $serviceRecordIds);
+            })->orWhere(function ($q2) use ($trayReturnIds) {
+                $q2->where('subject_type', \App\Models\TrayReturn::class)
+                   ->whereIn('subject_id', $trayReturnIds);
             });
-        })->where('status', IncidentStatus::OPEN)->exists();
+        })->whereNotIn('status', [IncidentStatus::RESOLVED, IncidentStatus::CLOSED])->exists();
 
-        if ($hasOpenIncidents) {
+        $hasOpenIncidents = $hasUnresolvedIncidents;
+
+        if ($hasUnresolvedIncidents) {
             $exceptions[] = [
                 'type' => 'OPEN_INCIDENT',
                 'school' => null,
                 'stop_sequence' => null,
-                'message' => 'Terdapat insiden terbuka (OPEN) pada perjalanan ini. Penutupan administratif wajib disahkan oleh Kepala SPPG.',
+                'message' => 'Terdapat insiden aktif yang belum terselesaikan pada perjalanan ini. Penutupan administratif wajib disahkan oleh Kepala SPPG.',
                 'responsible_actor' => 'Kepala SPPG',
             ];
         }

@@ -44,6 +44,11 @@ class ActivityLog extends Model
         return $this->morphTo();
     }
 
+    public function getActionAttribute(): string
+    {
+        return $this->event;
+    }
+
     /**
      * Helper to cleanly record an activity audit entry.
      */

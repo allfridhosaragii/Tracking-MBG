@@ -21,7 +21,11 @@ use App\Http\Controllers\Public\SchoolPublicController;
 use App\Http\Controllers\School\DashboardController as SchoolDashboardController;
 use App\Http\Controllers\School\PortionRequestController;
 use App\Http\Controllers\School\SchoolOverviewController;
+use App\Http\Controllers\CrossRole\IncidentController;
+use App\Http\Controllers\Driver\DriverPickupController;
+use App\Http\Controllers\Production\LogisticsController;
 use App\Http\Controllers\School\SchoolReceiptController;
+use App\Http\Controllers\School\TrayReturnController;
 use Illuminate\Support\Facades\Route;
 
 // Redirect root to login
@@ -133,6 +137,10 @@ Route::middleware(['auth', 'active'])->group(function () {
             Route::post('/batches/{batch}/stage', [BatchExecutionController::class, 'advanceStage'])->name('batches.stage');
             Route::post('/batches/{batch}/actual', [BatchExecutionController::class, 'recordActual'])->name('batches.actual');
             Route::post('/batches/{batch}/submit-qc', [BatchExecutionController::class, 'submitToQc'])->name('batches.submit-qc');
+
+            // PBI-12: Vehicle Loading & Reverse Logistics Tray Reception (Page A03)
+            Route::get('/logistics', [LogisticsController::class, 'index'])->name('logistics.index');
+            Route::post('/tray-returns/{trayReturn}/receive', [LogisticsController::class, 'receive'])->name('tray-returns.receive');
         });
 
     // 4. Kurir Module
@@ -165,6 +173,10 @@ Route::middleware(['auth', 'active'])->group(function () {
             Route::post('/trips/{trip}/arrive-depot', [DriverTripController::class, 'arriveDepot'])->name('trips.arrive-depot');
             Route::post('/trips/{trip}/reconcile-trays', [DriverTripController::class, 'reconcileTrays'])->name('trips.reconcile-trays');
             Route::post('/trips/{trip}/complete', [DriverTripController::class, 'completeTrip'])->name('trips.complete');
+
+            // PBI-12: Container Pickup Traceability (Page D05)
+            Route::get('/pickups', [DriverPickupController::class, 'index'])->name('pickups.index');
+            Route::post('/tray-returns/{trayReturn}/pickup', [DriverPickupController::class, 'pickup'])->name('tray-returns.pickup');
         });
 
     // 5. PIC Sekolah Module
@@ -186,6 +198,10 @@ Route::middleware(['auth', 'active'])->group(function () {
             Route::get('/receipts', [SchoolReceiptController::class, 'index'])->name('receipts.index');
             Route::get('/trip-stops/{stop}/receipt', [SchoolReceiptController::class, 'show'])->name('receipts.show');
             Route::post('/trip-stops/{stop}/receipt', [SchoolReceiptController::class, 'confirm'])->name('receipts.confirm');
+
+            // PBI-12: Container Ready & Reverse Logistics (Page P06)
+            Route::get('/trays', [TrayReturnController::class, 'index'])->name('trays.index');
+            Route::post('/tray-returns/{trayReturn}/ready', [TrayReturnController::class, 'markReady'])->name('trays.ready');
         });
 
     // Cross-role PBI-07: Batch Traceability (Page C02)
@@ -194,6 +210,13 @@ Route::middleware(['auth', 'active'])->group(function () {
     // Cross-role PBI-08: Trip Detail & Multi-stop (Page C03)
     Route::get('/trips/{trip}', [TripDetailController::class, 'show'])->name('trips.show');
     Route::get('/trips/{trip}/map-data', [TripDetailController::class, 'mapData'])->name('trips.map-data');
+
+    // Cross-role PBI-11/12: Operational Incidents & Exception Control (Page C01)
+    Route::get('/incidents', [IncidentController::class, 'index'])->name('incidents.index');
+    Route::post('/incidents', [IncidentController::class, 'store'])->name('incidents.store');
+    Route::get('/incidents/{incident}', [IncidentController::class, 'show'])->name('incidents.show');
+    Route::post('/incidents/{incident}/transition/{action?}', [IncidentController::class, 'transition'])->name('incidents.transition');
+    Route::patch('/incidents/{incident}/status', [IncidentController::class, 'transition'])->name('incidents.status');
 
     // Private Evidence Photos with Policy Gate enforcement
     Route::get('/evidence-photos/{evidencePhoto}', [EvidencePhotoController::class, 'show'])->name('evidence-photos.show');

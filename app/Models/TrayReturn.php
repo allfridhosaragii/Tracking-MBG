@@ -56,6 +56,46 @@ class TrayReturn extends Model
         return $this->morphMany(EvidencePhoto::class, 'evidenceable');
     }
 
+    public function incidents(): MorphMany
+    {
+        return $this->morphMany(Incident::class, 'subject');
+    }
+
+    public function getSchoolAttribute(): ?School
+    {
+        return $this->schoolServiceRecord?->tripStop?->school;
+    }
+
+    public function getSchoolIdAttribute(): ?int
+    {
+        return $this->schoolServiceRecord?->tripStop?->school_id;
+    }
+
+    public function getSppgAttribute(): ?Sppg
+    {
+        return $this->schoolServiceRecord?->tripStop?->trip?->sppg;
+    }
+
+    public function getSppgIdAttribute(): ?int
+    {
+        return $this->schoolServiceRecord?->tripStop?->trip?->sppg_id;
+    }
+
+    public function getDeliveryTripAttribute(): ?Trip
+    {
+        return $this->schoolServiceRecord?->tripStop?->trip;
+    }
+
+    public function getAssignedDriverAttribute(): ?User
+    {
+        return $this->pickupTripStop?->trip?->driver ?? $this->deliveryTrip?->driver;
+    }
+
+    public function getNotesAttribute(): ?string
+    {
+        return $this->discrepancy_reason;
+    }
+
     public function hasDiscrepancy(): bool
     {
         return $this->status === TrayReturnStatus::DISCREPANCY

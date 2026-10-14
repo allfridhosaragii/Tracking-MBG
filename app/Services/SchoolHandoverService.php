@@ -714,6 +714,11 @@ class SchoolHandoverService
                     $this->storeRecordEvidence($serviceRecord, $pic, $evidencePhoto, 'RECEIPT_CONFIRMATION', $notes, $uploadedPaths);
                 }
 
+                // Initialize TrayReturn in IN_USE state for reverse logistics traceability (PBI-12 Gate 2)
+                if (! $serviceRecord->trayReturn()->exists()) {
+                    app(\App\Services\TrayReturnService::class)->initiateForRecord($serviceRecord, $receivedPortions > 0 ? $receivedPortions : $expectedPortions);
+                }
+
                 ActivityLog::record(
                     event: 'school_service.receipt_confirmed',
                     auditable: $serviceRecord,

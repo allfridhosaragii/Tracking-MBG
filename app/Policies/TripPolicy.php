@@ -204,22 +204,31 @@ class TripPolicy
             return false;
         }
 
-        // Check if trip or its stops have any active unresolved (OPEN) incidents
+        // Check if trip, its stops, or its tray returns have any active unresolved incidents
         $stopIds = $trip->stops()->pluck('id');
-        $hasOpenIncidents = \App\Models\Incident::where(function ($q) use ($trip, $stopIds) {
+        $serviceRecordIds = \App\Models\SchoolServiceRecord::whereIn('trip_stop_id', $stopIds)->pluck('id');
+        $trayReturnIds = \App\Models\TrayReturn::whereIn('school_service_record_id', $serviceRecordIds)->pluck('id');
+
+        $hasUnresolvedIncidents = \App\Models\Incident::where(function ($q) use ($trip, $stopIds, $serviceRecordIds, $trayReturnIds) {
             $q->where(function ($q2) use ($trip) {
                 $q2->where('subject_type', Trip::class)
                    ->where('subject_id', $trip->id);
             })->orWhere(function ($q2) use ($stopIds) {
                 $q2->where('subject_type', \App\Models\TripStop::class)
                    ->whereIn('subject_id', $stopIds);
+            })->orWhere(function ($q2) use ($serviceRecordIds) {
+                $q2->where('subject_type', \App\Models\SchoolServiceRecord::class)
+                   ->whereIn('subject_id', $serviceRecordIds);
+            })->orWhere(function ($q2) use ($trayReturnIds) {
+                $q2->where('subject_type', \App\Models\TrayReturn::class)
+                   ->whereIn('subject_id', $trayReturnIds);
             });
-        })->where('status', \App\Enums\IncidentStatus::OPEN)->exists();
+        })->whereNotIn('status', [\App\Enums\IncidentStatus::RESOLVED, \App\Enums\IncidentStatus::CLOSED])->exists();
 
         if ($user->role === UserRole::KURIR) {
-            // Kurir can close their assigned trip only if there are NO open incidents.
-            // If an incident is OPEN, administrative closure must be approved by Kepala SPPG.
-            if ($hasOpenIncidents) {
+            // Kurir can close their assigned trip only if there are NO unresolved incidents.
+            // If an incident is unresolved (OPEN, ACKNOWLEDGED, IN_PROGRESS, REOPENED), closure must be approved by Kepala SPPG.
+            if ($hasUnresolvedIncidents) {
                 return false;
             }
 
@@ -228,8 +237,8 @@ class TripPolicy
 
         if ($user->role === UserRole::KEPALA_SPPG) {
             // Separation of duties: If Kepala SPPG was also the driver on this trip,
-            // they cannot self-approve closure when there are unresolved open incidents.
-            if ($hasOpenIncidents && (int) $trip->driver_id === (int) $user->id) {
+            // they cannot self-approve closure when there are unresolved incidents.
+            if ($hasUnresolvedIncidents && (int) $trip->driver_id === (int) $user->id) {
                 return false;
             }
 

@@ -76,6 +76,10 @@
                                    class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('head.distribution.*') ? 'bg-[#EDF2ED] text-[#1C6654]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
                                     Kontrol Distribusi
                                 </a>
+                                <a href="{{ route('incidents.index') }}" 
+                                   class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('incidents.*') ? 'bg-[#EDF2ED] text-[#1C6654]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
+                                    Pusat Kendala
+                                </a>
                             @elseif ($roleEnum === \App\Enums\UserRole::PENGAWAS_GIZI)
                                 <a href="{{ route('nutrition.dashboard') }}" 
                                    class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('nutrition.dashboard') ? 'bg-[#EDF2ED] text-[#285F80]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
@@ -89,10 +93,22 @@
                                    class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('nutrition.qc.*') ? 'bg-[#EDF2ED] text-[#285F80]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
                                     Uji QC Mutu
                                 </a>
+                                <a href="{{ route('incidents.index') }}" 
+                                   class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('incidents.*') ? 'bg-[#EDF2ED] text-[#285F80]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
+                                    Kendala Kualitas
+                                </a>
                             @elseif ($roleEnum === \App\Enums\UserRole::ASISTEN_LAPANGAN)
                                 <a href="{{ route('production.dashboard') }}" 
                                    class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('production.dashboard') ? 'bg-[#EDF2ED] text-[#885D1C]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
                                     Runbook Produksi
+                                </a>
+                                <a href="{{ route('production.logistics.index') }}" 
+                                   class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('production.logistics.*') ? 'bg-[#EDF2ED] text-[#885D1C]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
+                                    Logistik &amp; Retur Wadah
+                                </a>
+                                <a href="{{ route('incidents.index') }}" 
+                                   class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('incidents.*') ? 'bg-[#EDF2ED] text-[#885D1C]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
+                                    Kendala Lapangan
                                 </a>
                             @elseif ($roleEnum === \App\Enums\UserRole::KURIR)
                                 <a href="{{ route('driver.dashboard') }}" 
@@ -102,6 +118,14 @@
                                 <a href="{{ route('driver.trips.index') }}" 
                                    class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('driver.trips.*') ? 'bg-[#EDF2ED] text-[#55327A]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
                                     Tugas Perjalanan
+                                </a>
+                                <a href="{{ route('driver.pickups.index') }}" 
+                                   class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('driver.pickups.*') ? 'bg-[#EDF2ED] text-[#55327A]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
+                                    Penjemputan Ompreng
+                                </a>
+                                <a href="{{ route('incidents.index') }}" 
+                                   class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('incidents.*') ? 'bg-[#EDF2ED] text-[#55327A]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
+                                    Lapor Kendala
                                 </a>
                             @elseif ($roleEnum === \App\Enums\UserRole::PIC_SEKOLAH)
                                 <a href="{{ route('school.dashboard') }}" 
@@ -115,6 +139,14 @@
                                 <a href="{{ route('school.portions.index') }}" 
                                    class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('school.portions.*') ? 'bg-[#EDF2ED] text-[#21684B]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
                                     Konfirmasi Porsi
+                                </a>
+                                <a href="{{ route('school.trays.index') }}" 
+                                   class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('school.trays.*') ? 'bg-[#EDF2ED] text-[#21684B]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
+                                    Kelola Ompreng (P06)
+                                </a>
+                                <a href="{{ route('incidents.index') }}" 
+                                   class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('incidents.*') ? 'bg-[#EDF2ED] text-[#21684B]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
+                                    Kendala Sekolah
                                 </a>
                             @endif
                         </nav>

@@ -23,6 +23,8 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Gate::policy(DailyPortionRequest::class, DailyPortionRequestPolicy::class);
+        Gate::policy(\App\Models\TrayReturn::class, \App\Policies\TrayReturnPolicy::class);
+        Gate::policy(\App\Models\Incident::class, \App\Policies\IncidentPolicy::class);
 
         if (app()->environment('production') || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')) {
             \Illuminate\Support\Facades\URL::forceScheme('https');

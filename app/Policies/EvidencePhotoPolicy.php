@@ -5,7 +5,9 @@ namespace App\Policies;
 use App\Enums\UserRole;
 use App\Models\EvidencePhoto;
 use App\Models\FoodBatch;
+use App\Models\Incident;
 use App\Models\SchoolServiceRecord;
+use App\Models\TrayReturn;
 use App\Models\TripStop;
 use App\Models\User;
 
@@ -114,6 +116,68 @@ class EvidencePhotoPolicy
                 UserRole::ASISTEN_LAPANGAN,
             ], true)) {
                 return $user->sppg_id !== null && (int) $user->sppg_id === (int) $stop->trip->sppg_id;
+            }
+
+            return false;
+        }
+
+        // 4. If photo belongs to a TrayReturn (Reverse logistics evidence)
+        if ($photo->evidenceable_type === TrayReturn::class) {
+            $trayReturn = $photo->evidenceable ?? TrayReturn::find($photo->evidenceable_id);
+            if (! $trayReturn) {
+                return false;
+            }
+
+            $schoolId = $trayReturn->school_id;
+            $sppgId = $trayReturn->sppg_id;
+
+            // PIC Sekolah can view if belonging to their school
+            if ($user->role === UserRole::PIC_SEKOLAH) {
+                return $user->school_id !== null && (int) $user->school_id === (int) $schoolId;
+            }
+
+            // Driver of the same SPPG or assigned to the pickup/delivery
+            if ($user->role === UserRole::KURIR) {
+                return $user->sppg_id !== null && (int) $user->sppg_id === (int) $sppgId;
+            }
+
+            // Internal SPPG staff within same SPPG scope
+            if (in_array($user->role, [
+                UserRole::KEPALA_SPPG,
+                UserRole::PENGAWAS_GIZI,
+                UserRole::ASISTEN_LAPANGAN,
+            ], true)) {
+                return $user->sppg_id !== null && (int) $user->sppg_id === (int) $sppgId;
+            }
+
+            return false;
+        }
+
+        // 5. If photo belongs to an Incident
+        if ($photo->evidenceable_type === Incident::class) {
+            $incident = $photo->evidenceable ?? Incident::find($photo->evidenceable_id);
+            if (! $incident) {
+                return false;
+            }
+
+            // Reporter can always view
+            if ((int) $user->id === (int) $incident->reported_by) {
+                return true;
+            }
+
+            // PIC Sekolah can view if incident is scoped to their school
+            if ($user->role === UserRole::PIC_SEKOLAH) {
+                return $user->school_id !== null && (int) $user->school_id === (int) $incident->school_id;
+            }
+
+            // Internal SPPG staff within same SPPG scope
+            if (in_array($user->role, [
+                UserRole::KEPALA_SPPG,
+                UserRole::PENGAWAS_GIZI,
+                UserRole::ASISTEN_LAPANGAN,
+                UserRole::KURIR,
+            ], true)) {
+                return $user->sppg_id !== null && (int) $user->sppg_id === (int) $incident->sppg_id;
             }
 
             return false;
