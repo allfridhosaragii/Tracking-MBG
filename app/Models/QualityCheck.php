@@ -68,4 +68,34 @@ class QualityCheck extends Model
     {
         return $this->conclusion === QualityCheckConclusion::HOLD;
     }
+
+    public function getStatusAttribute(): ?QualityCheckConclusion
+    {
+        return $this->conclusion;
+    }
+
+    public function getAppearanceStatusAttribute(): string
+    {
+        return $this->appearance_ok ? 'Segar & Bersih' : 'Tidak Normal';
+    }
+
+    public function getAromaStatusAttribute(): string
+    {
+        return $this->aroma_ok ? 'Harum Khas Makanan' : 'Aroma Tidak Wajar';
+    }
+
+    public function getTextureStatusAttribute(): string
+    {
+        return $this->texture_ok ? 'Sesuai Standar' : 'Tekstur Tidak Sesuai';
+    }
+
+    public function getTasteStatusAttribute(): string
+    {
+        if (!$this->taste_tested) {
+            return 'Dilewati Demi Keselamatan';
+        }
+        return $this->taste_ok ? 'Normal & Pas' : 'Rasa Gagal / Basi';
+    }
 }
+
+

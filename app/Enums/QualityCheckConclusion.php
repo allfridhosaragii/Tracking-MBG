@@ -26,7 +26,13 @@ enum QualityCheckConclusion: string
         };
     }
 
+    public function badgeClass(): string
+    {
+        return $this->badgeClasses();
+    }
+
     public function isSafe(): bool
+
     {
         return $this === self::SAFE;
     }

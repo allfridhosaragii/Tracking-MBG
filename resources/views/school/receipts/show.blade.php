@@ -87,7 +87,7 @@
                             @endif
                         </div>
                         <div>
-                            <span class="text-xs font-bold uppercase tracking-wider text-[#53645B] block">Berita Acara Serah Terima</span>
+                            <span class="text-xs font-bold uppercase tracking-wider text-[#53645B] block">Berita Acara Penerimaan Tercatat</span>
                             <h2 class="text-lg font-bold text-[#172923]">{{ $serviceRecord->status->label() }}</h2>
                         </div>
                     </div>
@@ -96,9 +96,10 @@
                             Status: {{ $serviceRecord->status->value }}
                         </span>
                         <span class="text-[11px] text-[#53645B] block mt-1 tabular-nums">
-                            Disahkan: {{ $serviceRecord->received_at?->setTimezone('Asia/Jakarta')->format('d/m/Y H:i:s \W\I\B') }}
+                            Konfirmasi Elektronik: {{ $serviceRecord->received_at?->setTimezone('Asia/Jakarta')->format('d/m/Y H:i:s \W\I\B') }}
                         </span>
                     </div>
+
                 </div>
 
                 @if ($serviceRecord->status === \App\Enums\SchoolReceiptStatus::HELD || $serviceRecord->status === \App\Enums\SchoolReceiptStatus::REJECTED)
@@ -179,19 +180,25 @@
                 @endif
 
                 <!-- Informasi PIC Penerima & Catatan -->
-                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-[#53645B] pt-2 border-t border-[#EDF2ED]">
-                    <div>
-                        <span class="text-[#708177]">Petugas Penerima:</span>
-                        <strong class="text-[#172923] ml-1">{{ $serviceRecord->receiver?->name ?? 'PIC Sekolah' }}</strong>
-                    </div>
-                    @if ($serviceRecord->notes)
+                <div class="space-y-2 pt-2 border-t border-[#EDF2ED]">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-[#53645B]">
                         <div>
-                            <span class="text-[#708177]">Catatan:</span>
-                            <span class="text-[#172923] ml-1">{{ $serviceRecord->notes }}</span>
+                            <span class="text-[#708177]">Petugas Penerima (Autentikasi Akun):</span>
+                            <strong class="text-[#172923] ml-1">{{ $serviceRecord->receiver?->name ?? 'PIC Sekolah' }}</strong>
                         </div>
-                    @endif
+                        @if ($serviceRecord->notes)
+                            <div>
+                                <span class="text-[#708177]">Catatan:</span>
+                                <span class="text-[#172923] ml-1">{{ $serviceRecord->notes }}</span>
+                            </div>
+                        @endif
+                    </div>
+                    <div class="text-[10px] text-[#708177] leading-relaxed">
+                        Konfirmasi Penerimaan Elektronik tercatat resmi berdasarkan autentikasi akun PIC Sekolah, stempel waktu server (UTC/WIB), dan riwayat log audit transaksi.
+                    </div>
                 </div>
             </div>
+
 
         @else
 
@@ -227,26 +234,52 @@
                                         <svg class="w-4 h-4 text-[#1C6654]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
                                         </svg>
-                                        Rincian Multi-Batch Pengiriman ({{ $stop->deliveryItems->count() }} Batch)
+                                        Verifikasi Fisik Multi-Batch ({{ $stop->deliveryItems->count() }} Batch)
                                     </h3>
-                                    <span class="text-xs font-bold text-[#1C6654] tabular-nums">Total: {{ $expectedPortions }} Porsi</span>
+                                    <span class="text-xs font-bold text-[#1C6654] tabular-nums">Muatan: {{ $expectedPortions }} Porsi</span>
                                 </div>
-                                <div class="space-y-2">
+                                <p class="text-[11px] text-[#53645B] leading-relaxed">
+                                    Periksa dan verifikasi jumlah fisik per batch bila kontainer terpisah. Jumlah total di bawah akan disinkronkan secara otomatis.
+                                </p>
+                                <div class="space-y-3">
                                     @foreach ($stop->deliveryItems as $item)
-                                        <div class="p-2.5 rounded-xl bg-[#F5F7F3] border border-[#DCE5DD] flex items-center justify-between text-xs">
-                                            <div>
-                                                <span class="font-mono font-bold text-[#1C6654]">{{ $item->foodBatch?->batch_code ?? 'BATCH-' . $item->id }}</span>
-                                                <span class="text-[11px] text-[#53645B] block">{{ $item->foodBatch?->menu?->recipe_name ?? 'Menu MBG' }}</span>
+                                        <div class="p-3 rounded-xl bg-[#F5F7F3] border border-[#DCE5DD] space-y-2">
+                                            <div class="flex items-center justify-between text-xs">
+                                                <div>
+                                                    <span class="font-mono font-bold text-[#1C6654]">{{ $item->foodBatch?->batch_code ?? 'BATCH-' . $item->id }}</span>
+                                                    <span class="text-[11px] text-[#53645B] block">{{ $item->foodBatch?->menu?->recipe_name ?? 'Menu MBG' }}</span>
+                                                </div>
+                                                <div class="text-right">
+                                                    <span class="font-bold text-[#172923] tabular-nums">{{ $item->loaded_portions ?? 0 }} Porsi</span>
+                                                    <span class="text-[10px] text-[#708177] block">Dimuat di SPPG</span>
+                                                </div>
                                             </div>
-                                            <div class="text-right">
-                                                <span class="font-bold text-[#172923] tabular-nums">{{ $item->loaded_portions ?? 0 }} Porsi</span>
-                                                <span class="text-[10px] text-[#708177] block">Dimuat di SPPG</span>
+                                            <div class="grid grid-cols-2 gap-2 pt-1 border-t border-[#EDF2ED]">
+                                                <div>
+                                                    <label class="block text-[10px] font-bold text-[#53645B] mb-0.5">Diterima Fisik</label>
+                                                    <input type="number" 
+                                                           name="items[{{ $item->id }}][received_portions]" 
+                                                           value="{{ old('items.' . $item->id . '.received_portions', $item->loaded_portions ?? 0) }}" 
+                                                           min="0"
+                                                           class="batch-item-received w-full text-xs text-[#172923] rounded-lg border border-[#DCE5DD] p-1.5 bg-white font-bold tabular-nums"
+                                                           oninput="syncBatchTotals()">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-[10px] font-bold text-[#53645B] mb-0.5">Porsi Rusak</label>
+                                                    <input type="number" 
+                                                           name="items[{{ $item->id }}][damaged_portions]" 
+                                                           value="{{ old('items.' . $item->id . '.damaged_portions', 0) }}" 
+                                                           min="0"
+                                                           class="batch-item-damaged w-full text-xs text-[#172923] rounded-lg border border-[#DCE5DD] p-1.5 bg-white font-bold tabular-nums"
+                                                           oninput="syncBatchTotals()">
+                                                </div>
                                             </div>
                                         </div>
                                     @endforeach
                                 </div>
                             </div>
                         @endif
+
 
                         <!-- 1. Rekonsiliasi Jumlah Porsi Fisik -->
                         <div class="bg-white rounded-2xl border border-[#DCE5DD] p-5 shadow-xs space-y-4">
@@ -558,10 +591,10 @@
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                                     </svg>
-                                    <span>Sahkan Penerimaan Makanan (P04)</span>
+                                    <span>Konfirmasi Penerimaan Elektronik (P04)</span>
                                 </button>
                                 <span class="text-[10px] text-[#708177] text-center block mt-2">
-                                    Tindakan ini mengesahkan serah terima dan mengaktifkan rute armada ke sekolah berikutnya.
+                                    Tindakan ini mengesahkan berita acara penerimaan dan mengaktifkan rute armada ke sekolah berikutnya.
                                 </span>
                             </div>
                         </div>
@@ -572,6 +605,31 @@
             </form>
 
             <script>
+                function syncBatchTotals() {
+                    const receivedInputs = document.querySelectorAll('.batch-item-received');
+                    const damagedInputs = document.querySelectorAll('.batch-item-damaged');
+
+                    if (receivedInputs.length > 0) {
+                        let totalRec = 0;
+                        receivedInputs.forEach(input => {
+                            totalRec += parseInt(input.value) || 0;
+                        });
+                        const recEl = document.getElementById('received_portions');
+                        if (recEl) recEl.value = totalRec;
+                    }
+
+                    if (damagedInputs.length > 0) {
+                        let totalDmg = 0;
+                        damagedInputs.forEach(input => {
+                            totalDmg += parseInt(input.value) || 0;
+                        });
+                        const dmgEl = document.getElementById('damaged_portions');
+                        if (dmgEl) dmgEl.value = totalDmg;
+                    }
+
+                    calculateShortage();
+                }
+
                 function calculateShortage() {
                     const expected = {{ (int) $expectedPortions }};
                     const receivedInput = document.getElementById('received_portions');
@@ -625,7 +683,7 @@
                         alertBox.classList.add('hidden');
                         submitBtn.classList.remove('bg-rose-600', 'hover:bg-rose-700');
                         submitBtn.classList.add('bg-[#1C6654]', 'hover:bg-[#154E40]');
-                        submitBtn.innerText = 'Sahkan Penerimaan Makanan (P04)';
+                        submitBtn.innerText = 'Konfirmasi Penerimaan Elektronik (P04)';
                     }
                 }
 
@@ -636,6 +694,7 @@
                     updateSafetyWarning();
                 });
             </script>
+
         @endif
 
     </div>

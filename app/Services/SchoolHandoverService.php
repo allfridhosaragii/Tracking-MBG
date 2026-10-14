@@ -32,11 +32,15 @@ class SchoolHandoverService
      */
     public function markStopArrival(TripStop $stop, User $driver, ?UploadedFile $photo = null, ?string $notes = null): TripStop
     {
-        return DB::transaction(function () use ($stop, $driver, $photo, $notes) {
-            $lockedStop = TripStop::where('id', $stop->id)
-                ->with(['trip', 'deliveryItems'])
-                ->lockForUpdate()
-                ->firstOrFail();
+        $uploadedPaths = [];
+
+        try {
+            return DB::transaction(function () use ($stop, $driver, $photo, $notes, &$uploadedPaths) {
+                $lockedStop = TripStop::where('id', $stop->id)
+                    ->with(['trip', 'deliveryItems'])
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
 
             $trip = Trip::where('id', $lockedStop->trip_id)
                 ->lockForUpdate()
@@ -97,7 +101,10 @@ class SchoolHandoverService
             }
 
             $now = Carbon::now();
-            $expectedPortions = (int) ($lockedStop->deliveryItems->sum('loaded_portions') ?: $lockedStop->loaded_portions);
+            $expectedPortions = (int) ($lockedStop->deliveryItems->isNotEmpty()
+                ? $lockedStop->deliveryItems->sum('loaded_portions')
+                : $lockedStop->loaded_portions);
+
             if ($expectedPortions <= 0) {
                 throw ValidationException::withMessages([
                     'loaded_portions' => ['Muatan fisik stop ini bernilai 0 atau belum diverifikasi saat pemuatan. Tidak dapat menandai kedatangan tanpa manifest fisik sah.'],
@@ -119,7 +126,7 @@ class SchoolHandoverService
             );
 
             if ($photo) {
-                $this->storeStopEvidence($lockedStop, $driver, $photo, 'SCHOOL_HANDOVER', $notes);
+                $this->storeStopEvidence($lockedStop, $driver, $photo, 'SCHOOL_HANDOVER', $notes, $uploadedPaths);
             }
 
             ActivityLog::record(
@@ -134,7 +141,16 @@ class SchoolHandoverService
 
             return $lockedStop;
         });
+    } catch (\Throwable $e) {
+        foreach ($uploadedPaths as $path) {
+            if ($path && Storage::disk('local')->exists($path)) {
+                Storage::disk('local')->delete($path);
+            }
+        }
+        throw $e;
     }
+}
+
 
     /**
      * PIC Sekolah verifies delivery manifest, performs arrival organoleptic check,
@@ -144,12 +160,12 @@ class SchoolHandoverService
      */
     public function confirmReceipt(TripStop $stop, User $pic, array $data, ?UploadedFile $evidencePhoto = null): SchoolServiceRecord
     {
-        $storedFilePath = null;
+        $uploadedPaths = [];
 
         try {
-            return DB::transaction(function () use ($stop, $pic, $data, $evidencePhoto, &$storedFilePath) {
+            return DB::transaction(function () use ($stop, $pic, $data, $evidencePhoto, &$uploadedPaths) {
                 $lockedStop = TripStop::where('id', $stop->id)
-                    ->with(['trip.stops', 'deliveryItems', 'schoolServiceRecord'])
+                    ->with(['trip.stops', 'deliveryItems.foodBatch.menu', 'schoolServiceRecord'])
                     ->lockForUpdate()
                     ->firstOrFail();
 
@@ -191,8 +207,11 @@ class SchoolHandoverService
                     );
                 }
 
-                // 3. Portions calculation & validation (GATE B: Zero loaded portions fails safe)
-                $expectedPortions = (int) ($lockedStop->deliveryItems->sum('loaded_portions') ?: $lockedStop->loaded_portions);
+                // 3. Portions calculation & validation (GATE B & C: Zero loaded portions fails safe, no planned fallback)
+                $expectedPortions = (int) ($lockedStop->deliveryItems->isNotEmpty()
+                    ? $lockedStop->deliveryItems->sum('loaded_portions')
+                    : $lockedStop->loaded_portions);
+
                 if ($expectedPortions <= 0) {
                     throw ValidationException::withMessages([
                         'loaded_portions' => ['Muatan fisik stop ini bernilai 0 atau belum diverifikasi saat pemuatan. Tidak dapat membuat tanda terima tanpa manifest fisik sah.'],
@@ -301,34 +320,54 @@ class SchoolHandoverService
                     ]);
                 }
 
-                // Consistent QC portions calculation (GATE D)
-                $totalAccepted = ($conclusion === QualityCheckConclusion::SAFE) ? max(0, $receivedPortions - $damagedPortions) : 0;
-                $totalRejected = ($conclusion === QualityCheckConclusion::SAFE) ? $damagedPortions : $receivedPortions;
-
-                // Record QC for each distinct batch of this stop
-                $batchCount = $distinctBatches->count();
-                foreach ($distinctBatches as $batchId) {
-                    QualityCheck::create([
-                        'food_batch_id' => $batchId,
-                        'trip_stop_id' => $lockedStop->id,
-                        'check_stage' => QualityCheckStage::ON_ARRIVAL,
-                        'checked_by' => $pic->id,
-                        'appearance_ok' => $appearanceOk,
-                        'aroma_ok' => $aromaOk,
-                        'texture_ok' => $textureOk,
-                        'taste_tested' => $tasteTested,
-                        'taste_ok' => $tasteOk,
-                        'taste_skipped_reason' => $tasteSkippedReason,
-                        'temperature_c' => $tempC,
-                        'accepted_portions' => (int) round($totalAccepted / $batchCount),
-                        'rejected_portions' => (int) round($totalRejected / $batchCount),
-                        'conclusion' => $conclusion,
-                        'notes' => $notes,
-                        'checked_at' => Carbon::now(),
-                    ]);
-                }
-
+                $totalDeliveryItems = $lockedStop->deliveryItems->count();
+                $isMultiBatch = $totalDeliveryItems > 1;
                 $now = Carbon::now();
+
+                // Check if client provided verified per-item receipts
+                $hasVerifiedItemInputs = !empty($data['items']) && is_array($data['items']);
+                $verifiedItemMap = [];
+
+                if ($hasVerifiedItemInputs) {
+                    $itemReceivedSum = 0;
+                    $itemDamagedSum = 0;
+
+                    foreach ($lockedStop->deliveryItems as $item) {
+                        if (isset($data['items'][$item->id])) {
+                            $iRec = filter_var($data['items'][$item->id]['received_portions'] ?? 0, FILTER_VALIDATE_INT);
+                            $iDmg = filter_var($data['items'][$item->id]['damaged_portions'] ?? 0, FILTER_VALIDATE_INT);
+
+                            if ($iRec === false || $iRec < 0) {
+                                throw ValidationException::withMessages([
+                                    "items.{$item->id}.received_portions" => ['Jumlah diterima per batch harus berupa bilangan bulat >= 0.'],
+                                ]);
+                            }
+                            if ($iDmg === false || $iDmg < 0 || $iDmg > $iRec) {
+                                throw ValidationException::withMessages([
+                                    "items.{$item->id}.damaged_portions" => ['Jumlah rusak per batch tidak boleh melebihi jumlah diterima fisik pada batch tersebut.'],
+                                ]);
+                            }
+
+                            $verifiedItemMap[$item->id] = [
+                                'received' => $iRec,
+                                'damaged' => $iDmg,
+                            ];
+                            $itemReceivedSum += $iRec;
+                            $itemDamagedSum += $iDmg;
+                        }
+                    }
+
+                    if ($itemReceivedSum !== $receivedPortions) {
+                        throw ValidationException::withMessages([
+                            'received_portions' => ["Total porsi fisik per-batch ({$itemReceivedSum}) harus sama dengan jumlah diterima ({$receivedPortions})."],
+                        ]);
+                    }
+                    if ($itemDamagedSum !== $damagedPortions) {
+                        throw ValidationException::withMessages([
+                            'damaged_portions' => ["Total porsi rusak per-batch ({$itemDamagedSum}) harus sama dengan jumlah rusak ({$damagedPortions})."],
+                        ]);
+                    }
+                }
 
                 // 5. Decision & State Machine Transitions
                 if ($conclusion === QualityCheckConclusion::UNSAFE || $conclusion === QualityCheckConclusion::HOLD) {
@@ -342,26 +381,6 @@ class SchoolHandoverService
                         'status' => TripStopStatus::HANDED_OVER,
                         'handed_over_at' => $now,
                     ]);
-
-                    // GATE A: Multi-batch portion distribution without duplicate counting
-                    $remainingDelivered = $receivedPortions;
-                    $totalItems = $lockedStop->deliveryItems->count();
-
-                    foreach ($lockedStop->deliveryItems as $index => $item) {
-                        $itemLoaded = (int) ($item->loaded_portions ?: $item->planned_portions);
-                        $allocated = min($itemLoaded, $remainingDelivered);
-
-                        // If last item, allocate any remaining portions (handles over-receipt or exact balance)
-                        if ($index === $totalItems - 1) {
-                            $allocated = $remainingDelivered;
-                        }
-
-                        $item->update([
-                            'delivered_portions' => $allocated,
-                        ]);
-
-                        $remainingDelivered = max(0, $remainingDelivered - $allocated);
-                    }
 
                     // 6. NEXT STOP ACTIVATION (GATE I)
                     // Only activate next pending stop if current stop was successfully handed over
@@ -388,6 +407,143 @@ class SchoolHandoverService
                     }
                 }
 
+                // GATE A, B, C, D: RECONCILE DELIVERY ITEMS & RECORD QUALITY CHECKS
+                if ($hasVerifiedItemInputs) {
+                    // Skenario 1: Data verifikasi fisik per-item/batch tersedia
+                    foreach ($lockedStop->deliveryItems as $item) {
+                        $vData = $verifiedItemMap[$item->id];
+                        $itemLoaded = (int) ($item->loaded_portions ?? 0);
+                        $itemRec = $vData['received'];
+                        $itemDmg = $vData['damaged'];
+
+                        // Invariant: 0 <= delivered_portions <= loaded_portions
+                        $itemDelivered = min($itemLoaded, $itemRec);
+                        $item->update(['delivered_portions' => $itemDelivered]);
+
+                        $batchAccepted = ($conclusion === QualityCheckConclusion::SAFE) ? max(0, min($itemLoaded, $itemRec - $itemDmg)) : 0;
+                        $batchRejected = ($conclusion === QualityCheckConclusion::SAFE) ? $itemDmg : $itemRec;
+
+                        QualityCheck::create([
+                            'food_batch_id' => $item->food_batch_id,
+                            'trip_stop_id' => $lockedStop->id,
+                            'check_stage' => QualityCheckStage::ON_ARRIVAL,
+                            'checked_by' => $pic->id,
+                            'appearance_ok' => $appearanceOk,
+                            'aroma_ok' => $aromaOk,
+                            'texture_ok' => $textureOk,
+                            'taste_tested' => $tasteTested,
+                            'taste_ok' => $tasteOk,
+                            'taste_skipped_reason' => $tasteSkippedReason,
+                            'temperature_c' => $tempC,
+                            'accepted_portions' => $batchAccepted,
+                            'rejected_portions' => $batchRejected,
+                            'conclusion' => $conclusion,
+                            'notes' => $notes,
+                            'decision_reason' => 'Verifikasi fisik per batch terkonfirmasi pada saat kedatangan di sekolah.',
+                            'checked_at' => $now,
+                        ]);
+                    }
+                } elseif (!$isMultiBatch) {
+                    // Skenario 2: Single batch on stop -> provenance 100% exact & unambiguous
+                    $item = $lockedStop->deliveryItems->first();
+                    $itemLoaded = (int) ($item->loaded_portions ?? 0);
+
+                    // Invariant: delivered_portions cannot exceed loaded_portions
+                    $itemDelivered = min($itemLoaded, $receivedPortions);
+                    $item->update(['delivered_portions' => $itemDelivered]);
+
+                    $batchAccepted = ($conclusion === QualityCheckConclusion::SAFE) ? max(0, min($itemLoaded, $receivedPortions - $damagedPortions)) : 0;
+                    $batchRejected = ($conclusion === QualityCheckConclusion::SAFE) ? min($receivedPortions, $damagedPortions) : $receivedPortions;
+
+                    QualityCheck::create([
+                        'food_batch_id' => $item->food_batch_id,
+                        'trip_stop_id' => $lockedStop->id,
+                        'check_stage' => QualityCheckStage::ON_ARRIVAL,
+                        'checked_by' => $pic->id,
+                        'appearance_ok' => $appearanceOk,
+                        'aroma_ok' => $aromaOk,
+                        'texture_ok' => $textureOk,
+                        'taste_tested' => $tasteTested,
+                        'taste_ok' => $tasteOk,
+                        'taste_skipped_reason' => $tasteSkippedReason,
+                        'temperature_c' => $tempC,
+                        'accepted_portions' => $batchAccepted,
+                        'rejected_portions' => $batchRejected,
+                        'conclusion' => $conclusion,
+                        'notes' => $notes,
+                        'decision_reason' => 'Pemeriksaan organoleptik kedatangan single batch terverifikasi.',
+                        'checked_at' => $now,
+                    ]);
+                } else {
+                    // Skenario 3: Multi-batch AGGREGATE receipt (no per-item breakdown provided)
+                    $hasDiscrepancy = ($receivedPortions !== $expectedPortions) || ($damagedPortions > 0);
+
+                    if (!$hasDiscrepancy) {
+                        // Exact clean receipt: every batch arrived in full without discrepancy!
+                        foreach ($lockedStop->deliveryItems as $item) {
+                            $itemLoaded = (int) ($item->loaded_portions ?? 0);
+                            $item->update(['delivered_portions' => $itemLoaded]);
+
+                            QualityCheck::create([
+                                'food_batch_id' => $item->food_batch_id,
+                                'trip_stop_id' => $lockedStop->id,
+                                'check_stage' => QualityCheckStage::ON_ARRIVAL,
+                                'checked_by' => $pic->id,
+                                'appearance_ok' => $appearanceOk,
+                                'aroma_ok' => $aromaOk,
+                                'texture_ok' => $textureOk,
+                                'taste_tested' => $tasteTested,
+                                'taste_ok' => $tasteOk,
+                                'taste_skipped_reason' => $tasteSkippedReason,
+                                'temperature_c' => $tempC,
+                                'accepted_portions' => $itemLoaded, // Exact loaded, no rounding drift!
+                                'rejected_portions' => 0,
+                                'conclusion' => $conclusion,
+                                'notes' => $notes,
+                                'decision_reason' => 'Penerimaan multi-batch lengkap sesuai manifest muatan tanpa selisih.',
+                                'checked_at' => $now,
+                            ]);
+                        }
+                    } else {
+                        // Multi-batch WITH discrepancy (shortage, damage, or over-receipt) AND no per-batch breakdown
+                        // GATE A & D: DO NOT fabricate mathematical split across batches!
+                        // Record delivered_portions capped by loaded per item
+                        $remainingDelivered = min($receivedPortions, $expectedPortions);
+
+                        foreach ($lockedStop->deliveryItems as $item) {
+                            $itemLoaded = (int) ($item->loaded_portions ?? 0);
+                            $allocated = min($itemLoaded, $remainingDelivered);
+
+                            // GATE B & C: Strictly capped by loaded_portions. NEVER assign remainder to last item beyond loaded!
+                            $item->update(['delivered_portions' => $allocated]);
+                            $remainingDelivered = max(0, $remainingDelivered - $allocated);
+                        }
+
+                        // Record QualityCheck with unallocated portions (null accepted, 0 rejected) to prevent fabricated provenance
+                        foreach ($distinctBatches as $batchId) {
+                            QualityCheck::create([
+                                'food_batch_id' => $batchId,
+                                'trip_stop_id' => $lockedStop->id,
+                                'check_stage' => QualityCheckStage::ON_ARRIVAL,
+                                'checked_by' => $pic->id,
+                                'appearance_ok' => $appearanceOk,
+                                'aroma_ok' => $aromaOk,
+                                'texture_ok' => $textureOk,
+                                'taste_tested' => $tasteTested,
+                                'taste_ok' => $tasteOk,
+                                'taste_skipped_reason' => $tasteSkippedReason,
+                                'temperature_c' => $tempC,
+                                'accepted_portions' => null, // Unattributed at batch level
+                                'rejected_portions' => 0,
+                                'conclusion' => $conclusion,
+                                'notes' => $notes,
+                                'decision_reason' => "Pemeriksaan kedatangan organoleptik multi-batch ({$totalDeliveryItems} batch). Atribusi porsi diterima dan rusak belum dirinci per batch sehingga dicatat sebagai unresolved discrepancy pada tingkat stop sekolah.",
+                                'checked_at' => $now,
+                            ]);
+                        }
+                    }
+                }
+
                 // Persist SchoolServiceRecord
                 $serviceRecord = SchoolServiceRecord::updateOrCreate(
                     ['trip_stop_id' => $lockedStop->id],
@@ -403,10 +559,9 @@ class SchoolHandoverService
                     ]
                 );
 
-                // Store evidence photo if provided (GATE F: with orphan cleanup tracking)
+                // Store evidence photo if provided (GATE E: with full rollback tracking)
                 if ($evidencePhoto) {
-                    $photoModel = $this->storeRecordEvidence($serviceRecord, $pic, $evidencePhoto, 'RECEIPT_CONFIRMATION', $notes);
-                    $storedFilePath = $photoModel->file_path;
+                    $this->storeRecordEvidence($serviceRecord, $pic, $evidencePhoto, 'RECEIPT_CONFIRMATION', $notes, $uploadedPaths);
                 }
 
                 ActivityLog::record(
@@ -427,8 +582,10 @@ class SchoolHandoverService
             });
         } catch (\Throwable $e) {
             // Clean up orphan file if database transaction rolled back
-            if ($storedFilePath && Storage::disk('local')->exists($storedFilePath)) {
-                Storage::disk('local')->delete($storedFilePath);
+            foreach ($uploadedPaths as $path) {
+                if ($path && Storage::disk('local')->exists($path)) {
+                    Storage::disk('local')->delete($path);
+                }
             }
             throw $e;
         }
@@ -437,9 +594,10 @@ class SchoolHandoverService
     /**
      * Store evidence photo attached to a TripStop.
      */
-    protected function storeStopEvidence(TripStop $stop, User $uploader, UploadedFile $file, string $type, ?string $notes = null): EvidencePhoto
+    protected function storeStopEvidence(TripStop $stop, User $uploader, UploadedFile $file, string $type, ?string $notes = null, array &$uploadedPaths = []): EvidencePhoto
     {
         $path = $file->store('evidence_photos/stops', 'local');
+        $uploadedPaths[] = $path;
 
         return EvidencePhoto::create([
             'evidenceable_type' => TripStop::class,
@@ -457,9 +615,10 @@ class SchoolHandoverService
     /**
      * Store evidence photo attached to a SchoolServiceRecord.
      */
-    protected function storeRecordEvidence(SchoolServiceRecord $record, User $uploader, UploadedFile $file, string $type, ?string $notes = null): EvidencePhoto
+    protected function storeRecordEvidence(SchoolServiceRecord $record, User $uploader, UploadedFile $file, string $type, ?string $notes = null, array &$uploadedPaths = []): EvidencePhoto
     {
         $path = $file->store('evidence_photos/receipts', 'local');
+        $uploadedPaths[] = $path;
 
         return EvidencePhoto::create([
             'evidenceable_type' => SchoolServiceRecord::class,
@@ -474,3 +633,5 @@ class SchoolHandoverService
         ]);
     }
 }
+
+

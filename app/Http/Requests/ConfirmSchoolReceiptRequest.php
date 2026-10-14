@@ -67,6 +67,9 @@ class ConfirmSchoolReceiptRequest extends FormRequest
             'notes' => ['nullable', 'string', 'max:1000'],
             'evidence_photo' => ['nullable', 'file', 'image', 'max:5120'], // Max 5MB
             'idempotency_key' => ['nullable', 'string', 'max:64'],
+            'items' => ['nullable', 'array'],
+            'items.*.received_portions' => ['required_with:items', 'integer', 'min:0'],
+            'items.*.damaged_portions' => ['nullable', 'integer', 'min:0'],
         ];
     }
 
@@ -79,7 +82,10 @@ class ConfirmSchoolReceiptRequest extends FormRequest
             }
 
             if ($stop) {
-                $loadedPortions = (int) ($stop->deliveryItems->sum('loaded_portions') ?: $stop->loaded_portions);
+                $loadedPortions = (int) ($stop->deliveryItems->isNotEmpty()
+                    ? $stop->deliveryItems->sum('loaded_portions')
+                    : $stop->loaded_portions);
+
                 if ($loadedPortions <= 0) {
                     $validator->errors()->add(
                         'loaded_portions',
@@ -100,7 +106,52 @@ class ConfirmSchoolReceiptRequest extends FormRequest
                         );
                     }
                 }
+
+                // If per-item multi-batch breakdown is submitted, validate reconciliation
+                $itemsInput = $this->input('items');
+                if (!empty($itemsInput) && is_array($itemsInput)) {
+                    $validItemIds = $stop->deliveryItems->pluck('id')->all();
+                    $itemsReceivedSum = 0;
+                    $itemsDamagedSum = 0;
+
+                    foreach ($itemsInput as $itemId => $itemRow) {
+                        if (!in_array((int) $itemId, $validItemIds, true)) {
+                            $validator->errors()->add("items.{$itemId}", "Item pengiriman #{$itemId} tidak terdaftar pada pemberhentian sekolah ini.");
+                            continue;
+                        }
+
+                        $iRec = filter_var($itemRow['received_portions'] ?? 0, FILTER_VALIDATE_INT);
+                        $iDmg = filter_var($itemRow['damaged_portions'] ?? 0, FILTER_VALIDATE_INT);
+
+                        if ($iRec === false || $iRec < 0) {
+                            $validator->errors()->add("items.{$itemId}.received_portions", "Kuantitas diterima fisik item #{$itemId} tidak valid.");
+                        }
+                        if ($iDmg === false || $iDmg < 0) {
+                            $validator->errors()->add("items.{$itemId}.damaged_portions", "Kuantitas rusak item #{$itemId} tidak valid.");
+                        } elseif ($iRec !== false && $iDmg > $iRec) {
+                            $validator->errors()->add("items.{$itemId}.damaged_portions", "Porsi rusak item #{$itemId} melebihi fisik yang diterima.");
+                        }
+
+                        if ($iRec !== false) $itemsReceivedSum += $iRec;
+                        if ($iDmg !== false) $itemsDamagedSum += $iDmg;
+                    }
+
+                    if ($received !== false && $itemsReceivedSum !== $received) {
+                        $validator->errors()->add(
+                            'received_portions',
+                            "Total porsi per-batch ({$itemsReceivedSum}) harus sama dengan total fisik diterima ({$received})."
+                        );
+                    }
+
+                    if ($itemsDamagedSum !== $damaged) {
+                        $validator->errors()->add(
+                            'damaged_portions',
+                            "Total porsi rusak per-batch ({$itemsDamagedSum}) harus sama dengan total rusak ({$damaged})."
+                        );
+                    }
+                }
             }
+
 
             // Food Safety: conclusion=SAFE CANNOT ignore negative sensory checks
             $appearanceOk = filter_var($this->input('appearance_ok'), FILTER_VALIDATE_BOOLEAN);
