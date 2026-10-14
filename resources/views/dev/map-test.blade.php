@@ -92,7 +92,7 @@
                     return;
                 }
 
-                const { Map, NavigationControl, Marker } = window.maplibregl;
+                const { Map, NavigationControl, Marker, AttributionControl } = window.maplibregl;
                 const centerSurabaya = [112.735, -7.288];
                 const styleUrl = 'https://tiles.openfreemap.org/styles/liberty';
 
@@ -104,12 +104,21 @@
                         style: styleUrl,
                         center: centerSurabaya,
                         zoom: 12,
-                        attributionControl: true
+                        attributionControl: false
                     });
 
                     window.__testMap = map;
 
-            map.addControl(new NavigationControl({ showCompass: true }), 'top-right');
+                    if (AttributionControl) {
+                        const attrib = new AttributionControl({ compact: true });
+                        map.addControl(attrib, 'bottom-right');
+                        if (attrib._container) {
+                            attrib._container.classList.add('maplibregl-compact');
+                            attrib._container.classList.remove('maplibregl-compact-show');
+                        }
+                    }
+
+                    map.addControl(new NavigationControl({ showCompass: true }), 'top-right');
 
             // Add sample test marker at center
             new Marker({ color: '#1C6654' })

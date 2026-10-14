@@ -1,4 +1,4 @@
-import { Map as MapLibreMap, Marker, Popup, NavigationControl, LngLatBounds, setWorkerUrl } from 'maplibre-gl';
+import { Map as MapLibreMap, Marker, Popup, NavigationControl, AttributionControl, LngLatBounds, setWorkerUrl } from 'maplibre-gl';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -155,8 +155,34 @@ export function initDispatchMap(containerId, options = {}) {
             center: defaultCenter,
             zoom: defaultZoom,
             interactive: interactive,
-            attributionControl: true,
+            attributionControl: false,
         });
+
+        // Compact Attribution Control: collapsed by default (Gambar 2: only circular (i) icon),
+        // expands to full attribution (Gambar 1) only when clicked/tapped.
+        const attribControl = new AttributionControl({
+            compact: true,
+        });
+        map.addControl(attribControl, 'bottom-right');
+
+        let userToggledAttribution = false;
+        if (attribControl._compactButton) {
+            attribControl._compactButton.addEventListener('click', () => {
+                userToggledAttribution = true;
+            });
+        }
+
+        const ensureCollapsedAttribution = () => {
+            if (userToggledAttribution) return;
+            if (attribControl._container) {
+                attribControl._container.classList.add('maplibregl-compact');
+                attribControl._container.classList.remove('maplibregl-compact-show');
+            }
+        };
+
+        ensureCollapsedAttribution();
+        map.on('styledata', ensureCollapsedAttribution);
+        map.once('load', ensureCollapsedAttribution);
 
         map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
     } catch (err) {
@@ -601,4 +627,4 @@ export function initDispatchMap(containerId, options = {}) {
 }
 
 window.initDispatchMap = initDispatchMap;
-window.maplibregl = { Map: MapLibreMap, Marker, Popup, NavigationControl, LngLatBounds };
+window.maplibregl = { Map: MapLibreMap, Marker, Popup, NavigationControl, AttributionControl, LngLatBounds };
