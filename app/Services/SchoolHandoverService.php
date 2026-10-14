@@ -715,8 +715,9 @@ class SchoolHandoverService
                 }
 
                 // Initialize TrayReturn in IN_USE state for reverse logistics traceability (PBI-12 Gate 2)
+                // Container count is physically distinct from food portions. Kept null/unverified until physical manifest exists.
                 if (! $serviceRecord->trayReturn()->exists()) {
-                    app(\App\Services\TrayReturnService::class)->initiateForRecord($serviceRecord, $receivedPortions > 0 ? $receivedPortions : $expectedPortions);
+                    app(\App\Services\TrayReturnService::class)->initiateForRecord($serviceRecord, null, false);
                 }
 
                 ActivityLog::record(

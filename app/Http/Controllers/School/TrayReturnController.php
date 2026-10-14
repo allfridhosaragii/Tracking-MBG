@@ -23,16 +23,9 @@ class TrayReturnController extends Controller
         $user = $request->user();
         $school = $user->school;
 
-        // Auto-initialize TrayReturn records for any completed receipts of this school
-        $uninitiatedRecords = SchoolServiceRecord::whereHas('tripStop', function ($q) use ($user) {
-            $q->where('school_id', $user->school_id);
-        })->doesntHave('trayReturn')->get();
-
-        $trayService = app(TrayReturnService::class);
-        foreach ($uninitiatedRecords as $record) {
-            $trayService->initiateForRecord($record);
-        }
-
+        // GATE F: Read-only endpoint. GET /school/trays MUST NOT mutate business state,
+        // create records, or write activity logs. All TrayReturn records are created
+        // strictly via verified lifecycle events (e.g. SchoolHandoverService upon delivery).
         $trayReturns = TrayReturn::whereHas('schoolServiceRecord.tripStop', function ($q) use ($user) {
             $q->where('school_id', $user->school_id);
         })

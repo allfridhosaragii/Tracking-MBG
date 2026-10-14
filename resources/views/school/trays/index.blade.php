@@ -134,9 +134,9 @@
                         <div class="p-2.5 rounded-xl bg-[#F5F7F3] border border-[#DCE5DD]">
                             <span class="text-[10px] text-[#708177] block font-medium">Ekspektasi (Kirim)</span>
                             <span class="text-base font-bold text-[#172923] tabular-nums mt-0.5 block">
-                                {{ $tray->expected_trays }}
+                                {{ $tray->is_expected_verified && $tray->expected_trays !== null ? $tray->expected_trays : ($tray->expected_trays ?? '—') }}
                             </span>
-                            <span class="text-[10px] text-[#53645B]">Wadah</span>
+                            <span class="text-[10px] text-[#53645B]">{{ $tray->is_expected_verified ? 'Wadah Terverifikasi' : 'Belum Terverifikasi' }}</span>
                         </div>
                         <div class="p-2.5 rounded-xl {{ $tray->ready_count !== null ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50 border border-slate-200' }}">
                             <span class="text-[10px] {{ $tray->ready_count !== null ? 'text-amber-800' : 'text-slate-500' }} block font-medium">Siap Dijemput</span>

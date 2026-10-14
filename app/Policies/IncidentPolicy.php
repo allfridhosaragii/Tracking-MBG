@@ -32,7 +32,15 @@ class IncidentPolicy
      */
     public function create(User $user): bool
     {
-        return $user->is_active;
+        if (!$user->is_active) {
+            return false;
+        }
+
+        if ($user->role === UserRole::PIC_SEKOLAH) {
+            return !empty($user->school_id);
+        }
+
+        return !empty($user->sppg_id);
     }
 
     /**

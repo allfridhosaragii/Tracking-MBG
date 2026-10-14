@@ -6,6 +6,8 @@ use App\Enums\IncidentCategory;
 use App\Enums\IncidentSeverity;
 use App\Enums\IncidentStatus;
 use App\Enums\TrayReturnStatus;
+use App\Enums\TripStatus;
+use App\Enums\TripStopStatus;
 use App\Enums\UserRole;
 use App\Models\ActivityLog;
 use App\Models\EvidencePhoto;
@@ -26,29 +28,47 @@ class TrayReturnService
 {
     /**
      * Initialize or fetch the TrayReturn tracking record for a SchoolServiceRecord.
+     *
+     * GATE A: Container count is physically distinct from meal portions.
+     * If no verified manifest is provided, expected_trays remains null and unverified.
+     * If verified expectedTrays is 0, it remains 0 (not forced to 1).
      */
-    public function initiateForRecord(SchoolServiceRecord $record, ?int $expectedTrays = null): TrayReturn
-    {
-        return DB::transaction(function () use ($record, $expectedTrays) {
+    public function initiateForRecord(
+        SchoolServiceRecord $record,
+        ?int $expectedTrays = null,
+        bool $isVerified = false,
+        ?string $manifestReference = null
+    ): TrayReturn {
+        return DB::transaction(function () use ($record, $expectedTrays, $isVerified, $manifestReference) {
             $lockedRecord = SchoolServiceRecord::where('id', $record->id)
                 ->with('tripStop')
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            $existing = TrayReturn::where('school_service_record_id', $lockedRecord->id)->first();
+            $existing = TrayReturn::where('school_service_record_id', $lockedRecord->id)
+                ->lockForUpdate()
+                ->first();
+
             if ($existing) {
                 return $existing;
             }
 
-            // Expected trays defaults to physical portions received, or expected portions
-            $trays = $expectedTrays ?? (int) ($lockedRecord->received_portions ?? $lockedRecord->expected_portions);
-            if ($trays <= 0) {
-                $trays = 1;
+            // Strict physical count provenance:
+            // Do NOT substitute meal portions (planned or received) for physical container count.
+            // When expectedTrays is 0, preserve 0 (do NOT force to 1).
+            $trays = null;
+            $verified = false;
+
+            if ($expectedTrays !== null) {
+                $trays = (int) $expectedTrays;
+                $verified = $isVerified;
             }
 
             return TrayReturn::create([
                 'school_service_record_id' => $lockedRecord->id,
                 'expected_trays' => $trays,
+                'is_expected_verified' => $verified,
+                'manifest_reference' => $manifestReference,
                 'status' => TrayReturnStatus::IN_USE,
             ]);
         });
@@ -57,8 +77,9 @@ class TrayReturnService
     /**
      * PIC Sekolah declares containers ready for pickup (Page P06 /school/trays).
      *
-     * Transitions status from IN_USE to READY_FOR_PICKUP (or DISCREPANCY).
-     * Validates physical ready counts, records server timestamp, and logs activity.
+     * Transitions status from IN_USE to READY_FOR_PICKUP.
+     * GATE A & E: Does NOT trigger missing incident against unverified/unknown expected baseline.
+     * Idempotent on identical retry without inflating incidents or logs.
      */
     public function markReady(TrayReturn $trayReturn, User $pic, array $data, ?UploadedFile $photo = null): TrayReturn
     {
@@ -79,20 +100,7 @@ class TrayReturnService
                     throw new HttpException(403, 'Akses ditolak. Anda bukan PIC yang ditugaskan untuk sekolah ini.');
                 }
 
-                // 2. Precondition: Status must be IN_USE
-                if ($lockedReturn->status !== TrayReturnStatus::IN_USE) {
-                    // Idempotency: If already READY_FOR_PICKUP with identical counts, return safely
-                    if ($lockedReturn->status === TrayReturnStatus::READY_FOR_PICKUP &&
-                        $lockedReturn->ready_count === (int) ($data['ready_count'] ?? 0)) {
-                        return $lockedReturn;
-                    }
-
-                    throw new ConflictHttpException(
-                        "Status ompreng telah berstatus {$lockedReturn->status->label()}. Tindakan penandaan siap jemput tidak diizinkan."
-                    );
-                }
-
-                // 3. Count Validation (Gate 3: Physical Count Integrity)
+                // 2. Count Validation
                 if (!isset($data['ready_count']) || $data['ready_count'] === '' || !is_numeric($data['ready_count'])) {
                     throw ValidationException::withMessages([
                         'ready_count' => ['Jumlah ompreng siap diambil wajib diisi dengan bilangan bulat non-negatif.'],
@@ -116,20 +124,40 @@ class TrayReturnService
                     }
                 }
 
+                // 3. Precondition & Idempotency Check (GATE E)
+                if ($lockedReturn->status !== TrayReturnStatus::IN_USE || $lockedReturn->ready_at !== null) {
+                    if ((int) $lockedReturn->ready_count === $readyCount &&
+                        (int) ($lockedReturn->damaged_count ?? 0) === $damagedCount) {
+                        // Identical retry: return existing record safely without mutating timestamps, logs, or incidents
+                        return $lockedReturn;
+                    }
+
+                    throw new ConflictHttpException(
+                        "Status ompreng telah berstatus {$lockedReturn->status->label()}. Tindakan penandaan siap jemput tidak diizinkan."
+                    );
+                }
+
                 $notes = isset($data['notes']) ? trim((string) $data['notes']) : (isset($data['discrepancy_reason']) ? trim((string) $data['discrepancy_reason']) : null);
-                $hasDiscrepancy = ($readyCount < $lockedReturn->expected_trays) || ($damagedCount > 0);
+
+                // GATE A: Physical Discrepancy against verified baseline only.
+                // If expected_trays is unknown/unverified (e.g. from food portions), do NOT fabricate a missing incident.
+                $isMissingFromExpected = ($lockedReturn->is_expected_verified && $lockedReturn->expected_trays !== null && $readyCount < $lockedReturn->expected_trays);
+                $hasDamaged = ($damagedCount > 0);
+                $hasDiscrepancy = $isMissingFromExpected || $hasDamaged;
 
                 // Discrepancy requires explanation notes
                 if ($hasDiscrepancy && empty($notes)) {
                     throw ValidationException::withMessages([
-                        'notes' => ['Catatan penjelasan wajib diisi jika terdapat wadah yang kurang dari alokasi awal atau ditemukan wadah rusak.'],
+                        'notes' => ['Catatan penjelasan wajib diisi jika terdapat wadah yang kurang dari alokasi terverifikasi atau ditemukan wadah rusak.'],
                     ]);
                 }
 
                 $now = Carbon::now();
                 $lockedReturn->ready_count = $readyCount;
                 $lockedReturn->damaged_count = $damagedCount;
-                $lockedReturn->ready_at = $now;
+                if ($lockedReturn->ready_at === null) {
+                    $lockedReturn->ready_at = $now;
+                }
                 $lockedReturn->discrepancy_reason = $notes;
                 $lockedReturn->status = TrayReturnStatus::READY_FOR_PICKUP;
                 $lockedReturn->save();
@@ -139,22 +167,41 @@ class TrayReturnService
                     $this->storeEvidencePhoto($lockedReturn, $pic, $photo, 'TRAYS_READY', $notes, $uploadedPaths);
                 }
 
-                // If discrepancy detected, log Incident for SPPG management
+                // GATE E: Deduplicate Incident. Check for existing OPEN incident for this return by PIC
                 if ($hasDiscrepancy) {
-                    $missing = max(0, $lockedReturn->expected_trays - $readyCount);
+                    $missing = ($lockedReturn->is_expected_verified && $lockedReturn->expected_trays !== null)
+                        ? max(0, $lockedReturn->expected_trays - $readyCount)
+                        : 0;
                     $severity = ($missing > 10 || $damagedCount > 10) ? IncidentSeverity::HIGH : IncidentSeverity::MEDIUM;
-                    
-                    Incident::create([
-                        'sppg_id' => $sppg->id,
-                        'school_id' => $school->id,
-                        'subject_type' => TrayReturn::class,
-                        'subject_id' => $lockedReturn->id,
-                        'reported_by' => $pic->id,
-                        'category' => IncidentCategory::TRAY_DISCREPANCY,
-                        'severity' => $severity,
-                        'status' => IncidentStatus::OPEN,
-                        'description' => "Selisih kesiapan wadah di {$school->name}: siap {$readyCount} dari {$lockedReturn->expected_trays} wadah diharapkan. Kurang: {$missing}, Rusak: {$damagedCount}." . ($notes ? " Catatan: {$notes}" : ''),
-                    ]);
+                    $desc = "Kesiapan wadah di {$school->name}: Siap {$readyCount}" .
+                        ($lockedReturn->is_expected_verified ? " dari {$lockedReturn->expected_trays} wadah terverifikasi (Kurang: {$missing})" : '') .
+                        ", Rusak: {$damagedCount}." . ($notes ? " Catatan: {$notes}" : '');
+
+                    $existingIncident = Incident::where('subject_type', TrayReturn::class)
+                        ->where('subject_id', $lockedReturn->id)
+                        ->where('category', IncidentCategory::TRAY_DISCREPANCY)
+                        ->where('status', IncidentStatus::OPEN)
+                        ->where('reported_by', $pic->id)
+                        ->first();
+
+                    if ($existingIncident) {
+                        $existingIncident->update([
+                            'description' => $desc,
+                            'severity' => $severity,
+                        ]);
+                    } else {
+                        Incident::create([
+                            'sppg_id' => $sppg->id,
+                            'school_id' => $school->id,
+                            'subject_type' => TrayReturn::class,
+                            'subject_id' => $lockedReturn->id,
+                            'reported_by' => $pic->id,
+                            'category' => IncidentCategory::TRAY_DISCREPANCY,
+                            'severity' => $severity,
+                            'status' => IncidentStatus::OPEN,
+                            'description' => $desc,
+                        ]);
+                    }
                 }
 
                 ActivityLog::record(
@@ -165,7 +212,7 @@ class TrayReturnService
                         'status' => TrayReturnStatus::READY_FOR_PICKUP->value,
                         'ready_count' => $readyCount,
                         'damaged_count' => $damagedCount,
-                        'ready_at' => $now->toIso8601String(),
+                        'ready_at' => $lockedReturn->ready_at->toIso8601String(),
                         'has_discrepancy' => $hasDiscrepancy,
                     ]
                 );
@@ -183,32 +230,64 @@ class TrayReturnService
     }
 
     /**
-     * Assign a courier/trip stop to pick up ready containers.
+     * GATE B: Official Pickup Assignment by Kepala SPPG.
+     *
+     * Validates pickup trip, pickup stop, school_id, sppg_id, trip status, and driver_id.
+     * Rejects foreign tenant stops, completed/cancelled trips, and mismatched schools.
      */
     public function assignPickup(TrayReturn $trayReturn, User $actor, TripStop $pickupStop): TrayReturn
     {
         return DB::transaction(function () use ($trayReturn, $actor, $pickupStop) {
             $lockedReturn = TrayReturn::where('id', $trayReturn->id)
-                ->with(['schoolServiceRecord.tripStop.school'])
+                ->with(['schoolServiceRecord.tripStop.school', 'schoolServiceRecord.tripStop.trip'])
                 ->lockForUpdate()
                 ->firstOrFail();
 
             $sppg = $lockedReturn->sppg;
 
-            // Authorization: Kepala SPPG within the same SPPG
+            // 1. Authorization: Only Kepala SPPG within the same SPPG
             if ($actor->role !== UserRole::KEPALA_SPPG || (int) $actor->sppg_id !== (int) $sppg?->id) {
-                throw new HttpException(403, 'Akses ditolak. Penugasan penjemputan hanya dapat dilakukan oleh Kepala SPPG.');
+                throw new HttpException(403, 'Akses ditolak. Penugasan penjemputan hanya dapat dilakukan oleh Kepala SPPG unit terkait.');
             }
 
-            if ($lockedReturn->status !== TrayReturnStatus::READY_FOR_PICKUP) {
+            // 2. Precondition: Must be READY_FOR_PICKUP (or PICKUP_ASSIGNED for reassignment before pickup)
+            if ($lockedReturn->status !== TrayReturnStatus::READY_FOR_PICKUP && $lockedReturn->status !== TrayReturnStatus::PICKUP_ASSIGNED) {
                 throw new ConflictHttpException(
                     "Penugasan penjemputan hanya dapat dilakukan saat wadah berstatus Siap Dijemput (READY_FOR_PICKUP). Status saat ini: {$lockedReturn->status->label()}."
                 );
             }
 
-            if ((int) $pickupStop->school_id !== (int) $lockedReturn->school?->id) {
+            // 3. Stop school verification: Stop must match the exact school of the trays
+            if ((int) $pickupStop->school_id !== (int) $lockedReturn->school_id) {
                 throw ValidationException::withMessages([
                     'stop' => ['Pemberhentian penjemputan tidak sesuai dengan sekolah wadah ini.'],
+                ]);
+            }
+
+            // 4. Trip tenant verification: Stop's trip must belong to the same SPPG
+            $trip = $pickupStop->trip;
+            if (!$trip || (int) $trip->sppg_id !== (int) $sppg?->id) {
+                throw new HttpException(403, 'Akses ditolak. Rute perjalanan penjemputan berasal dari unit SPPG lain.');
+            }
+
+            // 5. Trip status check: Must NOT be completed or cancelled
+            if (in_array($trip->status, [TripStatus::COMPLETED, TripStatus::CANCELLED], true)) {
+                throw ValidationException::withMessages([
+                    'trip' => ['Tidak dapat menugaskan penjemputan pada perjalanan pengiriman yang telah selesai atau dibatalkan.'],
+                ]);
+            }
+
+            // 6. Stop status check: Stop must not be skipped or completed
+            if (in_array($pickupStop->status, [TripStopStatus::SKIPPED, TripStopStatus::COMPLETED], true)) {
+                throw ValidationException::withMessages([
+                    'stop' => ['Pemberhentian penjemputan berada dalam status yang tidak sah untuk penugasan penjemputan aktif.'],
+                ]);
+            }
+
+            // 7. Driver assigned check
+            if (empty($trip->driver_id)) {
+                throw ValidationException::withMessages([
+                    'driver' => ['Perjalanan penjemputan belum memiliki kurir yang ditugaskan.'],
                 ]);
             }
 
@@ -222,6 +301,8 @@ class TrayReturnService
                 actor: $actor,
                 newValues: [
                     'pickup_trip_stop_id' => $pickupStop->id,
+                    'trip_id' => $trip->id,
+                    'driver_id' => $trip->driver_id,
                     'status' => TrayReturnStatus::PICKUP_ASSIGNED->value,
                 ]
             );
@@ -233,8 +314,9 @@ class TrayReturnService
     /**
      * Courier records physical container pickup at school (Page D05 /driver/pickups).
      *
-     * Transitions status to PICKED_UP. Records picked_up_count and picked_up_at.
-     * Enforces assigned courier authorization and preserves discrepancy evidence.
+     * GATE B: Enforces strict assignment (READY_FOR_PICKUP without assignment is 403).
+     * GATE E: Idempotent on identical retry without inflating incidents or updating timestamps.
+     * Preserves custody and deduplicates incidents.
      */
     public function recordPickup(TrayReturn $trayReturn, User $driver, array $data, ?UploadedFile $photo = null): TrayReturn
     {
@@ -255,31 +337,19 @@ class TrayReturnService
                     throw new HttpException(403, 'Akses ditolak. Hanya kurir pada SPPG terkait yang dapat mencatat pengambilan.');
                 }
 
-                // If assigned to a specific pickup trip stop, must be the assigned driver
-                if ($lockedReturn->pickup_trip_stop_id && $lockedReturn->pickupTripStop?->trip) {
-                    if ((int) $lockedReturn->pickupTripStop->trip->driver_id !== (int) $driver->id) {
-                        throw new HttpException(403, 'Akses ditolak. Anda bukan kurir yang ditugaskan untuk penjemputan ini.');
-                    }
+                // GATE B: Official Pickup Assignment Required!
+                // READY_FOR_PICKUP without official assignment does NOT give pickup authority to any courier.
+                if (!$lockedReturn->pickup_trip_stop_id || !$lockedReturn->pickupTripStop?->trip) {
+                    throw new HttpException(403, 'Akses ditolak. Wadah belum ditugaskan secara resmi kepada kurir penjemput.');
                 }
 
-                // 2. Precondition: Cannot pick up if still IN_USE
-                if ($lockedReturn->status === TrayReturnStatus::IN_USE) {
-                    throw new ConflictHttpException(
-                        'Wadah belum dinyatakan siap diambil oleh PIC Sekolah (masih berstatus Dalam Penggunaan).'
-                    );
+                // Courier must match the assigned driver
+                $assignedDriverId = (int) $lockedReturn->pickupTripStop->trip->driver_id;
+                if ($assignedDriverId !== (int) $driver->id) {
+                    throw new HttpException(403, 'Akses ditolak. Anda bukan kurir yang ditugaskan untuk penjemputan ini.');
                 }
 
-                // Idempotency: If already PICKED_UP with same count, return safely
-                if ($lockedReturn->status === TrayReturnStatus::PICKED_UP &&
-                    $lockedReturn->picked_up_count === (int) ($data['picked_up_count'] ?? 0)) {
-                    return $lockedReturn;
-                }
-
-                if ($lockedReturn->status === TrayReturnStatus::RETURNED_TO_SPPG) {
-                    throw new ConflictHttpException('Wadah telah dikembalikan ke SPPG. Pengambilan tidak dapat diubah.');
-                }
-
-                // 3. Count Validation
+                // 2. Count Validation
                 if (!isset($data['picked_up_count']) || $data['picked_up_count'] === '' || !is_numeric($data['picked_up_count'])) {
                     throw ValidationException::withMessages([
                         'picked_up_count' => ['Jumlah wadah yang diambil wajib diisi dengan angka bulat non-negatif.'],
@@ -293,8 +363,24 @@ class TrayReturnService
                     ]);
                 }
 
+                // 3. Precondition & Idempotency Check (GATE E)
+                if ($lockedReturn->picked_up_at !== null) {
+                    if ((int) $lockedReturn->picked_up_count === $pickedUpCount) {
+                        // Identical retry: return existing record without updating timestamps, logs, or duplicate incidents
+                        return $lockedReturn;
+                    }
+
+                    if ($lockedReturn->returned_at !== null) {
+                        throw new ConflictHttpException('Wadah telah diproses di depot SPPG. Jumlah pengambilan tidak dapat diubah.');
+                    }
+                } elseif ($lockedReturn->status === TrayReturnStatus::IN_USE) {
+                    throw new ConflictHttpException(
+                        'Wadah belum dinyatakan siap diambil oleh PIC Sekolah (masih berstatus Dalam Penggunaan).'
+                    );
+                }
+
                 $notes = isset($data['notes']) ? trim((string) $data['notes']) : (isset($data['discrepancy_reason']) ? trim((string) $data['discrepancy_reason']) : null);
-                $hasDiscrepancy = ($pickedUpCount !== $lockedReturn->ready_count);
+                $hasDiscrepancy = ($pickedUpCount !== (int) $lockedReturn->ready_count);
 
                 if ($hasDiscrepancy && empty($notes)) {
                     throw ValidationException::withMessages([
@@ -304,7 +390,9 @@ class TrayReturnService
 
                 $now = Carbon::now();
                 $lockedReturn->picked_up_count = $pickedUpCount;
-                $lockedReturn->picked_up_at = $now;
+                if ($lockedReturn->picked_up_at === null) {
+                    $lockedReturn->picked_up_at = $now;
+                }
                 $lockedReturn->status = $hasDiscrepancy ? TrayReturnStatus::DISCREPANCY : TrayReturnStatus::PICKED_UP;
 
                 if ($notes) {
@@ -315,23 +403,44 @@ class TrayReturnService
 
                 $lockedReturn->save();
 
-                // Store pickup photo
+                // Store pickup photo if provided
                 if ($photo) {
                     $this->storeEvidencePhoto($lockedReturn, $driver, $photo, 'TRAYS_PICKED_UP', $notes, $uploadedPaths);
                 }
 
-                // If pickup discrepancy exists, log/update incident
+                // GATE E: Deduplicate Incident for Courier Pickup Discrepancy
+                $existingIncident = Incident::where('subject_type', TrayReturn::class)
+                    ->where('subject_id', $lockedReturn->id)
+                    ->where('category', IncidentCategory::TRAY_DISCREPANCY)
+                    ->where('status', IncidentStatus::OPEN)
+                    ->where('reported_by', $driver->id)
+                    ->first();
+
                 if ($hasDiscrepancy) {
-                    Incident::create([
-                        'sppg_id' => $sppg->id,
-                        'school_id' => $school->id,
-                        'subject_type' => TrayReturn::class,
-                        'subject_id' => $lockedReturn->id,
-                        'reported_by' => $driver->id,
-                        'category' => IncidentCategory::TRAY_DISCREPANCY,
-                        'severity' => IncidentSeverity::MEDIUM,
-                        'status' => IncidentStatus::OPEN,
-                        'description' => "Selisih pengambilan ompreng oleh Kurir di {$school->name}: Diambil {$pickedUpCount} wadah vs {$lockedReturn->ready_count} wadah siap tercatat." . ($notes ? " Catatan: {$notes}" : ''),
+                    $desc = "Selisih pengambilan ompreng oleh Kurir di {$school->name}: Diambil {$pickedUpCount} wadah vs {$lockedReturn->ready_count} wadah siap tercatat." . ($notes ? " Catatan: {$notes}" : '');
+
+                    if ($existingIncident) {
+                        $existingIncident->update([
+                            'description' => $desc,
+                            'severity' => IncidentSeverity::MEDIUM,
+                        ]);
+                    } else {
+                        Incident::create([
+                            'sppg_id' => $sppg->id,
+                            'school_id' => $school->id,
+                            'subject_type' => TrayReturn::class,
+                            'subject_id' => $lockedReturn->id,
+                            'reported_by' => $driver->id,
+                            'category' => IncidentCategory::TRAY_DISCREPANCY,
+                            'severity' => IncidentSeverity::MEDIUM,
+                            'status' => IncidentStatus::OPEN,
+                            'description' => $desc,
+                        ]);
+                    }
+                } elseif ($existingIncident) {
+                    // Count was corrected to match ready count. Do NOT delete or silently close open incident!
+                    $existingIncident->update([
+                        'description' => $existingIncident->description . " | Koreksi Kurir: Jumlah diambil diperbarui menjadi {$pickedUpCount} (sesuai kesiapan). Menunggu peninjauan administratif Kepala SPPG.",
                     ]);
                 }
 
@@ -340,9 +449,9 @@ class TrayReturnService
                     auditable: $lockedReturn,
                     actor: $driver,
                     newValues: [
-                        'status' => TrayReturnStatus::PICKED_UP->value,
+                        'status' => $lockedReturn->status->value,
                         'picked_up_count' => $pickedUpCount,
-                        'picked_up_at' => $now->toIso8601String(),
+                        'picked_up_at' => $lockedReturn->picked_up_at->toIso8601String(),
                         'has_discrepancy' => $hasDiscrepancy,
                     ]
                 );
@@ -362,9 +471,8 @@ class TrayReturnService
     /**
      * Depot reception by Asisten Lapangan / SPPG staff (Page A03 /production/logistics).
      *
-     * Transitions status to RETURNED_TO_SPPG or DISCREPANCY.
-     * Compares returned_count, damaged_count, missing_count against picked_up_count.
-     * Does NOT overwrite picked_up_count. Preserves provenance.
+     * GATE D: Discrepant pickups remain in incoming depot queue until physical reception.
+     * GATE E: Idempotent on identical retry. Deduplicates depot incidents without double counting.
      */
     public function receiveAtDepot(TrayReturn $trayReturn, User $actor, array $data, ?UploadedFile $photo = null): TrayReturn
     {
@@ -386,12 +494,8 @@ class TrayReturnService
                     throw new HttpException(403, 'Akses ditolak. Penerimaan retur wadah di SPPG hanya dapat dilakukan oleh Asisten Lapangan atau Kepala SPPG unit terkait.');
                 }
 
-                // 2. Precondition: Must be PICKED_UP
-                if ($lockedReturn->status !== TrayReturnStatus::PICKED_UP && $lockedReturn->status !== TrayReturnStatus::DISCREPANCY) {
-                    if ($lockedReturn->status === TrayReturnStatus::RETURNED_TO_SPPG) {
-                        return $lockedReturn; // Idempotent
-                    }
-
+                // 2. Precondition: Must have been picked up physically (picked_up_at !== null)
+                if ($lockedReturn->picked_up_at === null) {
                     throw new ConflictHttpException(
                         "Penerimaan retur di SPPG hanya dapat diproses setelah kurir mencatat pengambilan fisik (PICKED_UP). Status saat ini: {$lockedReturn->status->label()}."
                     );
@@ -425,16 +529,26 @@ class TrayReturnService
                     ]);
                 }
 
+                // 4. Precondition & Idempotency Check (GATE E)
+                if ($lockedReturn->returned_at !== null) {
+                    if ((int) $lockedReturn->returned_count === $returnedCount &&
+                        (int) ($lockedReturn->damaged_count ?? 0) === $damagedCount &&
+                        (int) ($lockedReturn->missing_count ?? 0) === $missingCount) {
+                        // Identical retry: return existing record safely without modifying timestamp, activity logs or incidents
+                        return $lockedReturn;
+                    }
+                }
+
                 $notes = isset($data['notes']) ? trim((string) $data['notes']) : (isset($data['discrepancy_reason']) ? trim((string) $data['discrepancy_reason']) : null);
-                
-                // Compare returned counts with picked_up_count
+
+                // Compare returned counts against courier's picked_up_count
                 $expectedAtDepot = (int) ($lockedReturn->picked_up_count ?? $lockedReturn->ready_count ?? $lockedReturn->expected_trays);
                 $totalAccounted = $returnedCount + $damagedCount;
                 $hasDiscrepancy = ($totalAccounted !== $expectedAtDepot) || ($missingCount > 0);
 
                 if ($hasDiscrepancy && empty($notes)) {
                     throw ValidationException::withMessages([
-                        'notes' => ['Catatan penjelasan wajib diisi jika terdapat selisih jumlah wadah kembali (kurang/rusak/hilang).'],
+                        'notes' => ['Catatan penjelasan wajib diisi jika terdapat selisih jumlah wadah kembali di depot (kurang/rusak/hilang).'],
                     ]);
                 }
 
@@ -442,7 +556,9 @@ class TrayReturnService
                 $lockedReturn->returned_count = $returnedCount;
                 $lockedReturn->damaged_count = $damagedCount;
                 $lockedReturn->missing_count = $missingCount;
-                $lockedReturn->returned_at = $now;
+                if ($lockedReturn->returned_at === null) {
+                    $lockedReturn->returned_at = $now;
+                }
                 $lockedReturn->status = $hasDiscrepancy ? TrayReturnStatus::DISCREPANCY : TrayReturnStatus::RETURNED_TO_SPPG;
 
                 if ($notes) {
@@ -457,21 +573,41 @@ class TrayReturnService
                     $this->storeEvidencePhoto($lockedReturn, $actor, $photo, 'TRAYS_RETURNED', $notes, $uploadedPaths);
                 }
 
-                // If depot discrepancy, create/deduplicate Incident
+                // GATE E: Deduplicate Depot Incident
+                $existingDepotIncident = Incident::where('subject_type', TrayReturn::class)
+                    ->where('subject_id', $lockedReturn->id)
+                    ->where('category', IncidentCategory::TRAY_DISCREPANCY)
+                    ->where('status', IncidentStatus::OPEN)
+                    ->where('reported_by', $actor->id)
+                    ->first();
+
                 if ($hasDiscrepancy) {
                     $discrepancySum = abs($expectedAtDepot - $returnedCount) + $damagedCount + $missingCount;
                     $severity = ($discrepancySum > 10) ? IncidentSeverity::HIGH : IncidentSeverity::MEDIUM;
+                    $desc = "Selisih retur wadah di depot SPPG dari {$school->name}: Diterima {$returnedCount} dari {$expectedAtDepot} diambil. Rusak: {$damagedCount}, Hilang: {$missingCount}." . ($notes ? " Catatan: {$notes}" : '');
 
-                    Incident::create([
-                        'sppg_id' => $sppg->id,
-                        'school_id' => $school->id,
-                        'subject_type' => TrayReturn::class,
-                        'subject_id' => $lockedReturn->id,
-                        'reported_by' => $actor->id,
-                        'category' => IncidentCategory::TRAY_DISCREPANCY,
-                        'severity' => $severity,
-                        'status' => IncidentStatus::OPEN,
-                        'description' => "Selisih retur wadah di depot SPPG dari {$school->name}: diterima {$returnedCount} dari {$expectedAtDepot} diambil. Rusak: {$damagedCount}, Hilang: {$missingCount}." . ($notes ? " Catatan: {$notes}" : ''),
+                    if ($existingDepotIncident) {
+                        $existingDepotIncident->update([
+                            'description' => $desc,
+                            'severity' => $severity,
+                        ]);
+                    } else {
+                        Incident::create([
+                            'sppg_id' => $sppg->id,
+                            'school_id' => $school->id,
+                            'subject_type' => TrayReturn::class,
+                            'subject_id' => $lockedReturn->id,
+                            'reported_by' => $actor->id,
+                            'category' => IncidentCategory::TRAY_DISCREPANCY,
+                            'severity' => $severity,
+                            'status' => IncidentStatus::OPEN,
+                            'description' => $desc,
+                        ]);
+                    }
+                } elseif ($existingDepotIncident) {
+                    // Count was corrected to match expected. Do NOT delete or silently close open incident!
+                    $existingDepotIncident->update([
+                        'description' => $existingDepotIncident->description . " | Koreksi Depot: Jumlah diterima diperbarui menjadi {$returnedCount} (sesuai jumlah diambil). Menunggu peninjauan administratif Kepala SPPG.",
                     ]);
                 }
 
@@ -484,7 +620,7 @@ class TrayReturnService
                         'returned_count' => $returnedCount,
                         'damaged_count' => $damagedCount,
                         'missing_count' => $missingCount,
-                        'returned_at' => $now->toIso8601String(),
+                        'returned_at' => $lockedReturn->returned_at->toIso8601String(),
                         'has_discrepancy' => $hasDiscrepancy,
                     ]
                 );

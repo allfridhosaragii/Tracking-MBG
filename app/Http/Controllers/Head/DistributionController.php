@@ -112,4 +112,50 @@ class DistributionController extends Controller
             ->route('trips.show', $trip)
             ->with('success', "Perjalanan {$trip->trip_code} telah resmi ditutup secara administratif.");
     }
+
+    /**
+     * Assign a courier / trip stop to pick up ready containers (Page K05).
+     */
+    public function assignPickup(Request $request, \App\Models\TrayReturn $trayReturn): RedirectResponse|\Illuminate\Http\JsonResponse
+    {
+        Gate::authorize('assignPickup', $trayReturn);
+
+        $request->validate([
+            'pickup_trip_stop_id' => 'nullable|integer|exists:trip_stops,id',
+            'trip_stop_id' => 'nullable|integer|exists:trip_stops,id',
+            'trip_id' => 'nullable|integer|exists:trips,id',
+        ]);
+
+        $stopId = $request->input('pickup_trip_stop_id') ?? $request->input('trip_stop_id');
+        if (!$stopId && $request->filled('trip_id')) {
+            $stop = \App\Models\TripStop::where('trip_id', $request->input('trip_id'))
+                ->where('school_id', $trayReturn->school_id)
+                ->first();
+
+            if (!$stop) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'trip_id' => ['Rute perjalanan yang dipilih tidak memiliki jadwal pemberhentian di sekolah ini.'],
+                ]);
+            }
+        } elseif ($stopId) {
+            $stop = \App\Models\TripStop::findOrFail($stopId);
+        } else {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'stop' => ['Titik pemberhentian atau armada perjalanan wajib dipilih untuk penugasan penjemputan.'],
+            ]);
+        }
+
+        $trayService = app(\App\Services\TrayReturnService::class);
+        $trayService->assignPickup($trayReturn, $request->user(), $stop);
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Penugasan penjemputan ompreng berhasil ditetapkan.',
+                'data' => $trayReturn->fresh(['pickupTripStop.trip.driver']),
+            ]);
+        }
+
+        return redirect()->back()->with('success', 'Penugasan penjemputan wadah berhasil ditetapkan.');
+    }
 }

@@ -16,6 +16,8 @@ class TrayReturn extends Model
         'school_service_record_id',
         'pickup_trip_stop_id',
         'expected_trays',
+        'is_expected_verified',
+        'manifest_reference',
         'ready_count',
         'ready_at',
         'picked_up_count',
@@ -31,6 +33,7 @@ class TrayReturn extends Model
     protected $casts = [
         'status' => TrayReturnStatus::class,
         'expected_trays' => 'integer',
+        'is_expected_verified' => 'boolean',
         'ready_count' => 'integer',
         'picked_up_count' => 'integer',
         'returned_count' => 'integer',

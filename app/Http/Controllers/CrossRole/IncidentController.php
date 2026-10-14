@@ -93,11 +93,13 @@ class IncidentController extends Controller
      */
     public function store(Request $request): JsonResponse|RedirectResponse
     {
+        Gate::authorize('create', Incident::class);
+
         $request->validate([
             'category' => 'required|string',
             'severity' => 'required|string',
             'description' => 'required|string|max:2000',
-            'school_id' => 'nullable|integer|exists:schools,id',
+            'school_id' => 'nullable|integer',
             'subject_type' => 'nullable|string',
             'subject_id' => 'nullable|integer',
             'photo' => 'nullable|file|mimes:jpeg,png,jpg,webp|max:5120',
@@ -105,7 +107,7 @@ class IncidentController extends Controller
 
         $service = app(IncidentService::class);
         $incident = $service->createIncident(
-            $request->all(),
+            $request->only(['category', 'severity', 'description', 'school_id', 'subject_type', 'subject_id']),
             $request->user(),
             $request->file('photo')
         );

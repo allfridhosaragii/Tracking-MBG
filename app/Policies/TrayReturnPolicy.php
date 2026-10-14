@@ -52,7 +52,8 @@ class TrayReturnPolicy
 
     /**
      * Determine whether the user can record physical container pickup at the school (Page D05).
-     * Courier of the same SPPG, and if assigned to a pickup trip, must be the assigned driver.
+     * GATE B: Strictly requires official pickup assignment to this courier!
+     * READY_FOR_PICKUP without official assignment does NOT give pickup authority.
      */
     public function pickup(User $user, TrayReturn $trayReturn): bool
     {
@@ -64,12 +65,12 @@ class TrayReturnPolicy
             return false;
         }
 
-        // If specific pickup trip stop is assigned, driver must match
-        if ($trayReturn->pickup_trip_stop_id && $trayReturn->pickupTripStop?->trip) {
-            return (int) $trayReturn->pickupTripStop->trip->driver_id === (int) $user->id;
+        // Official pickup assignment is mandatory:
+        if (!$trayReturn->pickup_trip_stop_id || !$trayReturn->pickupTripStop?->trip) {
+            return false;
         }
 
-        return true;
+        return (int) $trayReturn->pickupTripStop->trip->driver_id === (int) $user->id;
     }
 
     /**

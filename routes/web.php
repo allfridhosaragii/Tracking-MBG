@@ -97,6 +97,9 @@ Route::middleware(['auth', 'active'])->group(function () {
 
             // PBI-11: Fleet Return & Trip Closure (Page K05)
             Route::post('/distribution/trips/{trip}/close', [DistributionController::class, 'closeTrip'])->name('distribution.trips.close');
+
+            // PBI-12: Official Tray Return Pickup Assignment (Page K05)
+            Route::post('/distribution/tray-returns/{trayReturn}/assign', [DistributionController::class, 'assignPickup'])->name('distribution.trays.assign');
         });
 
     // 2. Pengawas Gizi Module

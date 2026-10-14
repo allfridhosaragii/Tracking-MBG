@@ -31,25 +31,32 @@ class LogisticsController extends Controller
             ->latest()
             ->get();
 
-        // Containers picked up by couriers and awaiting depot reception
-        $incomingReturns = TrayReturn::whereHas('schoolServiceRecord.tripStop.trip', function ($q) use ($sppgId) {
-            $q->where('sppg_id', $sppgId);
+        // GATE D: Containers picked up by couriers and awaiting depot reception
+        // Any return with physical pickup recorded (picked_up_at IS NOT NULL) that has NOT yet arrived
+        // and been received at the depot (returned_at IS NULL) MUST remain in the incoming queue,
+        // even if marked DISCREPANCY during courier pickup.
+        $incomingReturns = TrayReturn::where(function ($q) use ($sppgId) {
+            $q->whereHas('schoolServiceRecord.tripStop.trip', fn($t) => $t->where('sppg_id', $sppgId))
+              ->orWhereHas('pickupTripStop.trip', fn($t) => $t->where('sppg_id', $sppgId));
         })
-        ->where('status', TrayReturnStatus::PICKED_UP)
+        ->whereNotNull('picked_up_at')
+        ->whereNull('returned_at')
         ->with([
             'schoolServiceRecord.tripStop.school',
             'schoolServiceRecord.tripStop.trip.driver',
             'pickupTripStop.trip.driver',
             'evidencePhotos',
+            'incidents',
         ])
         ->orderByDesc('picked_up_at')
         ->get();
 
-        // Completed returns ledger
-        $completedReturns = TrayReturn::whereHas('schoolServiceRecord.tripStop.trip', function ($q) use ($sppgId) {
-            $q->where('sppg_id', $sppgId);
+        // Completed returns ledger: strictly records that have been physically received at the depot
+        $completedReturns = TrayReturn::where(function ($q) use ($sppgId) {
+            $q->whereHas('schoolServiceRecord.tripStop.trip', fn($t) => $t->where('sppg_id', $sppgId))
+              ->orWhereHas('pickupTripStop.trip', fn($t) => $t->where('sppg_id', $sppgId));
         })
-        ->whereIn('status', [TrayReturnStatus::RETURNED_TO_SPPG, TrayReturnStatus::DISCREPANCY])
+        ->whereNotNull('returned_at')
         ->with([
             'schoolServiceRecord.tripStop.school',
             'schoolServiceRecord.tripStop.trip.driver',

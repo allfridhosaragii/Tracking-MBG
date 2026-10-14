@@ -73,9 +73,15 @@
                 <div class="bg-white rounded-2xl border-2 border-indigo-400 p-5 shadow-xs space-y-4">
                     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-3 border-b border-[#EDF2ED]">
                         <div>
-                            <span class="text-[10px] font-bold text-indigo-800 uppercase tracking-wider bg-indigo-100 px-2 py-0.5 rounded">
-                                Dalam Muatan Balik
-                            </span>
+                            @if ($incoming->status === \App\Enums\TrayReturnStatus::DISCREPANCY || ($incoming->picked_up_count !== null && $incoming->ready_count !== null && $incoming->picked_up_count !== $incoming->ready_count))
+                                <span class="text-[10px] font-bold text-amber-800 uppercase tracking-wider bg-amber-100 border border-amber-300 px-2 py-0.5 rounded">
+                                    Dalam Muatan Balik (Selisih Pickup: {{ $incoming->picked_up_count }} vs {{ $incoming->ready_count }})
+                                </span>
+                            @else
+                                <span class="text-[10px] font-bold text-indigo-800 uppercase tracking-wider bg-indigo-100 px-2 py-0.5 rounded">
+                                    Dalam Muatan Balik
+                                </span>
+                            @endif
                             <h3 class="text-base font-bold text-[#172923] mt-1">{{ $school?->name ?? 'Sekolah MBG' }}</h3>
                             <p class="text-xs text-[#53645B]">{{ $school?->address ?? '-' }}</p>
                         </div>
@@ -90,9 +96,9 @@
                         <div class="p-3 rounded-xl bg-[#F5F7F3] border border-[#DCE5DD]">
                             <span class="text-[10px] text-[#708177] block">Ekspektasi Kirim</span>
                             <span class="text-base font-bold text-[#172923] tabular-nums mt-0.5 block">
-                                {{ $incoming->expected_trays }}
+                                {{ $incoming->is_expected_verified && $incoming->expected_trays !== null ? $incoming->expected_trays : ($incoming->expected_trays ?? 'T/D') }}
                             </span>
-                            <span class="text-[10px] text-[#53645B]">Wadah</span>
+                            <span class="text-[10px] text-[#53645B]">{{ $incoming->is_expected_verified ? 'Wadah Terverifikasi' : 'Belum Terverifikasi' }}</span>
                         </div>
                         <div class="p-3 rounded-xl bg-[#F5F7F3] border border-[#DCE5DD]">
                             <span class="text-[10px] text-[#708177] block">Laporan Siap Sekolah</span>

@@ -298,7 +298,8 @@ class Pbi12ReverseLogisticsAndTrayReturnTest extends TestCase
         [$trip, $stop, $serviceRecord, $tray] = $this->createDeliveredStopWithTray($this->schoolA, 50);
 
         $tray->update([
-            'status' => TrayReturnStatus::READY_FOR_PICKUP,
+            'status' => TrayReturnStatus::PICKUP_ASSIGNED,
+            'pickup_trip_stop_id' => $stop->id,
             'ready_count' => 50,
             'ready_at' => Carbon::now()->subMinutes(15),
         ]);
@@ -341,7 +342,8 @@ class Pbi12ReverseLogisticsAndTrayReturnTest extends TestCase
         [$trip, $stop, $serviceRecord, $tray] = $this->createDeliveredStopWithTray($this->schoolA, 50);
 
         $tray->update([
-            'status' => TrayReturnStatus::READY_FOR_PICKUP,
+            'status' => TrayReturnStatus::PICKUP_ASSIGNED,
+            'pickup_trip_stop_id' => $stop->id,
             'ready_count' => 50,
             'ready_at' => Carbon::now()->subMinutes(20),
         ]);

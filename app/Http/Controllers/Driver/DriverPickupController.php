@@ -22,11 +22,11 @@ class DriverPickupController extends Controller
         $driver = $request->user();
         $sppgId = $driver->sppg_id;
 
-        // Ready and assigned pickups in the driver's SPPG
-        $pendingPickups = TrayReturn::whereHas('schoolServiceRecord.tripStop.trip', function ($q) use ($sppgId) {
-            $q->where('sppg_id', $sppgId);
+        // GATE B: Courier only sees tasks officially assigned to them
+        $pendingPickups = TrayReturn::whereHas('pickupTripStop.trip', function ($q) use ($driver) {
+            $q->where('driver_id', $driver->id);
         })
-        ->whereIn('status', [TrayReturnStatus::READY_FOR_PICKUP, TrayReturnStatus::PICKUP_ASSIGNED])
+        ->where('status', TrayReturnStatus::PICKUP_ASSIGNED)
         ->with([
             'schoolServiceRecord.tripStop.school',
             'schoolServiceRecord.tripStop.trip',
@@ -36,11 +36,12 @@ class DriverPickupController extends Controller
         ->orderBy('ready_at')
         ->get();
 
-        // Recent pickups completed by this driver / SPPG
-        $completedPickups = TrayReturn::whereHas('schoolServiceRecord.tripStop.trip', function ($q) use ($sppgId) {
-            $q->where('sppg_id', $sppgId);
+        // Recent pickups completed by this driver
+        $completedPickups = TrayReturn::whereHas('pickupTripStop.trip', function ($q) use ($driver) {
+            $q->where('driver_id', $driver->id);
         })
         ->whereIn('status', [TrayReturnStatus::PICKED_UP, TrayReturnStatus::RETURNED_TO_SPPG, TrayReturnStatus::DISCREPANCY])
+        ->whereNotNull('picked_up_at')
         ->with([
             'schoolServiceRecord.tripStop.school',
             'schoolServiceRecord.tripStop.trip',

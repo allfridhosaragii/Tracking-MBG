@@ -21,7 +21,32 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 class IncidentService
 {
     /**
+     * Whitelist of permitted polymorphic subject types for operational incidents.
+     */
+    public const ALLOWED_SUBJECTS = [
+        'trip' => \App\Models\Trip::class,
+        'trip_stop' => \App\Models\TripStop::class,
+        'tray_return' => \App\Models\TrayReturn::class,
+        'school_service_record' => \App\Models\SchoolServiceRecord::class,
+        'food_batch' => \App\Models\FoodBatch::class,
+        'quality_check' => \App\Models\QualityCheck::class,
+        'school' => \App\Models\School::class,
+        'sppg' => \App\Models\Sppg::class,
+        \App\Models\Trip::class => \App\Models\Trip::class,
+        \App\Models\TripStop::class => \App\Models\TripStop::class,
+        \App\Models\TrayReturn::class => \App\Models\TrayReturn::class,
+        \App\Models\SchoolServiceRecord::class => \App\Models\SchoolServiceRecord::class,
+        \App\Models\FoodBatch::class => \App\Models\FoodBatch::class,
+        \App\Models\QualityCheck::class => \App\Models\QualityCheck::class,
+        \App\Models\School::class => \App\Models\School::class,
+        \App\Models\Sppg::class => \App\Models\Sppg::class,
+    ];
+
+    /**
      * Create a new formal incident report (Page C01 /incidents).
+     *
+     * GATE C: Never trust client-supplied sppg_id.
+     * Enforce strict tenant derivation and polymorphic subject boundary verification.
      */
     public function createIncident(array $data, User $reporter, ?UploadedFile $photo = null): Incident
     {
@@ -29,7 +54,7 @@ class IncidentService
 
         try {
             return DB::transaction(function () use ($data, $reporter, $photo, &$uploadedPaths) {
-                // Category validation
+                // 1. Category validation
                 $categoryInput = $data['category'] ?? null;
                 $category = $categoryInput instanceof IncidentCategory
                     ? $categoryInput
@@ -41,13 +66,13 @@ class IncidentService
                     ]);
                 }
 
-                // Severity validation
+                // 2. Severity validation
                 $severityInput = $data['severity'] ?? IncidentSeverity::MEDIUM->value;
                 $severity = $severityInput instanceof IncidentSeverity
                     ? $severityInput
                     : (IncidentSeverity::tryFrom((string) $severityInput) ?? IncidentSeverity::MEDIUM);
 
-                // Description
+                // 3. Description validation
                 $description = trim((string) ($data['description'] ?? ''));
                 if (empty($description)) {
                     throw ValidationException::withMessages([
@@ -55,30 +80,98 @@ class IncidentService
                     ]);
                 }
 
-                $sppgId = $data['sppg_id'] ?? $reporter->sppg_id;
-                $schoolId = $data['school_id'] ?? $reporter->school_id;
+                // 4. GATE C: SPPG Tenant & School Scoping (NEVER TRUST client sppg_id)
+                if ($reporter->role === UserRole::PIC_SEKOLAH) {
+                    if (!$reporter->school_id) {
+                        throw new HttpException(403, 'Akses ditolak. Akun PIC Sekolah belum terdaftar di sekolah manapun.');
+                    }
+                    if (isset($data['school_id']) && (int) $data['school_id'] !== (int) $reporter->school_id) {
+                        throw ValidationException::withMessages([
+                            'school_id' => ['PIC Sekolah hanya berwenang membuat laporan insiden untuk sekolah yang ditugaskan.'],
+                        ]);
+                    }
+                    $schoolId = (int) $reporter->school_id;
+                    $school = \App\Models\School::find($schoolId);
+                    if (!$school || !$school->sppg_id) {
+                        throw ValidationException::withMessages([
+                            'school_id' => ['Sekolah belum terhubung dengan unit SPPG operasional.'],
+                        ]);
+                    }
+                    $sppgId = (int) $school->sppg_id;
+                } else {
+                    if (!$reporter->sppg_id) {
+                        throw new HttpException(403, 'Akses ditolak. Pengguna internal belum terdaftar pada unit SPPG operasional.');
+                    }
+                    $sppgId = (int) $reporter->sppg_id;
+                    $schoolId = null;
 
-                if (!$sppgId) {
-                    // Try to derive from school
-                    if ($schoolId) {
-                        $sppgId = \App\Models\School::find($schoolId)?->sppg_id;
+                    if (!empty($data['school_id'])) {
+                        $reqSchoolId = (int) $data['school_id'];
+                        $school = \App\Models\School::find($reqSchoolId);
+                        if (!$school) {
+                            throw ValidationException::withMessages([
+                                'school_id' => ['Sekolah yang dipilih tidak ditemukan.'],
+                            ]);
+                        }
+                        if ((int) $school->sppg_id !== $sppgId) {
+                            throw new HttpException(403, 'Akses ditolak. Sekolah berada di luar lingkup unit SPPG Anda.');
+                        }
+                        $schoolId = $school->id;
                     }
                 }
 
-                if (!$sppgId) {
-                    throw ValidationException::withMessages([
-                        'sppg_id' => ['Tenant SPPG tidak dapat ditentukan untuk pencatatan insiden ini.'],
-                    ]);
-                }
+                // 5. GATE C: Polymorphic Subject Whitelist & Boundary Validation
+                $rawSubjectType = $data['subject_type'] ?? null;
+                $rawSubjectId = $data['subject_id'] ?? null;
 
-                $subjectType = $data['subject_type'] ?? Incident::class;
-                $subjectId = $data['subject_id'] ?? 0;
+                if (!empty($rawSubjectType) || !empty($rawSubjectId)) {
+                    if (empty($rawSubjectType) || empty($rawSubjectId)) {
+                        throw ValidationException::withMessages([
+                            'subject' => ['Tipe subjek dan ID subjek insiden wajib diisi berpasangan.'],
+                        ]);
+                    }
+
+                    if (!array_key_exists($rawSubjectType, self::ALLOWED_SUBJECTS)) {
+                        throw ValidationException::withMessages([
+                            'subject_type' => ['Tipe subjek insiden tidak valid atau tidak diizinkan.'],
+                        ]);
+                    }
+
+                    $subjectClass = self::ALLOWED_SUBJECTS[$rawSubjectType];
+                    $subjectId = (int) $rawSubjectId;
+                    if ($subjectId <= 0) {
+                        throw ValidationException::withMessages([
+                            'subject_id' => ['ID subjek insiden tidak valid.'],
+                        ]);
+                    }
+
+                    $subjectModel = $subjectClass::find($subjectId);
+                    if (!$subjectModel) {
+                        throw ValidationException::withMessages([
+                            'subject_id' => ['Data subjek insiden yang dirujuk tidak ditemukan.'],
+                        ]);
+                    }
+
+                    $this->validateSubjectOwnership($subjectModel, $sppgId, $schoolId, $reporter);
+
+                    $finalSubjectType = $subjectClass;
+                    $finalSubjectId = $subjectModel->id;
+                } else {
+                    // Authentic domain root fallback: Avoid fictitious subject ID 0
+                    if ($schoolId) {
+                        $finalSubjectType = \App\Models\School::class;
+                        $finalSubjectId = $schoolId;
+                    } else {
+                        $finalSubjectType = \App\Models\Sppg::class;
+                        $finalSubjectId = $sppgId;
+                    }
+                }
 
                 $incident = Incident::create([
                     'sppg_id' => $sppgId,
                     'school_id' => $schoolId,
-                    'subject_type' => $subjectType,
-                    'subject_id' => $subjectId,
+                    'subject_type' => $finalSubjectType,
+                    'subject_id' => $finalSubjectId,
                     'reported_by' => $reporter->id,
                     'category' => $category,
                     'severity' => $severity,
@@ -124,6 +217,76 @@ class IncidentService
                 }
             }
             throw $e;
+        }
+    }
+
+    /**
+     * Validate that the polymorphic subject belongs to the reporter's SPPG and authorized scope.
+     */
+    protected function validateSubjectOwnership($subjectModel, int $sppgId, ?int $schoolId, User $reporter): void
+    {
+        if ($subjectModel instanceof \App\Models\Trip) {
+            if ((int) $subjectModel->sppg_id !== $sppgId) {
+                throw new HttpException(403, 'Akses ditolak. Subjek perjalanan berada di luar lingkup unit SPPG Anda.');
+            }
+            if ($reporter->role === UserRole::PIC_SEKOLAH) {
+                $hasStop = $subjectModel->stops()->where('school_id', $reporter->school_id)->exists();
+                if (!$hasStop) {
+                    throw new HttpException(403, 'Akses ditolak. Perjalanan tidak melayani sekolah Anda.');
+                }
+            }
+        } elseif ($subjectModel instanceof \App\Models\TripStop) {
+            $trip = $subjectModel->trip;
+            if (!$trip || (int) $trip->sppg_id !== $sppgId) {
+                throw new HttpException(403, 'Akses ditolak. Subjek titik pemberhentian berada di luar lingkup unit SPPG Anda.');
+            }
+            if ($reporter->role === UserRole::PIC_SEKOLAH && (int) $subjectModel->school_id !== (int) $reporter->school_id) {
+                throw new HttpException(403, 'Akses ditolak. Titik pemberhentian bukan untuk sekolah Anda.');
+            }
+        } elseif ($subjectModel instanceof \App\Models\TrayReturn) {
+            if ((int) $subjectModel->sppg_id !== $sppgId) {
+                throw new HttpException(403, 'Akses ditolak. Subjek pengembalian wadah berada di luar lingkup unit SPPG Anda.');
+            }
+            if ($reporter->role === UserRole::PIC_SEKOLAH && (int) $subjectModel->school_id !== (int) $reporter->school_id) {
+                throw new HttpException(403, 'Akses ditolak. Pengembalian wadah bukan milik sekolah Anda.');
+            }
+        } elseif ($subjectModel instanceof \App\Models\SchoolServiceRecord) {
+            $stop = $subjectModel->tripStop;
+            $trip = $stop?->trip;
+            if (!$trip || (int) $trip->sppg_id !== $sppgId) {
+                throw new HttpException(403, 'Akses ditolak. Catatan layanan sekolah berada di luar lingkup unit SPPG Anda.');
+            }
+            if ($reporter->role === UserRole::PIC_SEKOLAH && (int) $stop?->school_id !== (int) $reporter->school_id) {
+                throw new HttpException(403, 'Akses ditolak. Catatan serah terima bukan milik sekolah Anda.');
+            }
+        } elseif ($subjectModel instanceof \App\Models\FoodBatch) {
+            if ($reporter->role === UserRole::PIC_SEKOLAH) {
+                throw new HttpException(403, 'Akses ditolak. PIC Sekolah tidak memiliki akses langsung terhadap batch produksi dapur.');
+            }
+            if ((int) $subjectModel->sppg_id !== $sppgId) {
+                throw new HttpException(403, 'Akses ditolak. Batch makanan berada di luar lingkup unit SPPG Anda.');
+            }
+        } elseif ($subjectModel instanceof \App\Models\QualityCheck) {
+            if ($reporter->role === UserRole::PIC_SEKOLAH) {
+                throw new HttpException(403, 'Akses ditolak. PIC Sekolah tidak memiliki akses langsung terhadap pemeriksaan mutu internal.');
+            }
+            if ((int) $subjectModel->foodBatch?->sppg_id !== $sppgId) {
+                throw new HttpException(403, 'Akses ditolak. Pemeriksaan mutu berada di luar lingkup unit SPPG Anda.');
+            }
+        } elseif ($subjectModel instanceof \App\Models\School) {
+            if ((int) $subjectModel->sppg_id !== $sppgId) {
+                throw new HttpException(403, 'Akses ditolak. Sekolah berada di luar lingkup unit SPPG Anda.');
+            }
+            if ($reporter->role === UserRole::PIC_SEKOLAH && (int) $subjectModel->id !== (int) $reporter->school_id) {
+                throw new HttpException(403, 'Akses ditolak. Anda hanya berwenang terhadap sekolah Anda.');
+            }
+        } elseif ($subjectModel instanceof \App\Models\Sppg) {
+            if ($reporter->role === UserRole::PIC_SEKOLAH) {
+                throw new HttpException(403, 'Akses ditolak. PIC Sekolah tidak berwenang melaporkan insiden tingkat SPPG.');
+            }
+            if ((int) $subjectModel->id !== $sppgId) {
+                throw new HttpException(403, 'Akses ditolak. Unit SPPG berada di luar lingkup wewenang Anda.');
+            }
         }
     }
 
