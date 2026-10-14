@@ -260,13 +260,13 @@
                         <svg class="w-4 h-4 text-[#B78C56]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
                         Rekonsiliasi Tray &amp; Kontainer
                     </h2>
-                    @if ($trip->trayReturn || $trip->total_trays_returned !== null)
+                    @if ($trip->total_trays_returned !== null)
                         <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
-                            {{ $trip->trayReturn?->status?->label() ?? 'Terekonsiliasi' }}
+                            Terekonsiliasi
                         </span>
                     @else
-                        <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-300">
-                            Belum Ada Data
+                        <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
+                            Belum Direkonsiliasi
                         </span>
                     @endif
                 </div>
@@ -274,15 +274,15 @@
                 <div class="grid grid-cols-3 gap-2 text-center text-xs mb-3">
                     <div class="p-2.5 rounded-xl bg-[#EDF7F2] border border-[#BCE2D0]">
                         <span class="text-[10px] font-semibold text-[#1C6654] block mb-0.5">Kembali Baik</span>
-                        <span class="text-base font-bold font-mono text-[#1C6654]">{{ $trip->total_trays_returned ?? $trip->trayReturn?->trays_returned ?? 0 }}</span>
+                        <span class="text-base font-bold font-mono text-[#1C6654]">{{ $trip->total_trays_returned !== null ? $trip->total_trays_returned : '-' }}</span>
                     </div>
                     <div class="p-2.5 rounded-xl bg-amber-50 border border-amber-200">
                         <span class="text-[10px] font-semibold text-amber-800 block mb-0.5">Rusak / Retak</span>
-                        <span class="text-base font-bold font-mono text-amber-700">{{ $trip->total_trays_damaged ?? $trip->trayReturn?->trays_damaged ?? 0 }}</span>
+                        <span class="text-base font-bold font-mono text-amber-700">{{ $trip->total_trays_damaged !== null ? $trip->total_trays_damaged : '-' }}</span>
                     </div>
                     <div class="p-2.5 rounded-xl bg-rose-50 border border-rose-200">
                         <span class="text-[10px] font-semibold text-rose-800 block mb-0.5">Hilang</span>
-                        <span class="text-base font-bold font-mono text-rose-700">{{ $trip->total_trays_missing ?? $trip->trayReturn?->trays_missing ?? 0 }}</span>
+                        <span class="text-base font-bold font-mono text-rose-700">{{ $trip->total_trays_missing !== null ? $trip->total_trays_missing : '-' }}</span>
                     </div>
                 </div>
 
@@ -317,28 +317,43 @@
                         <span class="w-6 h-6 rounded-full bg-amber-600 text-white flex items-center justify-center font-bold text-xs">!</span>
                         <h3 class="font-bold text-amber-900 text-sm">Otorisasi Penutupan Administratif</h3>
                     </div>
-                    <p class="text-[11px] text-amber-800 leading-relaxed">
-                        Seluruh stop telah ditangani. Sebagai Kepala SPPG, Anda dapat menutup perjalanan secara administratif untuk menyelesaikan operasional harian.
-                    </p>
 
-                    @if (($closureReadiness['mode_b_unallocated_stops'] ?? 0) > 0)
-                        <div class="p-2.5 rounded-lg bg-white/80 border border-amber-300 text-[11px] text-amber-900">
-                            <strong>Peringatan Mode B:</strong> Terdapat {{ $closureReadiness['mode_b_unallocated_stops'] }} sekolah dengan serah terima darurat tanpa alokasi porsi. Nilai null tidak akan dimanipulasi atau diubah ke 0.
+                    @if ($closureReadiness['can_close'] ?? false)
+                        <p class="text-[11px] text-amber-800 leading-relaxed">
+                            Seluruh prasyarat operasional telah terpenuhi (armada tiba di SPPG dan ompreng terekonsiliasi). Sebagai Kepala SPPG, Anda dapat menutup perjalanan secara administratif untuk menyelesaikan operasional harian.
+                        </p>
+
+                        @if (($closureReadiness['mode_b_unallocated_stops'] ?? 0) > 0)
+                            <div class="p-2.5 rounded-lg bg-white/80 border border-amber-300 text-[11px] text-amber-900">
+                                <strong>Peringatan Mode B:</strong> Terdapat {{ $closureReadiness['mode_b_unallocated_stops'] }} sekolah dengan serah terima darurat tanpa alokasi porsi. Nilai null tidak akan dimanipulasi atau diubah ke 0.
+                            </div>
+                        @endif
+
+                        <form action="{{ route('head.distribution.trips.close', $trip) }}" method="POST" class="space-y-2.5"
+                              onsubmit="return confirm('Apakah Anda yakin ingin menutup perjalanan ini secara administratif?');">
+                            @csrf
+                            <div>
+                                <label for="head_completion_notes" class="block text-[10px] font-bold text-amber-900 mb-1">Catatan Penutupan Administratif (Opsional):</label>
+                                <input type="text" name="completion_notes" id="head_completion_notes" placeholder="Catatan Kepala SPPG..." class="w-full text-xs p-2 rounded-lg border border-amber-300 bg-white">
+                            </div>
+                            <button type="submit" class="w-full min-h-[44px] py-2.5 px-4 rounded-xl font-bold text-xs bg-amber-700 text-white hover:bg-amber-800 transition-colors shadow-xs flex items-center justify-center gap-2 touch-target cursor-pointer">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                <span>Tutup Perjalanan Administratif (Kepala SPPG)</span>
+                            </button>
+                        </form>
+                    @else
+                        <div class="p-3 rounded-xl bg-white border border-amber-300 space-y-2">
+                            <span class="font-bold text-amber-950 block">Prasyarat Penutupan Belum Lengkap:</span>
+                            <ul class="list-disc list-inside text-[11px] text-amber-900 space-y-1">
+                                @foreach ($closureReadiness['blockers'] ?? [] as $blocker)
+                                    <li>{{ $blocker }}</li>
+                                @endforeach
+                            </ul>
+                            <p class="text-[10px] text-amber-800 italic pt-1">
+                                Penutupan administratif hanya dapat diproses setelah armada mencatat kedatangan dan rekonsiliasi fisik ompreng selesai dicatat.
+                            </p>
                         </div>
                     @endif
-
-                    <form action="{{ route('head.distribution.trips.close', $trip) }}" method="POST" class="space-y-2.5"
-                          onsubmit="return confirm('Apakah Anda yakin ingin menutup perjalanan ini secara administratif?');">
-                        @csrf
-                        <div>
-                            <label for="head_completion_notes" class="block text-[10px] font-bold text-amber-900 mb-1">Catatan Penutupan Administratif (Opsional):</label>
-                            <input type="text" name="completion_notes" id="head_completion_notes" placeholder="Catatan Kepala SPPG..." class="w-full text-xs p-2 rounded-lg border border-amber-300 bg-white">
-                        </div>
-                        <button type="submit" class="w-full min-h-[44px] py-2.5 px-4 rounded-xl font-bold text-xs bg-amber-700 text-white hover:bg-amber-800 transition-colors shadow-xs flex items-center justify-center gap-2 touch-target cursor-pointer">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                            <span>Tutup Perjalanan Administratif (Kepala SPPG)</span>
-                        </button>
-                    </form>
                 </div>
             @endif
 

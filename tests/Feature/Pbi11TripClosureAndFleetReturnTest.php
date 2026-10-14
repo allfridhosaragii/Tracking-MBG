@@ -481,6 +481,7 @@ class Pbi11TripClosureAndFleetReturnTest extends TestCase
         $trip->update([
             'return_started_at' => Carbon::now()->subMinutes(20),
             'arrived_at_sppg_at' => Carbon::now()->subMinutes(5),
+            'total_trays_returned' => 30,
         ]);
 
         // 1. Another driver cannot return or close trip (403)

@@ -308,10 +308,10 @@
                                     <span class="w-5 h-5 rounded-full bg-[#B78C56] text-white text-[10px] flex items-center justify-center font-bold">2</span>
                                     Rekonsiliasi Tray &amp; Kontainer
                                 </span>
-                                @if ($trip->trayReturn || $trip->total_trays_returned !== null)
-                                    <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">Terekonsiliasi</span>
+                                @if ($trip->total_trays_returned !== null)
+                                    <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">Terekonsiliasi ({{ $trip->total_trays_returned }} Kembali)</span>
                                 @else
-                                    <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">Wajib Diisi</span>
+                                    <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">Wajib Diisi (Belum Direkonsiliasi)</span>
                                 @endif
                             </div>
 
@@ -354,29 +354,53 @@
                             </form>
                         </div>
 
-                        <!-- Tahap 3: Penutupan Akhir Perjalanan (Gate 5) -->
+                        <!-- Tahap 3: Penutupan Akhir Perjalanan (Gate 5 & Gate C, F) -->
                         <div class="p-4 rounded-xl bg-[#FAFBF9] border border-[#DCE5DD] space-y-3">
                             <span class="text-xs font-bold text-[#172923] flex items-center gap-1.5">
                                 <span class="w-5 h-5 rounded-full bg-[#1C6654] text-white text-[10px] flex items-center justify-center font-bold">3</span>
                                 Penutupan Akhir Perjalanan Resmi
                             </span>
-                            <p class="text-[11px] text-[#53645B] leading-relaxed">
-                                Penutupan ini akan mengunci seluruh manifes distribusi, menonaktifkan telemetri GPS secara permanen (OFFLINE), dan mencatat milestone penutupan server.
-                            </p>
-                            <form action="{{ route('driver.trips.complete', $trip) }}" method="POST" class="space-y-3"
-                                  onsubmit="return confirm('Apakah Anda yakin ingin menyelesaikan dan menutup perjalanan ini secara resmi? Data distribusi akan dikunci dan sesi GPS dihentikan.');">
-                                @csrf
-                                <div>
-                                    <label for="completion_notes" class="block text-[10px] font-semibold text-[#53645B] mb-1">Catatan Penutupan Kurir (Opsional):</label>
-                                    <textarea name="completion_notes" id="completion_notes" rows="2" placeholder="Catatan akhir operasional kurir..." class="w-full text-xs p-2.5 rounded-lg border border-[#DCE5DD] bg-white focus:ring-1 focus:ring-[#1C6654] outline-none"></textarea>
+
+                            @if (! ($closureReadiness['trays_reconciled'] ?? false))
+                                <div class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1">
+                                    <span class="font-bold block">Prasyarat Penutupan Belum Terpenuhi:</span>
+                                    <p class="text-[11px] text-amber-800 leading-relaxed">
+                                        Rekonsiliasi fisik ompreng (Tahap 2) wajib diselesaikan terlebih dahulu sebelum dapat menutup perjalanan. Masukkan hitungan ompreng pada formulir di atas.
+                                    </p>
                                 </div>
-                                <button type="submit" class="w-full min-h-[44px] py-3 px-4 rounded-xl font-bold text-sm bg-[#B78C56] text-white hover:bg-[#9E7643] transition-colors shadow-sm flex items-center justify-center gap-2 touch-target cursor-pointer">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                                    </svg>
-                                    <span>Tutup &amp; Selesaikan Perjalanan Resmi</span>
-                                </button>
-                            </form>
+                            @elseif ($closureReadiness['has_open_incidents'] ?? false)
+                                <div class="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-900 space-y-1.5">
+                                    <span class="font-bold flex items-center gap-1 text-rose-900">
+                                        <svg class="w-4 h-4 text-rose-700" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+                                        Pemisahan Kewenangan (Separation of Duties):
+                                    </span>
+                                    <p class="text-[11px] text-rose-800 leading-relaxed">
+                                        Terdapat tiket insiden terbuka (OPEN) pada perjalanan ini. Sesuai aturan pemisahan wewenang, penutupan administratif wajib disahkan langsung oleh <strong>Kepala SPPG</strong> melalui halaman Dossier Trip (C03).
+                                    </p>
+                                    <a href="{{ route('trips.show', $trip) }}" class="inline-flex items-center gap-1 text-xs font-bold text-[#1C6654] hover:underline pt-1">
+                                        <span>Buka Dossier Trip di C03</span>
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                                    </a>
+                                </div>
+                            @else
+                                <p class="text-[11px] text-[#53645B] leading-relaxed">
+                                    Penutupan ini akan mengunci seluruh manifes distribusi, menonaktifkan telemetri GPS secara permanen (OFFLINE), dan mencatat milestone penutupan server.
+                                </p>
+                                <form action="{{ route('driver.trips.complete', $trip) }}" method="POST" class="space-y-3"
+                                      onsubmit="return confirm('Apakah Anda yakin ingin menyelesaikan dan menutup perjalanan ini secara resmi? Data distribusi akan dikunci dan sesi GPS dihentikan.');">
+                                    @csrf
+                                    <div>
+                                        <label for="completion_notes" class="block text-[10px] font-semibold text-[#53645B] mb-1">Catatan Penutupan Kurir (Opsional):</label>
+                                        <textarea name="completion_notes" id="completion_notes" rows="2" placeholder="Catatan akhir operasional kurir..." class="w-full text-xs p-2.5 rounded-lg border border-[#DCE5DD] bg-white focus:ring-1 focus:ring-[#1C6654] outline-none"></textarea>
+                                    </div>
+                                    <button type="submit" class="w-full min-h-[44px] py-3 px-4 rounded-xl font-bold text-sm bg-[#B78C56] text-white hover:bg-[#9E7643] transition-colors shadow-sm flex items-center justify-center gap-2 touch-target cursor-pointer">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                        </svg>
+                                        <span>Tutup &amp; Selesaikan Perjalanan Resmi</span>
+                                    </button>
+                                </form>
+                            @endif
                         </div>
                     @endif
                 </div>

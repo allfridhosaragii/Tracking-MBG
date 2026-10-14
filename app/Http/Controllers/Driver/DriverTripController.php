@@ -422,6 +422,12 @@ class DriverTripController extends Controller
             'tray_reconciliation_notes' => ['nullable', 'string', 'max:500'],
         ]);
 
+        if ($request->input('trays_returned') === null && $request->input('total_trays_returned') === null) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'trays_returned' => ['Jumlah wadah fisik yang kembali wajib diisi (minimal 0).'],
+            ]);
+        }
+
         $closureService = app(\App\Services\TripClosureService::class);
         $updatedTrip = $closureService->reconcileTrays($trip, $request->user(), $request->all());
 

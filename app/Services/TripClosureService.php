@@ -101,6 +101,7 @@ class TripClosureService
      * Mark arrival of the fleet back at the SPPG depot (Gate 3).
      *
      * Recorded as an operational event with server timestamp.
+     * Enforces strict state machine: cannot auto-create return_started_at.
      */
     public function recordDepotArrival(Trip $trip, User $actor, ?string $notes = null): Trip
     {
@@ -110,12 +111,20 @@ class TripClosureService
                 ->firstOrFail();
 
             if ($lockedTrip->status === TripStatus::COMPLETED) {
-                return $lockedTrip;
+                throw ValidationException::withMessages([
+                    'status' => ['Pencatatan tiba di SPPG tidak dapat dilakukan pada perjalanan yang telah selesai (COMPLETED).'],
+                ]);
+            }
+
+            if ($lockedTrip->status === TripStatus::CANCELLED) {
+                throw ValidationException::withMessages([
+                    'status' => ['Pencatatan tiba di SPPG tidak dapat dilakukan pada perjalanan yang telah dibatalkan (CANCELLED).'],
+                ]);
             }
 
             if ($lockedTrip->status !== TripStatus::IN_PROGRESS) {
                 throw ValidationException::withMessages([
-                    'status' => ['Pencatatan tiba di SPPG hanya dapat dilakukan pada perjalanan yang sedang berlangsung.'],
+                    'status' => ['Pencatatan tiba di SPPG hanya dapat dilakukan pada perjalanan yang sedang berlangsung (IN_PROGRESS).'],
                 ]);
             }
 
@@ -127,11 +136,23 @@ class TripClosureService
                     TripStopStatus::ARRIVED,
                     TripStopStatus::ARRIVED_AWAITING_CONFIRMATION,
                 ])
+                ->orderBy('sequence_number')
                 ->first();
 
             if ($unhandledStop) {
+                $statusLabel = $unhandledStop->status->label();
+                $schoolName = $unhandledStop->school?->name ?? "Pemberhentian #{$unhandledStop->sequence_number}";
                 throw ValidationException::withMessages([
-                    'stops' => ['Masih terdapat pemberhentian sekolah yang belum diselesaikan.'],
+                    'stops' => [
+                        "Masih terdapat pemberhentian sekolah yang belum diselesaikan: #{$unhandledStop->sequence_number} ({$schoolName}) masih berstatus {$statusLabel}.",
+                    ],
+                ]);
+            }
+
+            // Gate B: Must have legitimately started return journey; DO NOT auto-create return_started_at!
+            if ($lockedTrip->return_started_at === null) {
+                throw ValidationException::withMessages([
+                    'return_started_at' => ['Armada belum mencatat keberangkatan pulang menuju SPPG. Catat keberangkatan kepulangan terlebih dahulu sebelum mencatat tiba di SPPG.'],
                 ]);
             }
 
@@ -142,9 +163,10 @@ class TripClosureService
 
             $now = Carbon::now();
 
-            // If return was not explicitly started earlier, set return_started_at now
-            if ($lockedTrip->return_started_at === null) {
-                $lockedTrip->return_started_at = $now;
+            if ($now->lt($lockedTrip->return_started_at)) {
+                throw ValidationException::withMessages([
+                    'arrived_at_sppg_at' => ['Waktu kedatangan di SPPG tidak boleh lebih awal dari waktu mulai kepulangan.'],
+                ]);
             }
 
             $lockedTrip->arrived_at_sppg_at = $now;
@@ -172,9 +194,10 @@ class TripClosureService
     }
 
     /**
-     * Reconcile returned trays / containers upon fleet arrival at SPPG (Gate 4).
+     * Reconcile returned trays / containers upon fleet arrival at SPPG (Gate 4 & Gate C, D, E).
      *
      * Distinguishes trays returned, damaged, and missing without confusing portion counts with trays.
+     * Enforces operational stage (arrived_at_sppg_at), immutability on COMPLETED, and incident deduplication.
      */
     public function reconcileTrays(Trip $trip, User $actor, array $data): Trip
     {
@@ -182,6 +205,26 @@ class TripClosureService
             $lockedTrip = Trip::where('id', $trip->id)
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            // Gate D: Guard against mutations on COMPLETED trips
+            if ($lockedTrip->status === TripStatus::COMPLETED) {
+                throw ValidationException::withMessages([
+                    'status' => ['Perjalanan telah berstatus COMPLETED. Rekonsiliasi ompreng tidak dapat diubah setelah perjalanan ditutup secara resmi.'],
+                ]);
+            }
+
+            if ($lockedTrip->status !== TripStatus::IN_PROGRESS) {
+                throw ValidationException::withMessages([
+                    'status' => ['Rekonsiliasi ompreng hanya dapat dilakukan pada perjalanan yang sedang berlangsung (IN_PROGRESS).'],
+                ]);
+            }
+
+            // Gate C: Operational prerequisite: Fleet MUST have arrived at SPPG depot
+            if ($lockedTrip->arrived_at_sppg_at === null) {
+                throw ValidationException::withMessages([
+                    'arrived_at_sppg_at' => ['Rekonsiliasi fisik ompreng hanya dapat dilakukan setelah armada tiba di SPPG (arrived_at_sppg_at).'],
+                ]);
+            }
 
             $returned = isset($data['total_trays_returned'])
                 ? (int) $data['total_trays_returned']
@@ -199,7 +242,14 @@ class TripClosureService
                 ? trim((string) $data['tray_reconciliation_notes'])
                 : (isset($data['notes']) ? trim((string) $data['notes']) : null);
 
-            if ($returned !== null && $returned < 0) {
+            // Gate C: returned count must be a non-negative integer (cannot be omitted or null when submitting reconciliation)
+            if ($returned === null) {
+                throw ValidationException::withMessages([
+                    'total_trays_returned' => ['Jumlah wadah kembali wajib diisi dengan angka valid (minimal 0).'],
+                ]);
+            }
+
+            if ($returned < 0) {
                 throw ValidationException::withMessages([
                     'trays_returned' => ['Jumlah wadah kembali tidak boleh bernilai negatif.'],
                     'total_trays_returned' => ['Jumlah wadah kembali tidak boleh bernilai negatif.'],
@@ -220,24 +270,104 @@ class TripClosureService
                 ]);
             }
 
+            // Check if baseline is available
+            $stopIds = $lockedTrip->stops()->pluck('id');
+            $trayReturns = \App\Models\TrayReturn::whereIn('pickup_trip_stop_id', $stopIds)->get();
+            $baselineAvailable = $trayReturns->isNotEmpty();
+            $baselineExpected = $baselineAvailable ? (int) $trayReturns->sum('expected_trays') : null;
+
+            // Gate D: Idempotency check - if identical values, avoid duplicate log entries
+            $isSame = $lockedTrip->total_trays_returned === $returned
+                && $lockedTrip->total_trays_damaged === $damaged
+                && $lockedTrip->total_trays_missing === $missing
+                && (string) $lockedTrip->tray_reconciliation_notes === (string) $notes;
+
+            if ($isSame) {
+                return $lockedTrip;
+            }
+
             $lockedTrip->total_trays_returned = $returned;
             $lockedTrip->total_trays_damaged = $damaged;
             $lockedTrip->total_trays_missing = $missing;
             $lockedTrip->tray_reconciliation_notes = $notes;
             $lockedTrip->save();
 
-            // Record incident if trays are damaged or missing (Gate 4)
-            if ($damaged > 0 || $missing > 0) {
-                Incident::create([
-                    'sppg_id' => $lockedTrip->sppg_id,
-                    'subject_type' => Trip::class,
-                    'subject_id' => $lockedTrip->id,
-                    'reported_by' => $actor->id,
-                    'category' => IncidentCategory::TRAY_DISCREPANCY,
-                    'severity' => ($damaged > 5 || $missing > 5) ? IncidentSeverity::HIGH : IncidentSeverity::MEDIUM,
-                    'status' => IncidentStatus::OPEN,
-                    'description' => "Selisih fisik ompreng pada Trip {$lockedTrip->trip_code}: {$damaged} rusak, {$missing} hilang. " . ($notes ? "Catatan: {$notes}" : ''),
-                ]);
+            // Gate E: Incident Deduplication for TRAY_DISCREPANCY
+            $existingIncident = Incident::where('subject_type', Trip::class)
+                ->where('subject_id', $lockedTrip->id)
+                ->where('category', IncidentCategory::TRAY_DISCREPANCY)
+                ->where('status', IncidentStatus::OPEN)
+                ->lockForUpdate()
+                ->first();
+
+            $hasDiscrepancy = ($damaged > 0 || $missing > 0);
+
+            if ($hasDiscrepancy) {
+                $severity = ($damaged > 5 || $missing > 5) ? IncidentSeverity::HIGH : IncidentSeverity::MEDIUM;
+                $description = "Selisih fisik ompreng pada Trip {$lockedTrip->trip_code}: {$damaged} rusak, {$missing} hilang." . ($notes ? " Catatan: {$notes}" : '');
+
+                if ($existingIncident) {
+                    $oldValues = [
+                        'description' => $existingIncident->description,
+                        'severity' => $existingIncident->severity->value,
+                    ];
+                    $existingIncident->description = $description;
+                    $existingIncident->severity = $severity;
+                    $existingIncident->save();
+
+                    ActivityLog::record(
+                        event: 'incident.updated',
+                        auditable: $existingIncident,
+                        actor: $actor,
+                        oldValues: $oldValues,
+                        newValues: [
+                            'description' => $description,
+                            'severity' => $severity->value,
+                        ]
+                    );
+                } else {
+                    $incident = Incident::create([
+                        'sppg_id' => $lockedTrip->sppg_id,
+                        'subject_type' => Trip::class,
+                        'subject_id' => $lockedTrip->id,
+                        'reported_by' => $actor->id,
+                        'category' => IncidentCategory::TRAY_DISCREPANCY,
+                        'severity' => $severity,
+                        'status' => IncidentStatus::OPEN,
+                        'description' => $description,
+                    ]);
+
+                    ActivityLog::record(
+                        event: 'incident.created',
+                        auditable: $incident,
+                        actor: $actor,
+                        newValues: [
+                            'category' => IncidentCategory::TRAY_DISCREPANCY->value,
+                            'severity' => $incident->severity->value,
+                            'status' => IncidentStatus::OPEN->value,
+                            'description' => $description,
+                        ]
+                    );
+                }
+            } else {
+                // If damaged === 0 and missing === 0, but an OPEN incident exists:
+                // Rule: "Jangan otomatis menutup insiden ketika angka diedit menjadi 0. Penyelesaian insiden harus mengikuti kewenangan dan bukti resmi."
+                if ($existingIncident) {
+                    $correctionNote = " [Koreksi hitungan fisik oleh {$actor->name}: kembali {$returned}, rusak 0, hilang 0. Tiket tetap OPEN menunggu peninjauan dan resolusi resmi Kepala SPPG.]";
+                    if (! str_contains($existingIncident->description, 'Koreksi hitungan fisik')) {
+                        $oldDescription = $existingIncident->description;
+                        $existingIncident->description .= $correctionNote;
+                        $existingIncident->save();
+
+                        ActivityLog::record(
+                            event: 'incident.updated',
+                            auditable: $existingIncident,
+                            actor: $actor,
+                            oldValues: ['description' => $oldDescription],
+                            newValues: ['description' => $existingIncident->description]
+                        );
+                    }
+                }
             }
 
             ActivityLog::record(
@@ -249,6 +379,7 @@ class TripClosureService
                     'total_trays_damaged' => $damaged,
                     'total_trays_missing' => $missing,
                     'tray_reconciliation_notes' => $notes,
+                    'baseline_expected' => $baselineExpected,
                 ]
             );
 
@@ -257,10 +388,11 @@ class TripClosureService
     }
 
     /**
-     * Final Trip Closure & Administrative Sign-off (Gate 5 & Gate 6).
+     * Final Trip Closure & Administrative Sign-off (Gate A, C, D, E, F).
      *
      * Transitions trip to COMPLETED with row locking, idempotency, server timestamps,
      * graceful GPS tracking session shutdown, and preservation of PBI-10 provenance.
+     * Enforces prerequisite return, arrival, and tray reconciliation checks.
      */
     public function closeTrip(Trip $trip, User $actor, ?string $notes = null): Trip
     {
@@ -269,7 +401,7 @@ class TripClosureService
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            // Idempotency: If already completed, return existing completion state without duplicate event (Gate 5)
+            // Idempotency: If already completed, return existing completion state without duplicate event (Gate 5 & Gate D)
             if ($lockedTrip->status === TripStatus::COMPLETED) {
                 return $lockedTrip;
             }
@@ -301,20 +433,59 @@ class TripClosureService
                 ]);
             }
 
-            // 2. Validate fleet return to SPPG depot (Gate 3 & Gate 5)
-            $now = Carbon::now();
-
+            // 2. Gate A: Validate legitimate return and arrival events. NO FABRICATED TIMESTAMPS!
             if ($lockedTrip->return_started_at === null) {
-                $lockedTrip->return_started_at = $now;
+                throw ValidationException::withMessages([
+                    'return_started_at' => ['Perjalanan tidak dapat ditutup. Armada belum mencatat waktu mulai kepulangan menuju SPPG.'],
+                ]);
             }
 
             if ($lockedTrip->arrived_at_sppg_at === null) {
-                $lockedTrip->arrived_at_sppg_at = $now;
+                throw ValidationException::withMessages([
+                    'arrived_at_sppg_at' => ['Perjalanan tidak dapat ditutup. Armada belum mencatat waktu kedatangan fisik di pangkalan SPPG.'],
+                ]);
             }
 
-            // 3. Gate 6: Preserve PBI-10 Unallocated Data and Document Exceptions
-            // Mode B stops may have delivered_portions = null or QualityCheck.accepted_portions = null.
-            // These null values represent unallocated attribution and MUST NOT be converted to 0.
+            if ($lockedTrip->arrived_at_sppg_at->lt($lockedTrip->return_started_at)) {
+                throw ValidationException::withMessages([
+                    'arrived_at_sppg_at' => ['Waktu kedatangan di SPPG tidak boleh lebih awal dari waktu mulai kepulangan armada.'],
+                ]);
+            }
+
+            // 3. Gate C: Validate physical tray reconciliation. NULL (unknown) is NOT acceptable. 0 is valid.
+            if ($lockedTrip->total_trays_returned === null) {
+                throw ValidationException::withMessages([
+                    'total_trays_returned' => ['Perjalanan tidak dapat ditutup. Rekonsiliasi fisik ompreng belum dicatat (status masih UNKNOWN). Lakukan rekonsiliasi ompreng terlebih dahulu.'],
+                ]);
+            }
+
+            // 4. Gate F: Authority & Separation of Duties check
+            $stopIds = $lockedTrip->stops()->pluck('id');
+            $hasOpenIncidents = Incident::where(function ($q) use ($lockedTrip, $stopIds) {
+                $q->where(function ($q2) use ($lockedTrip) {
+                    $q2->where('subject_type', Trip::class)
+                       ->where('subject_id', $lockedTrip->id);
+                })->orWhere(function ($q2) use ($stopIds) {
+                    $q2->where('subject_type', TripStop::class)
+                       ->whereIn('subject_id', $stopIds);
+                });
+            })->where('status', IncidentStatus::OPEN)->exists();
+
+            if ($actor->role === \App\Enums\UserRole::KURIR && $hasOpenIncidents) {
+                throw ValidationException::withMessages([
+                    'incidents' => ['Perjalanan memiliki insiden aktif yang masih terbuka (OPEN). Penutupan perjalanan memerlukan pengesahan administratif resmi oleh Kepala SPPG.'],
+                ]);
+            }
+
+            if ($actor->role === \App\Enums\UserRole::KEPALA_SPPG && $hasOpenIncidents && (int) $lockedTrip->driver_id === (int) $actor->id) {
+                throw ValidationException::withMessages([
+                    'separation_of_duties' => ['Kepala SPPG yang bertindak sebagai pengemudi tidak dapat melakukan self-approval penutupan perjalanan yang memiliki insiden terbuka.'],
+                ]);
+            }
+
+            $now = Carbon::now();
+
+            // 5. Gate 6: Preserve PBI-10 Unallocated Data and Document Exceptions
             $stops = $lockedTrip->stops()->with(['deliveryItems', 'schoolServiceRecord', 'qualityChecks'])->get();
             $unallocatedBatchCount = 0;
             $documentedExceptions = [];
@@ -341,13 +512,12 @@ class TripClosureService
                 }
             }
 
-            // 4. Terminate active GPS tracking session gracefully (Gate 5)
-            // Ensures old sessions cannot send active telemetry after closure, while preserving all historical records
+            // 6. Terminate active GPS tracking session gracefully (Gate 5)
             $lockedTrip->active_tracking_session_id = null;
             $lockedTrip->tracking_status = 'OFFLINE';
             $lockedTrip->tracking_ended_at = $now;
 
-            // 5. Finalize Trip Status
+            // 7. Finalize Trip Status
             $lockedTrip->status = TripStatus::COMPLETED;
             $lockedTrip->completed_at = $now;
             $lockedTrip->closed_by = $actor->id;
@@ -360,7 +530,7 @@ class TripClosureService
 
             $lockedTrip->save();
 
-            // 6. Record official immutable Audit Log event (Gate 5 & Gate 6)
+            // 8. Record official immutable Audit Log event (Gate 5 & Gate 6)
             ActivityLog::record(
                 event: 'trip.completed',
                 auditable: $lockedTrip,
@@ -386,7 +556,7 @@ class TripClosureService
     }
 
     /**
-     * Calculate readiness evaluation for trip closure and return (Gate 2 & Gate 8).
+     * Calculate readiness evaluation for trip closure and return (Gate 2 & Gate 8, Gate C).
      */
     public function getClosureReadiness(Trip $trip): array
     {
@@ -404,6 +574,7 @@ class TripClosureService
         $isCompleted = $trip->status === TripStatus::COMPLETED;
         $returnStarted = $trip->return_started_at !== null;
         $arrivedDepot = $trip->arrived_at_sppg_at !== null;
+        $traysReconciled = $trip->total_trays_returned !== null;
 
         $blockers = [];
         $exceptions = [];
@@ -467,9 +638,46 @@ class TripClosureService
         }
 
         $allStopsHandled = $unhandledCount === 0;
+
+        // Return and Arrival blockers
+        if (! $returnStarted) {
+            $blockers[] = 'Armada belum mencatat keberangkatan pulang menuju SPPG.';
+        }
+
+        if (! $arrivedDepot) {
+            $blockers[] = 'Armada belum mencatat kedatangan fisik di pangkalan SPPG.';
+        }
+
+        if (! $traysReconciled) {
+            $blockers[] = 'Rekonsiliasi fisik ompreng belum dicatat (wajib sebelum penutupan).';
+        }
+
+        // Check open incidents
+        $stopIds = $stops->pluck('id');
+        $hasOpenIncidents = Incident::where(function ($q) use ($trip, $stopIds) {
+            $q->where(function ($q2) use ($trip) {
+                $q2->where('subject_type', Trip::class)
+                   ->where('subject_id', $trip->id);
+            })->orWhere(function ($q2) use ($stopIds) {
+                $q2->where('subject_type', TripStop::class)
+                   ->whereIn('subject_id', $stopIds);
+            });
+        })->where('status', IncidentStatus::OPEN)->exists();
+
+        if ($hasOpenIncidents) {
+            $exceptions[] = [
+                'type' => 'OPEN_INCIDENT',
+                'school' => null,
+                'stop_sequence' => null,
+                'message' => 'Terdapat insiden terbuka (OPEN) pada perjalanan ini. Penutupan administratif wajib disahkan oleh Kepala SPPG.',
+                'responsible_actor' => 'Kepala SPPG',
+            ];
+        }
+
         $canReturn = $allStopsHandled && ! $isCompleted && $trip->status === TripStatus::IN_PROGRESS;
-        $canArriveDepot = $allStopsHandled && ! $isCompleted && $trip->status === TripStatus::IN_PROGRESS;
-        $canClose = $allStopsHandled && ! $isCompleted && $trip->status === TripStatus::IN_PROGRESS;
+        $canArriveDepot = $allStopsHandled && $returnStarted && ! $isCompleted && $trip->status === TripStatus::IN_PROGRESS;
+        $canReconcileTrays = $allStopsHandled && $returnStarted && $arrivedDepot && ! $isCompleted && $trip->status === TripStatus::IN_PROGRESS;
+        $canClose = $allStopsHandled && $returnStarted && $arrivedDepot && $traysReconciled && ! $isCompleted && $trip->status === TripStatus::IN_PROGRESS;
 
         return [
             'is_completed' => $isCompleted,
@@ -479,9 +687,12 @@ class TripClosureService
             'return_started_at' => $trip->return_started_at?->toIso8601String(),
             'arrived_depot' => $arrivedDepot,
             'arrived_at_sppg_at' => $trip->arrived_at_sppg_at?->toIso8601String(),
+            'trays_reconciled' => $traysReconciled,
+            'has_open_incidents' => $hasOpenIncidents,
             'all_stops_handled' => $allStopsHandled,
             'can_return' => $canReturn,
             'can_arrive_depot' => $canArriveDepot,
+            'can_reconcile_trays' => $canReconcileTrays,
             'can_close' => $canClose,
             'blockers' => $blockers,
             'exceptions' => $exceptions,

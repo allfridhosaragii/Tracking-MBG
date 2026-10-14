@@ -194,8 +194,9 @@ class TripPolicy
     }
 
     /**
-     * Determine whether the user can finalize trip closure (Gate 5).
-     * Assigned Kurir or Kepala SPPG of the tenant.
+     * Determine whether the user can finalize trip closure (Gate 5 & Gate F).
+     * Assigned Kurir (only if no open incidents exist) or Kepala SPPG of the tenant.
+     * Enforces separation of duties if Kepala SPPG was also the assigned driver with open incidents.
      */
     public function closeTrip(User $user, Trip $trip): bool
     {
@@ -203,10 +204,38 @@ class TripPolicy
             return false;
         }
 
+        // Check if trip or its stops have any active unresolved (OPEN) incidents
+        $stopIds = $trip->stops()->pluck('id');
+        $hasOpenIncidents = \App\Models\Incident::where(function ($q) use ($trip, $stopIds) {
+            $q->where(function ($q2) use ($trip) {
+                $q2->where('subject_type', Trip::class)
+                   ->where('subject_id', $trip->id);
+            })->orWhere(function ($q2) use ($stopIds) {
+                $q2->where('subject_type', \App\Models\TripStop::class)
+                   ->whereIn('subject_id', $stopIds);
+            });
+        })->where('status', \App\Enums\IncidentStatus::OPEN)->exists();
+
         if ($user->role === UserRole::KURIR) {
+            // Kurir can close their assigned trip only if there are NO open incidents.
+            // If an incident is OPEN, administrative closure must be approved by Kepala SPPG.
+            if ($hasOpenIncidents) {
+                return false;
+            }
+
             return (int) $user->id === (int) $trip->driver_id;
         }
 
-        return $user->role === UserRole::KEPALA_SPPG;
+        if ($user->role === UserRole::KEPALA_SPPG) {
+            // Separation of duties: If Kepala SPPG was also the driver on this trip,
+            // they cannot self-approve closure when there are unresolved open incidents.
+            if ($hasOpenIncidents && (int) $trip->driver_id === (int) $user->id) {
+                return false;
+            }
+
+            return true;
+        }
+
+        return false;
     }
 }
