@@ -249,11 +249,15 @@ class Pbi10PartialInputAndProvenanceReproductionTest extends TestCase
     }
 
     /**
-     * GATE 3 HARDENED VERIFICATION:
-     * Batch A loaded 10. PIC reports Batch A received 40, damaged 30.
+     * GATE 3 / GATE 2 HARDENED VERIFICATION:
+     * Batch A loaded 10. PIC reports Batch A received 40, damaged 30 (good 10).
      * Batch B loaded 90. PIC reports Batch B received 60, damaged 0.
      * Total stop received = 100, damaged = 30.
-     * Verified: QualityCheck strictly respects loaded bounds: accepted (0) + rejected (10) = 10 == loaded (10).
+     * Provenance closure: Because Batch A contains both damaged (30) and undamaged (10) portions
+     * mixed with surplus (30), arithmetic min() CANNOT prove which portions belonged to the 10 loaded manifest.
+     * System must record attribution unknown (null accepted, null rejected, null delivered, UNRESOLVED_DISCREPANCY)
+     * and document the 6 audit counts in decision_reason.
+     * Batch B (no surplus, 0 damaged) is legitimately verified: delivered 60, accepted 60, rejected 0.
      */
     public function test_gate_3_reproduce_batch_a_loaded_10_received_40_anomaly(): void
     {
@@ -284,23 +288,36 @@ class Pbi10PartialInputAndProvenanceReproductionTest extends TestCase
         ];
 
         $service = app(SchoolHandoverService::class);
-        $service->confirmReceipt($this->stop, $this->pic, $payload);
+        $serviceRecord = $service->confirmReceipt($this->stop, $this->pic, $payload);
 
         $qcA = QualityCheck::where('food_batch_id', $this->batchA->id)->latest()->first();
         $qcB = QualityCheck::where('food_batch_id', $this->batchB->id)->latest()->first();
         $this->itemA->refresh();
         $this->itemB->refresh();
 
-        // GATE 3: Batch A loaded 10: accepted is 0, rejected is 10. Total evaluated = 10 == loaded (10)!
-        $this->assertSame(0, $qcA->accepted_portions);
-        $this->assertSame(10, $qcA->rejected_portions);
-        $this->assertSame(10, $qcA->accepted_portions + $qcA->rejected_portions);
-        $this->assertSame(10, $this->itemA->delivered_portions, 'Item A physical delivered is capped at loaded portions (10)');
+        // GATE 2: Batch A loaded 10: mixed surplus and damage -> attribution is unknown!
+        $this->assertNull($qcA->accepted_portions, 'Batch A accepted must be null when surplus is mixed with damage');
+        $this->assertNull($qcA->rejected_portions, 'Batch A rejected must be null when surplus is mixed with damage');
+        $this->assertNull($this->itemA->delivered_portions, 'Batch A delivered must be null when attribution is unknown');
+        $this->assertSame('UNRESOLVED_DISCREPANCY', $this->itemA->status);
 
-        // Batch B loaded 90: received 60, damaged 0 -> accepted 60, rejected 0. Delivered 60.
+        // Audit figures recorded in decision_reason:
+        $this->assertStringContainsString('Jumlah loaded resmi: 10 porsi.', $qcA->decision_reason);
+        $this->assertStringContainsString('Jumlah fisik observed: 40 porsi.', $qcA->decision_reason);
+        $this->assertStringContainsString('Jumlah damaged observed: 30 porsi.', $qcA->decision_reason);
+        $this->assertStringContainsString('Jumlah surplus: 30 porsi.', $qcA->decision_reason);
+        $this->assertStringContainsString('Jumlah yang benar-benar dapat diatribusikan: 0 porsi.', $qcA->decision_reason);
+        $this->assertStringContainsString('Jumlah yang belum bisa diatribusikan: 10 porsi.', $qcA->decision_reason);
+
+        // Batch B loaded 90: received 60, damaged 0 -> legitimate verified receipt: delivered 60, accepted 60, rejected 0.
         $this->assertSame(60, $qcB->accepted_portions);
         $this->assertSame(0, $qcB->rejected_portions);
         $this->assertSame(60, $this->itemB->delivered_portions);
+        $this->assertSame('DELIVERED', $this->itemB->status);
+
+        // Total physical receipt is faithfully recorded on service record
+        $this->assertSame(100, $serviceRecord->received_portions);
+        $this->assertSame(30, $serviceRecord->damaged_portions);
     }
 
     /**

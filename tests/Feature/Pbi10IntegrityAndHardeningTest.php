@@ -220,6 +220,10 @@ class Pbi10IntegrityAndHardeningTest extends TestCase
         $response = $this->actingAs($this->picSchoolA)->post(route('school.receipts.confirm', $this->stop1), [
             'received_portions' => 300,
             'damaged_portions' => 0,
+            'items' => [
+                $itemA->id => ['received_portions' => 180, 'damaged_portions' => 0],
+                $itemB->id => ['received_portions' => 120, 'damaged_portions' => 0],
+            ],
             'appearance_ok' => 1,
             'aroma_ok' => 1,
             'texture_ok' => 1,

@@ -168,9 +168,9 @@ class Pbi10FinalReconciliationGateTest extends TestCase
         $batch2 = $this->createBatch('BATCH-101-B', 34);
         $batch3 = $this->createBatch('BATCH-101-C', 33);
 
-        $this->setupItem($batch1, 34);
-        $this->setupItem($batch2, 34);
-        $this->setupItem($batch3, 33);
+        $item1 = $this->setupItem($batch1, 34);
+        $item2 = $this->setupItem($batch2, 34);
+        $item3 = $this->setupItem($batch3, 33);
 
         $this->stop->update(['loaded_portions' => 101, 'planned_portions' => 101]);
 
@@ -178,6 +178,11 @@ class Pbi10FinalReconciliationGateTest extends TestCase
         $serviceRecord = $service->confirmReceipt($this->stop, $this->pic, [
             'received_portions' => 101,
             'damaged_portions' => 0,
+            'items' => [
+                $item1->id => ['received_portions' => 34, 'damaged_portions' => 0],
+                $item2->id => ['received_portions' => 34, 'damaged_portions' => 0],
+                $item3->id => ['received_portions' => 33, 'damaged_portions' => 0],
+            ],
             'appearance_ok' => true,
             'aroma_ok' => true,
             'texture_ok' => true,
@@ -203,8 +208,8 @@ class Pbi10FinalReconciliationGateTest extends TestCase
         $batchA = $this->createBatch('BATCH-90', 90);
         $batchB = $this->createBatch('BATCH-10', 10);
 
-        $this->setupItem($batchA, 90);
-        $this->setupItem($batchB, 10);
+        $itemA = $this->setupItem($batchA, 90);
+        $itemB = $this->setupItem($batchB, 10);
 
         $this->stop->update(['loaded_portions' => 100, 'planned_portions' => 100]);
 
@@ -212,6 +217,10 @@ class Pbi10FinalReconciliationGateTest extends TestCase
         $serviceRecord = $service->confirmReceipt($this->stop, $this->pic, [
             'received_portions' => 100,
             'damaged_portions' => 0,
+            'items' => [
+                $itemA->id => ['received_portions' => 90, 'damaged_portions' => 0],
+                $itemB->id => ['received_portions' => 10, 'damaged_portions' => 0],
+            ],
             'appearance_ok' => true,
             'aroma_ok' => true,
             'texture_ok' => true,
@@ -323,6 +332,10 @@ class Pbi10FinalReconciliationGateTest extends TestCase
         $service->confirmReceipt($this->stop, $this->pic, [
             'received_portions' => 100,
             'damaged_portions' => 0,
+            'items' => [
+                $itemA->id => ['received_portions' => 0, 'damaged_portions' => 0],
+                $itemB->id => ['received_portions' => 100, 'damaged_portions' => 0],
+            ],
             'appearance_ok' => true,
             'aroma_ok' => true,
             'texture_ok' => true,
@@ -504,6 +517,10 @@ class Pbi10FinalReconciliationGateTest extends TestCase
         $service->confirmReceipt($this->stop, $this->pic, [
             'received_portions' => 100,
             'damaged_portions' => 0,
+            'items' => [
+                $itemA->id => ['received_portions' => 0, 'damaged_portions' => 0],
+                $itemB->id => ['received_portions' => 100, 'damaged_portions' => 0],
+            ],
             'appearance_ok' => true,
             'aroma_ok' => true,
             'texture_ok' => true,

@@ -455,40 +455,81 @@ class SchoolHandoverService
 
                 // GATE A, B, C, D: RECONCILE DELIVERY ITEMS & RECORD QUALITY CHECKS
                 if ($hasVerifiedItemInputs) {
-                    // Skenario 1: Data verifikasi fisik per-item/batch tersedia
+                    // Skenario 1: Data verifikasi fisik per-item/batch tersedia (Mode A: Per-Batch Verified)
                     foreach ($lockedStop->deliveryItems as $item) {
                         $vData = $verifiedItemMap[$item->id];
                         $itemLoaded = (int) ($item->loaded_portions ?? 0);
                         $itemRec = $vData['received'];
                         $itemDmg = $vData['damaged'];
 
-                        // GATE 3: Physical Bounds & Over-Receipt Defense
-                        // Legitimate portions cannot exceed loaded_portions
-                        $legitReceived = min($itemLoaded, $itemRec);
-                        $legitDamaged = min($legitReceived, $itemDmg);
-                        $legitGood = max(0, $legitReceived - $legitDamaged);
-
-                        $itemDelivered = min($itemLoaded, $itemRec);
-                        $item->update([
-                            'delivered_portions' => $itemDelivered,
-                            'status' => $itemDelivered > 0 ? 'DELIVERED' : ($itemRec === 0 ? 'NOT_DELIVERED' : 'DELIVERED'),
-                        ]);
-
-                        if ($conclusion === QualityCheckConclusion::SAFE) {
-                            $batchAccepted = $legitGood;
-                            $batchRejected = $legitDamaged;
-                        } else {
+                        if ($itemLoaded === 0) {
+                            $item->update([
+                                'delivered_portions' => 0,
+                                'status' => 'NOT_DELIVERED',
+                            ]);
                             $batchAccepted = 0;
-                            $batchRejected = $legitReceived;
-                        }
-
-                        $reasonNote = 'Verifikasi fisik per batch terkonfirmasi pada saat kedatangan di sekolah.';
-                        if ($itemRec > $itemLoaded) {
+                            $batchRejected = 0;
+                            $reasonNote = 'Item tanpa muatan fisik (0 porsi) pada manifes muatan.';
+                        } elseif ($itemRec > $itemLoaded) {
+                            // GATE 2: Physical Bounds & Mixed Surplus-Damage Provenance
                             $surplus = $itemRec - $itemLoaded;
-                            $reasonNote .= " Terdeteksi selisih surplus fisik per batch: +{$surplus} porsi melebihi muatan manifes ({$itemLoaded} porsi).";
-                        } elseif ($itemRec < $itemLoaded) {
-                            $shortage = $itemLoaded - $itemRec;
-                            $reasonNote .= " Terdeteksi kekurangan fisik per batch: -{$shortage} porsi dari muatan manifes ({$itemLoaded} porsi).";
+
+                            if ($itemDmg > 0 && $itemDmg < $itemRec) {
+                                // Kerusakan tercampur dengan porsi surplus tanpa pemisahan kontainer fisik.
+                                // Tidak boleh menggunakan min() untuk memaksakan kerusakan ke muatan manifes resmi!
+                                $item->update([
+                                    'delivered_portions' => null,
+                                    'status' => 'UNRESOLVED_DISCREPANCY',
+                                ]);
+                                $batchAccepted = null;
+                                $batchRejected = null;
+                                $reasonNote = "Rekonsiliasi fisik anomali muatan: Jumlah loaded resmi: {$itemLoaded} porsi. Jumlah fisik observed: {$itemRec} porsi. Jumlah damaged observed: {$itemDmg} porsi. Jumlah surplus: {$surplus} porsi. Jumlah yang benar-benar dapat diatribusikan: 0 porsi. Jumlah yang belum bisa diatribusikan: {$itemLoaded} porsi. Kerusakan fisik tercampur dengan porsi surplus tanpa pemisahan kontainer fisik sehingga asal porsi rusak berstatus unknown demi integritas provenance pangan.";
+                            } elseif ($itemDmg === 0) {
+                                // Seluruh fisik diamati baik -> seluruh muatan manifes teratribusi baik
+                                $itemDelivered = $itemLoaded;
+                                $batchAccepted = ($conclusion === QualityCheckConclusion::SAFE) ? $itemLoaded : 0;
+                                $batchRejected = 0;
+                                $item->update([
+                                    'delivered_portions' => $itemDelivered,
+                                    'status' => 'DELIVERED',
+                                ]);
+                                $reasonNote = "Rekonsiliasi fisik surplus muatan: Jumlah loaded resmi: {$itemLoaded} porsi. Jumlah fisik observed: {$itemRec} porsi. Jumlah damaged observed: 0 porsi. Jumlah surplus: {$surplus} porsi. Jumlah yang benar-benar dapat diatribusikan: {$itemLoaded} porsi. Jumlah yang belum bisa diatribusikan: 0 porsi. Seluruh porsi fisik diamati dalam kondisi baik sehingga muatan manifes teratribusi aman.";
+                            } else {
+                                // 100% rusak -> seluruh muatan manifes teratribusi rusak
+                                $itemDelivered = $itemLoaded;
+                                $batchAccepted = 0;
+                                $batchRejected = $itemLoaded;
+                                $item->update([
+                                    'delivered_portions' => $itemDelivered,
+                                    'status' => 'DELIVERED',
+                                ]);
+                                $reasonNote = "Rekonsiliasi fisik surplus muatan rusak: Jumlah loaded resmi: {$itemLoaded} porsi. Jumlah fisik observed: {$itemRec} porsi. Jumlah damaged observed: {$itemDmg} porsi. Jumlah surplus: {$surplus} porsi. Jumlah yang benar-benar dapat diatribusikan: {$itemLoaded} porsi. Jumlah yang belum bisa diatribusikan: 0 porsi. Seluruh porsi fisik diamati dalam kondisi rusak sehingga muatan manifes teratribusi rusak.";
+                            }
+                        } else {
+                            // Tidak ada surplus ($itemRec <= $itemLoaded) -> seluruh fisik bagian dari muatan manifes
+                            $legitReceived = $itemRec;
+                            $legitDamaged = min($legitReceived, $itemDmg);
+                            $legitGood = max(0, $legitReceived - $legitDamaged);
+
+                            $itemDelivered = $itemRec;
+                            $item->update([
+                                'delivered_portions' => $itemDelivered,
+                                'status' => $itemDelivered > 0 ? 'DELIVERED' : ($itemRec === 0 ? 'NOT_DELIVERED' : 'DELIVERED'),
+                            ]);
+
+                            if ($conclusion === QualityCheckConclusion::SAFE) {
+                                $batchAccepted = $legitGood;
+                                $batchRejected = $legitDamaged;
+                            } else {
+                                $batchAccepted = 0;
+                                $batchRejected = $legitReceived;
+                            }
+
+                            $reasonNote = 'Verifikasi fisik per batch terkonfirmasi pada saat kedatangan di sekolah.';
+                            if ($itemRec < $itemLoaded) {
+                                $shortage = $itemLoaded - $itemRec;
+                                $reasonNote .= " Terdeteksi kekurangan fisik per batch: -{$shortage} porsi dari muatan manifes ({$itemLoaded} porsi).";
+                            }
                         }
 
                         QualityCheck::create([
@@ -512,33 +553,75 @@ class SchoolHandoverService
                         ]);
                     }
                 } elseif (!$isMultiBatch) {
-                    // Skenario 2: Single batch on stop -> provenance 100% exact & unambiguous
+                    // Skenario 2: Single batch on stop -> provenance 100% exact & unambiguous (single source batch)
                     $item = $lockedStop->deliveryItems->first();
                     $itemLoaded = (int) ($item->loaded_portions ?? 0);
+                    $itemRec = $receivedPortions;
+                    $itemDmg = $damagedPortions;
 
-                    // Legitimate portions cannot exceed loaded_portions
-                    $legitReceived = min($itemLoaded, $receivedPortions);
-                    $legitDamaged = min($legitReceived, $damagedPortions);
-                    $legitGood = max(0, $legitReceived - $legitDamaged);
-
-                    $itemDelivered = min($itemLoaded, $receivedPortions);
-                    $item->update([
-                        'delivered_portions' => $itemDelivered,
-                        'status' => $itemDelivered > 0 ? 'DELIVERED' : ($receivedPortions === 0 ? 'NOT_DELIVERED' : 'DELIVERED'),
-                    ]);
-
-                    if ($conclusion === QualityCheckConclusion::SAFE) {
-                        $batchAccepted = $legitGood;
-                        $batchRejected = $legitDamaged;
-                    } else {
+                    if ($itemLoaded === 0) {
+                        $item->update([
+                            'delivered_portions' => 0,
+                            'status' => 'NOT_DELIVERED',
+                        ]);
                         $batchAccepted = 0;
-                        $batchRejected = $legitReceived;
-                    }
+                        $batchRejected = 0;
+                        $reasonNote = 'Item tanpa muatan fisik (0 porsi) pada manifes muatan.';
+                    } elseif ($itemRec > $itemLoaded) {
+                        // GATE 2: Physical Bounds & Mixed Surplus-Damage Provenance on Single Batch
+                        $surplus = $itemRec - $itemLoaded;
 
-                    $reasonNote = 'Pemeriksaan organoleptik kedatangan single batch terverifikasi.';
-                    if ($receivedPortions > $itemLoaded) {
-                        $surplus = $receivedPortions - $itemLoaded;
-                        $reasonNote .= " Terdeteksi selisih surplus fisik stop: +{$surplus} porsi melebihi muatan manifes ({$itemLoaded} porsi).";
+                        if ($itemDmg > 0 && $itemDmg < $itemRec) {
+                            $item->update([
+                                'delivered_portions' => null,
+                                'status' => 'UNRESOLVED_DISCREPANCY',
+                            ]);
+                            $batchAccepted = null;
+                            $batchRejected = null;
+                            $reasonNote = "Rekonsiliasi fisik anomali muatan: Jumlah loaded resmi: {$itemLoaded} porsi. Jumlah fisik observed: {$itemRec} porsi. Jumlah damaged observed: {$itemDmg} porsi. Jumlah surplus: {$surplus} porsi. Jumlah yang benar-benar dapat diatribusikan: 0 porsi. Jumlah yang belum bisa diatribusikan: {$itemLoaded} porsi. Kerusakan fisik tercampur dengan porsi surplus tanpa pemisahan kontainer fisik sehingga asal porsi rusak berstatus unknown demi integritas provenance pangan.";
+                        } elseif ($itemDmg === 0) {
+                            $itemDelivered = $itemLoaded;
+                            $batchAccepted = ($conclusion === QualityCheckConclusion::SAFE) ? $itemLoaded : 0;
+                            $batchRejected = 0;
+                            $item->update([
+                                'delivered_portions' => $itemDelivered,
+                                'status' => 'DELIVERED',
+                            ]);
+                            $reasonNote = "Rekonsiliasi fisik surplus muatan: Jumlah loaded resmi: {$itemLoaded} porsi. Jumlah fisik observed: {$itemRec} porsi. Jumlah damaged observed: 0 porsi. Jumlah surplus: {$surplus} porsi. Jumlah yang benar-benar dapat diatribusikan: {$itemLoaded} porsi. Jumlah yang belum bisa diatribusikan: 0 porsi. Seluruh porsi fisik diamati dalam kondisi baik sehingga muatan manifes teratribusi aman.";
+                        } else {
+                            $itemDelivered = $itemLoaded;
+                            $batchAccepted = 0;
+                            $batchRejected = $itemLoaded;
+                            $item->update([
+                                'delivered_portions' => $itemDelivered,
+                                'status' => 'DELIVERED',
+                            ]);
+                            $reasonNote = "Rekonsiliasi fisik surplus muatan rusak: Jumlah loaded resmi: {$itemLoaded} porsi. Jumlah fisik observed: {$itemRec} porsi. Jumlah damaged observed: {$itemDmg} porsi. Jumlah surplus: {$surplus} porsi. Jumlah yang benar-benar dapat diatribusikan: {$itemLoaded} porsi. Jumlah yang belum bisa diatribusikan: 0 porsi. Seluruh porsi fisik diamati dalam kondisi rusak sehingga muatan manifes teratribusi rusak.";
+                        }
+                    } else {
+                        $legitReceived = $itemRec;
+                        $legitDamaged = min($legitReceived, $itemDmg);
+                        $legitGood = max(0, $legitReceived - $legitDamaged);
+
+                        $itemDelivered = $itemRec;
+                        $item->update([
+                            'delivered_portions' => $itemDelivered,
+                            'status' => $itemDelivered > 0 ? 'DELIVERED' : ($itemRec === 0 ? 'NOT_DELIVERED' : 'DELIVERED'),
+                        ]);
+
+                        if ($conclusion === QualityCheckConclusion::SAFE) {
+                            $batchAccepted = $legitGood;
+                            $batchRejected = $legitDamaged;
+                        } else {
+                            $batchAccepted = 0;
+                            $batchRejected = $legitReceived;
+                        }
+
+                        $reasonNote = 'Pemeriksaan organoleptik kedatangan single batch terverifikasi.';
+                        if ($itemRec < $itemLoaded) {
+                            $shortage = $itemLoaded - $itemRec;
+                            $reasonNote .= " Terdeteksi kekurangan fisik stop: -{$shortage} porsi dari muatan manifes ({$itemLoaded} porsi).";
+                        }
                     }
 
                     QualityCheck::create([
@@ -561,71 +644,53 @@ class SchoolHandoverService
                         'checked_at' => $now,
                     ]);
                 } else {
-                    // Skenario 3: Multi-batch AGGREGATE receipt (no per-item breakdown provided)
+                    // Skenario 3: Multi-batch AGGREGATE receipt (Mode B: no per-item breakdown provided)
+                    // GATE 1: Mode AGGREGATE dengan total yang cocok tidak membuktikan setiap batch cocok!
+                    // Contoh: Batch A loaded 100, Batch B loaded 100. Total diterima 200, damaged 0.
+                    // Kemungkinan fisik di lapangan: Batch A 80, Batch B 120 (total tetap 200).
+                    // Karena PIC tidak melakukan verifikasi fisik per batch/kontainer/segel (Mode B),
+                    // sistem TIDAK BOLEH mengklaim jumlah delivered dan hasil QC individual per batch sebagai fakta!
+                    //
+                    // Pemisahan integritas data:
+                    // 1. Stop total receipt verified: tercatat sah pada SchoolServiceRecord ($receivedPortions).
+                    // 2. Status operasional stop tetap sah (HANDED_OVER jika SAFE, mengaktifkan stop berikutnya).
+                    // 3. Per-batch receipt verified: TIDAK ADA (tidak ada bukti fisik per batch).
+                    // 4. Per-batch attribution unknown: delivery_items.delivered_portions = null, status = 'UNRESOLVED_DISCREPANCY',
+                    //    QualityCheck.accepted_portions = null, QualityCheck.rejected_portions = null.
+
                     $hasDiscrepancy = ($receivedPortions !== $expectedPortions) || ($damagedPortions > 0);
 
-                    if (!$hasDiscrepancy) {
-                        // Exact clean receipt: every batch arrived in full without discrepancy!
-                        foreach ($lockedStop->deliveryItems as $item) {
-                            $itemLoaded = (int) ($item->loaded_portions ?? 0);
-                            $item->update([
-                                'delivered_portions' => $itemLoaded,
-                                'status' => 'DELIVERED',
-                            ]);
+                    foreach ($lockedStop->deliveryItems as $item) {
+                        $item->update([
+                            'delivered_portions' => null,
+                            'status' => 'UNRESOLVED_DISCREPANCY',
+                        ]);
+                    }
 
-                            QualityCheck::create([
-                                'food_batch_id' => $item->food_batch_id,
-                                'trip_stop_id' => $lockedStop->id,
-                                'check_stage' => QualityCheckStage::ON_ARRIVAL,
-                                'checked_by' => $pic->id,
-                                'appearance_ok' => $appearanceOk,
-                                'aroma_ok' => $aromaOk,
-                                'texture_ok' => $textureOk,
-                                'taste_tested' => $tasteTested,
-                                'taste_ok' => $tasteOk,
-                                'taste_skipped_reason' => $tasteSkippedReason,
-                                'temperature_c' => $tempC,
-                                'accepted_portions' => $itemLoaded, // Exact loaded, no rounding drift!
-                                'rejected_portions' => 0,
-                                'conclusion' => $conclusion,
-                                'notes' => $notes,
-                                'decision_reason' => 'Penerimaan multi-batch lengkap sesuai manifest muatan tanpa selisih.',
-                                'checked_at' => $now,
-                            ]);
-                        }
-                    } else {
-                        // Multi-batch WITH discrepancy (shortage, damage, or over-receipt) AND no per-batch breakdown
-                        // GATE 2: DO NOT USE FIFO TO INVENT DELIVERED PORTIONS!
-                        // When per-batch attribution is unresolved, delivered_portions is NULL!
-                        foreach ($lockedStop->deliveryItems as $item) {
-                            $item->update([
-                                'delivered_portions' => null,
-                                'status' => 'UNRESOLVED_DISCREPANCY',
-                            ]);
-                        }
+                    foreach ($distinctBatches as $batchId) {
+                        $reason = $hasDiscrepancy
+                            ? "Pemeriksaan kedatangan organoleptik multi-batch ({$totalDeliveryItems} batch). Total fisik stop selisih ({$receivedPortions} vs {$expectedPortions}) dan pemeriksaan fisik per batch tidak dilakukan (Mode B: Aggregate), sehingga atribusi porsi per batch berstatus unknown / unresolved discrepancy."
+                            : "Pemeriksaan kedatangan organoleptik multi-batch ({$totalDeliveryItems} batch). Penerimaan total fisik tingkat stop terverifikasi lengkap ({$receivedPortions} porsi), namun pemeriksaan fisik per batch tidak dilakukan (Mode B: Aggregate), sehingga atribusi porsi delivered dan QC per batch berstatus unknown / tidak terverifikasi demi menjaga kejujuran provenance pangan.";
 
-                        // Record QualityCheck with unallocated portions (null accepted, null rejected) to prevent fabricated provenance
-                        foreach ($distinctBatches as $batchId) {
-                            QualityCheck::create([
-                                'food_batch_id' => $batchId,
-                                'trip_stop_id' => $lockedStop->id,
-                                'check_stage' => QualityCheckStage::ON_ARRIVAL,
-                                'checked_by' => $pic->id,
-                                'appearance_ok' => $appearanceOk,
-                                'aroma_ok' => $aromaOk,
-                                'texture_ok' => $textureOk,
-                                'taste_tested' => $tasteTested,
-                                'taste_ok' => $tasteOk,
-                                'taste_skipped_reason' => $tasteSkippedReason,
-                                'temperature_c' => $tempC,
-                                'accepted_portions' => null, // Unattributed at batch level
-                                'rejected_portions' => null, // Unknown batch damage, NOT false 0!
-                                'conclusion' => $conclusion,
-                                'notes' => $notes,
-                                'decision_reason' => "Pemeriksaan kedatangan organoleptik multi-batch ({$totalDeliveryItems} batch). Atribusi porsi diterima dan rusak belum dirinci per batch sehingga dicatat sebagai unresolved discrepancy pada tingkat stop sekolah.",
-                                'checked_at' => $now,
-                            ]);
-                        }
+                        QualityCheck::create([
+                            'food_batch_id' => $batchId,
+                            'trip_stop_id' => $lockedStop->id,
+                            'check_stage' => QualityCheckStage::ON_ARRIVAL,
+                            'checked_by' => $pic->id,
+                            'appearance_ok' => $appearanceOk,
+                            'aroma_ok' => $aromaOk,
+                            'texture_ok' => $textureOk,
+                            'taste_tested' => $tasteTested,
+                            'taste_ok' => $tasteOk,
+                            'taste_skipped_reason' => $tasteSkippedReason,
+                            'temperature_c' => $tempC,
+                            'accepted_portions' => null, // Unattributed at batch level
+                            'rejected_portions' => null, // Unknown batch damage
+                            'conclusion' => $conclusion,
+                            'notes' => $notes,
+                            'decision_reason' => $reason,
+                            'checked_at' => $now,
+                        ]);
                     }
                 }
 
