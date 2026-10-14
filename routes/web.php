@@ -90,6 +90,9 @@ Route::middleware(['auth', 'active'])->group(function () {
             Route::post('/distribution/trips/{trip}/cancel', [DistributionController::class, 'cancelTrip'])->name('distribution.trips.cancel');
             Route::post('/distribution/trips/{trip}/verify-loading', [DistributionController::class, 'verifyLoading'])->name('distribution.trips.verify-loading');
             Route::post('/distribution/trips/{trip}/approve-dispatch', [DistributionController::class, 'approveDispatch'])->name('distribution.trips.approve-dispatch');
+
+            // PBI-11: Fleet Return & Trip Closure (Page K05)
+            Route::post('/distribution/trips/{trip}/close', [DistributionController::class, 'closeTrip'])->name('distribution.trips.close');
         });
 
     // 2. Pengawas Gizi Module
@@ -156,6 +159,12 @@ Route::middleware(['auth', 'active'])->group(function () {
             // PBI-10: Courier Handover at School Stop (Page D04)
             Route::get('/trips/{trip}/stops/{stop}/handover', [DriverTripController::class, 'handover'])->name('trips.stops.handover');
             Route::post('/trips/{trip}/stops/{stop}/handover-evidence', [DriverTripController::class, 'handoverEvidence'])->name('trips.stops.handover-evidence');
+
+            // PBI-11: Fleet Return & Operational Reconciliation (Pages D03, D05)
+            Route::post('/trips/{trip}/return', [DriverTripController::class, 'returnToDepot'])->name('trips.return');
+            Route::post('/trips/{trip}/arrive-depot', [DriverTripController::class, 'arriveDepot'])->name('trips.arrive-depot');
+            Route::post('/trips/{trip}/reconcile-trays', [DriverTripController::class, 'reconcileTrays'])->name('trips.reconcile-trays');
+            Route::post('/trips/{trip}/complete', [DriverTripController::class, 'completeTrip'])->name('trips.complete');
         });
 
     // 5. PIC Sekolah Module

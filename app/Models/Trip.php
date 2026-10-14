@@ -49,6 +49,14 @@ class Trip extends Model
         'last_accuracy_m',
         'status',
         'created_by',
+        'return_started_at',
+        'arrived_at_sppg_at',
+        'return_notes',
+        'closed_by',
+        'total_trays_returned',
+        'total_trays_damaged',
+        'total_trays_missing',
+        'tray_reconciliation_notes',
     ];
 
     protected $casts = [
@@ -58,6 +66,8 @@ class Trip extends Model
         'planned_departure_at' => 'datetime',
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
+        'return_started_at' => 'datetime',
+        'arrived_at_sppg_at' => 'datetime',
         'vehicle_checked_at' => 'datetime',
         'vehicle_check_passed' => 'boolean',
         'loading_verified' => 'boolean',
@@ -72,6 +82,9 @@ class Trip extends Model
         'last_latitude' => 'float',
         'last_longitude' => 'float',
         'last_accuracy_m' => 'float',
+        'total_trays_returned' => 'integer',
+        'total_trays_damaged' => 'integer',
+        'total_trays_missing' => 'integer',
     ];
 
     public function sppg(): BelongsTo
@@ -82,6 +95,11 @@ class Trip extends Model
     public function driver(): BelongsTo
     {
         return $this->belongsTo(User::class, 'driver_id');
+    }
+
+    public function closedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'closed_by');
     }
 
     public function loadingVerifiedBy(): BelongsTo
@@ -114,6 +132,11 @@ class Trip extends Model
         return $this->hasManyThrough(DeliveryItem::class, TripStop::class);
     }
 
+    public function incidents(): \Illuminate\Database\Eloquent\Relations\MorphMany
+    {
+        return $this->morphMany(Incident::class, 'subject');
+    }
+
     public function gpsLocations(): HasMany
     {
         return $this->hasMany(GpsLocation::class);
@@ -142,5 +165,20 @@ class Trip extends Model
     public function getTotalPlannedPortionsAttribute(): int
     {
         return (int) $this->deliveryItems()->sum('delivery_items.planned_portions');
+    }
+
+    public function isReturning(): bool
+    {
+        return $this->return_started_at !== null && $this->arrived_at_sppg_at === null;
+    }
+
+    public function hasArrivedAtDepot(): bool
+    {
+        return $this->arrived_at_sppg_at !== null;
+    }
+
+    public function isCompleted(): bool
+    {
+        return $this->status === TripStatus::COMPLETED;
     }
 }

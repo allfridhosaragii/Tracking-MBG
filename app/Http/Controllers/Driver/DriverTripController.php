@@ -150,21 +150,27 @@ class DriverTripController extends Controller
         $trackingService = app(\App\Services\GpsTrackingService::class);
         $trackingStatus = $trackingService->getDriverTrackingStatus($trip);
 
+        $closureService = app(\App\Services\TripClosureService::class);
+        $closureReadiness = $closureService->getClosureReadiness($trip);
+
         $stops = $trip->stops->sortBy('sequence_number')->values();
-        $activeStop = $stops->first(function ($stop) {
-            return in_array($stop->status, [
-                \App\Enums\TripStopStatus::EN_ROUTE,
-                \App\Enums\TripStopStatus::ARRIVED,
-                \App\Enums\TripStopStatus::ARRIVED_AWAITING_CONFIRMATION,
-                \App\Enums\TripStopStatus::PENDING,
-            ], true);
-        }) ?: $stops->last();
+        $activeStop = $closureReadiness['all_stops_handled']
+            ? null
+            : $stops->first(function ($stop) {
+                return in_array($stop->status, [
+                    \App\Enums\TripStopStatus::EN_ROUTE,
+                    \App\Enums\TripStopStatus::ARRIVED,
+                    \App\Enums\TripStopStatus::ARRIVED_AWAITING_CONFIRMATION,
+                    \App\Enums\TripStopStatus::PENDING,
+                ], true);
+            });
 
         return view('driver.trips.active', [
             'trip' => $trip,
             'stops' => $stops,
             'activeStop' => $activeStop,
             'trackingStatus' => $trackingStatus,
+            'closureReadiness' => $closureReadiness,
         ]);
     }
 
@@ -338,6 +344,131 @@ class DriverTripController extends Controller
         }
 
         return back()->with('success', 'Bukti serah terima berhasil diunggah.');
+    }
+
+    /**
+     * Kurir starts return journey towards SPPG depot (Gate 3).
+     */
+    public function returnToDepot(Request $request, Trip $trip): \Illuminate\Http\JsonResponse|RedirectResponse
+    {
+        Gate::authorize('returnToDepot', $trip);
+
+        $request->validate([
+            'notes' => ['nullable', 'string', 'max:500'],
+            'return_notes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $closureService = app(\App\Services\TripClosureService::class);
+        $returnNotes = $request->input('return_notes') ?? $request->input('notes');
+        $updatedTrip = $closureService->initiateReturnToDepot($trip, $request->user(), $returnNotes);
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Perjalanan pengantaran telah selesai. Memulai rute kembali ke Dapur SPPG.',
+                'trip_status' => $updatedTrip->status->value,
+                'return_started_at' => $updatedTrip->return_started_at?->toIso8601String(),
+            ]);
+        }
+
+        return redirect()
+            ->route('driver.trips.active', $trip)
+            ->with('success', 'Perjalanan pengantaran telah selesai. Memulai rute kembali ke Dapur SPPG.');
+    }
+
+    /**
+     * Mark arrival of the fleet at SPPG depot (Gate 3).
+     */
+    public function arriveDepot(Request $request, Trip $trip): \Illuminate\Http\JsonResponse|RedirectResponse
+    {
+        Gate::authorize('arriveDepot', $trip);
+
+        $request->validate([
+            'notes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $closureService = app(\App\Services\TripClosureService::class);
+        $updatedTrip = $closureService->recordDepotArrival($trip, $request->user(), $request->input('notes'));
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Armada telah tiba kembali di Dapur SPPG.',
+                'trip_status' => $updatedTrip->status->value,
+                'arrived_at_sppg_at' => $updatedTrip->arrived_at_sppg_at?->toIso8601String(),
+            ]);
+        }
+
+        return redirect()
+            ->route('driver.trips.active', $trip)
+            ->with('success', 'Armada telah tiba kembali di Dapur SPPG.');
+    }
+
+    /**
+     * Record tray / ompreng return reconciliation (Gate 4).
+     */
+    public function reconcileTrays(Request $request, Trip $trip): \Illuminate\Http\JsonResponse|RedirectResponse
+    {
+        Gate::authorize('reconcileTrays', $trip);
+
+        $request->validate([
+            'trays_returned' => ['nullable', 'integer', 'min:0'],
+            'total_trays_returned' => ['nullable', 'integer', 'min:0'],
+            'trays_damaged' => ['nullable', 'integer', 'min:0'],
+            'total_trays_damaged' => ['nullable', 'integer', 'min:0'],
+            'trays_missing' => ['nullable', 'integer', 'min:0'],
+            'total_trays_missing' => ['nullable', 'integer', 'min:0'],
+            'notes' => ['nullable', 'string', 'max:500'],
+            'tray_reconciliation_notes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $closureService = app(\App\Services\TripClosureService::class);
+        $updatedTrip = $closureService->reconcileTrays($trip, $request->user(), $request->all());
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Rekonsiliasi pengembalian wadah/ompreng berhasil dicatat.',
+                'total_trays_returned' => $updatedTrip->total_trays_returned,
+                'total_trays_damaged' => $updatedTrip->total_trays_damaged,
+                'total_trays_missing' => $updatedTrip->total_trays_missing,
+            ]);
+        }
+
+        return redirect()
+            ->route('driver.trips.active', $trip)
+            ->with('success', 'Rekonsiliasi pengembalian wadah/ompreng berhasil dicatat.');
+    }
+
+    /**
+     * Finalize trip closure and administrative sign-off (Gate 5 & Gate 6).
+     */
+    public function completeTrip(Request $request, Trip $trip): \Illuminate\Http\JsonResponse|RedirectResponse
+    {
+        Gate::authorize('closeTrip', $trip);
+
+        $request->validate([
+            'notes' => ['nullable', 'string', 'max:500'],
+            'completion_notes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $closureService = app(\App\Services\TripClosureService::class);
+        $completionNotes = $request->input('completion_notes') ?? $request->input('notes');
+        $closedTrip = $closureService->closeTrip($trip, $request->user(), $completionNotes);
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Perjalanan telah resmi diselesaikan dan ditutup.',
+                'trip_status' => $closedTrip->status->value,
+                'completed_at' => $closedTrip->completed_at?->toIso8601String(),
+                'tracking_status' => $closedTrip->tracking_status,
+            ]);
+        }
+
+        return redirect()
+            ->route('driver.trips.active', $trip)
+            ->with('success', 'Perjalanan telah resmi diselesaikan dan ditutup.');
     }
 }
 

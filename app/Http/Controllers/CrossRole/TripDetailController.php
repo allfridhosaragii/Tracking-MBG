@@ -31,10 +31,14 @@ class TripDetailController extends Controller
         $user = $request->user();
         $isPic = $user->role === UserRole::PIC_SEKOLAH;
 
+        $closureService = app(\App\Services\TripClosureService::class);
+        $closureReadiness = $closureService->getClosureReadiness($trip);
+
         return view('trips.show', [
             'trip' => $trip,
             'isPic' => $isPic,
             'userSchoolId' => $user->school_id,
+            'closureReadiness' => $closureReadiness,
         ]);
     }
 
@@ -101,6 +105,11 @@ class TripDetailController extends Controller
             'status' => $trip->status->value,
             'status_label' => $trip->status->label(),
             'service_date' => $trip->service_date->toDateString(),
+            'return_started_at' => $trip->return_started_at?->toIso8601String(),
+            'arrived_at_sppg_at' => $trip->arrived_at_sppg_at?->toIso8601String(),
+            'completed_at' => $trip->completed_at?->toIso8601String(),
+            'is_returning' => $trip->isReturning(),
+            'has_arrived_depot' => $trip->hasArrivedAtDepot(),
             'sppg' => [
                 'id' => $sppg->id,
                 'name' => $sppg->name,

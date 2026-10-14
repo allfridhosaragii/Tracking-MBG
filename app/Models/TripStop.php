@@ -73,6 +73,11 @@ class TripStop extends Model
         return $this->morphMany(EvidencePhoto::class, 'evidenceable');
     }
 
+    public function incidents(): \Illuminate\Database\Eloquent\Relations\MorphMany
+    {
+        return $this->morphMany(Incident::class, 'subject');
+    }
+
     public function getTotalLoadedPortionsAttribute(): int
     {
         return (int) $this->deliveryItems->sum('loaded_portions');

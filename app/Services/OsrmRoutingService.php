@@ -292,7 +292,7 @@ class OsrmRoutingService
      *
      * @return array<int, array{lat: float, lng: float, name: string, type: string, order: int, stop_id?: int}>
      */
-    public function extractTripWaypoints(Trip $trip): array
+    public function extractTripWaypoints(Trip $trip, ?bool $includeReturn = null): array
     {
         $trip->loadMissing(['sppg', 'stops.school']);
 
@@ -324,6 +324,18 @@ class OsrmRoutingService
                     'stop_id' => $stop->id,
                 ];
             }
+        }
+
+        $shouldReturn = $includeReturn ?? ($trip->return_started_at !== null || $trip->status === \App\Enums\TripStatus::COMPLETED);
+
+        if ($shouldReturn && count($waypoints) > 1) {
+            $waypoints[] = [
+                'lat' => (float) $sppg->latitude,
+                'lng' => (float) $sppg->longitude,
+                'name' => $sppg->name . ' (Depot SPPG - Titik Kembali)',
+                'type' => 'SPPG_RETURN',
+                'order' => 999,
+            ];
         }
 
         return $waypoints;

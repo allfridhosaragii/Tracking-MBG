@@ -62,6 +62,16 @@ class SchoolServiceRecord extends Model
         return $this->morphMany(EvidencePhoto::class, 'evidenceable');
     }
 
+    public function trayReturn(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(TrayReturn::class);
+    }
+
+    public function incidents(): MorphMany
+    {
+        return $this->morphMany(Incident::class, 'subject');
+    }
+
     /**
      * Check if the service record has reached an officially confirmed state.
      * All states other than WAITING represent confirmed decisions.

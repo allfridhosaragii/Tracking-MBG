@@ -91,4 +91,25 @@ class DistributionController extends Controller
             ->back()
             ->with('success', "Otorisasi pengiriman {$trip->trip_code} berhasil diterbitkan. Status perjalanan kini SIAP BERANGKAT (READY).");
     }
+
+    /**
+     * Administratively close a trip (Kepala SPPG Gate 5).
+     */
+    public function closeTrip(Request $request, Trip $trip): RedirectResponse
+    {
+        Gate::authorize('closeTrip', $trip);
+
+        $request->validate([
+            'notes' => ['nullable', 'string', 'max:500'],
+            'completion_notes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $closureService = app(\App\Services\TripClosureService::class);
+        $closureNotes = $request->input('completion_notes') ?? $request->input('notes');
+        $closureService->closeTrip($trip, $request->user(), $closureNotes);
+
+        return redirect()
+            ->route('trips.show', $trip)
+            ->with('success', "Perjalanan {$trip->trip_code} telah resmi ditutup secara administratif.");
+    }
 }

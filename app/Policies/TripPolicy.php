@@ -141,4 +141,72 @@ class TripPolicy
             && $user->role === UserRole::KEPALA_SPPG
             && (int) $user->sppg_id === (int) $trip->sppg_id;
     }
+
+    /**
+     * Determine whether the user can trigger the return journey towards SPPG depot (Gate 3).
+     * Assigned Kurir or Kepala SPPG of the tenant.
+     */
+    public function returnToDepot(User $user, Trip $trip): bool
+    {
+        if (! $user->is_active || (int) $user->sppg_id !== (int) $trip->sppg_id) {
+            return false;
+        }
+
+        if ($user->role === UserRole::KURIR) {
+            return (int) $user->id === (int) $trip->driver_id;
+        }
+
+        return $user->role === UserRole::KEPALA_SPPG;
+    }
+
+    /**
+     * Determine whether the user can record arrival of the fleet at SPPG depot (Gate 3).
+     * Assigned Kurir, Asisten Lapangan, or Kepala SPPG in the same SPPG.
+     */
+    public function arriveDepot(User $user, Trip $trip): bool
+    {
+        if (! $user->is_active || (int) $user->sppg_id !== (int) $trip->sppg_id) {
+            return false;
+        }
+
+        if ($user->role === UserRole::KURIR) {
+            return (int) $user->id === (int) $trip->driver_id;
+        }
+
+        return in_array($user->role, [UserRole::ASISTEN_LAPANGAN, UserRole::KEPALA_SPPG], true);
+    }
+
+    /**
+     * Determine whether the user can reconcile returned trays / ompreng (Gate 4).
+     * Asisten Lapangan, assigned Kurir, or Kepala SPPG in the same SPPG.
+     */
+    public function reconcileTrays(User $user, Trip $trip): bool
+    {
+        if (! $user->is_active || (int) $user->sppg_id !== (int) $trip->sppg_id) {
+            return false;
+        }
+
+        if ($user->role === UserRole::KURIR) {
+            return (int) $user->id === (int) $trip->driver_id;
+        }
+
+        return in_array($user->role, [UserRole::ASISTEN_LAPANGAN, UserRole::KEPALA_SPPG], true);
+    }
+
+    /**
+     * Determine whether the user can finalize trip closure (Gate 5).
+     * Assigned Kurir or Kepala SPPG of the tenant.
+     */
+    public function closeTrip(User $user, Trip $trip): bool
+    {
+        if (! $user->is_active || (int) $user->sppg_id !== (int) $trip->sppg_id) {
+            return false;
+        }
+
+        if ($user->role === UserRole::KURIR) {
+            return (int) $user->id === (int) $trip->driver_id;
+        }
+
+        return $user->role === UserRole::KEPALA_SPPG;
+    }
 }

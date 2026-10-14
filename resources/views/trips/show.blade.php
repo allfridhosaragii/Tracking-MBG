@@ -207,7 +207,7 @@
                 </div>
             </div>
 
-            <!-- Kartu Jejak Waktu & Milestone -->
+            <!-- Kartu Jejak Waktu & Milestone PBI-11 -->
             <div class="p-5 rounded-2xl bg-white border border-[#DCE5DD]">
                 <h2 class="text-base font-bold text-[#172923] pb-3 border-b border-[#DCE5DD] mb-3">
                     Jejak Waktu Operasional
@@ -232,12 +232,115 @@
                         <span class="text-[#53645B]">Keberangkatan Nyata:</span>
                         <span class="font-bold text-[#172923]">{{ $trip->started_at ? $trip->started_at->format('H:i') . ' WIB' : 'Belum berangkat' }}</span>
                     </div>
-                    <div class="flex justify-between py-1">
-                        <span class="text-[#53645B]">Selesai Perjalanan:</span>
-                        <span class="font-bold text-[#172923]">{{ $trip->completed_at ? $trip->completed_at->format('H:i') . ' WIB' : 'Belum selesai' }}</span>
+                    <div class="flex justify-between py-1 border-b border-[#FAFBF9]">
+                        <span class="text-[#53645B]">Mulai Kembali ke SPPG:</span>
+                        <span class="font-bold text-[#172923]">{{ $trip->return_started_at ? $trip->return_started_at->format('H:i') . ' WIB' : 'Belum kembali' }}</span>
                     </div>
+                    <div class="flex justify-between py-1 border-b border-[#FAFBF9]">
+                        <span class="text-[#53645B]">Tiba di Dapur SPPG:</span>
+                        <span class="font-bold text-[#172923]">{{ $trip->arrived_at_sppg_at ? $trip->arrived_at_sppg_at->format('H:i') . ' WIB' : 'Belum tiba di SPPG' }}</span>
+                    </div>
+                    <div class="flex justify-between py-1 border-b border-[#FAFBF9]">
+                        <span class="text-[#53645B]">Selesai &amp; Ditutup:</span>
+                        <span class="font-bold text-[#1C6654]">{{ $trip->completed_at ? $trip->completed_at->format('H:i') . ' WIB' : 'Belum ditutup' }}</span>
+                    </div>
+                    @if ($trip->closedBy)
+                        <div class="flex justify-between py-1">
+                            <span class="text-[#53645B]">Ditutup Oleh:</span>
+                            <span class="font-bold text-[#172923]">{{ $trip->closedBy->name }} ({{ $trip->closedBy->role->label() }})</span>
+                        </div>
+                    @endif
                 </div>
             </div>
+
+            <!-- Kartu Rekonsiliasi Wadah & Ompreng (PBI-11) -->
+            <div class="p-5 rounded-2xl bg-white border border-[#DCE5DD]">
+                <div class="flex items-center justify-between pb-3 border-b border-[#DCE5DD] mb-3">
+                    <h2 class="text-base font-bold text-[#172923] flex items-center gap-1.5">
+                        <svg class="w-4 h-4 text-[#B78C56]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                        Rekonsiliasi Tray &amp; Kontainer
+                    </h2>
+                    @if ($trip->trayReturn || $trip->total_trays_returned !== null)
+                        <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            {{ $trip->trayReturn?->status?->label() ?? 'Terekonsiliasi' }}
+                        </span>
+                    @else
+                        <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-300">
+                            Belum Ada Data
+                        </span>
+                    @endif
+                </div>
+
+                <div class="grid grid-cols-3 gap-2 text-center text-xs mb-3">
+                    <div class="p-2.5 rounded-xl bg-[#EDF7F2] border border-[#BCE2D0]">
+                        <span class="text-[10px] font-semibold text-[#1C6654] block mb-0.5">Kembali Baik</span>
+                        <span class="text-base font-bold font-mono text-[#1C6654]">{{ $trip->total_trays_returned ?? $trip->trayReturn?->trays_returned ?? 0 }}</span>
+                    </div>
+                    <div class="p-2.5 rounded-xl bg-amber-50 border border-amber-200">
+                        <span class="text-[10px] font-semibold text-amber-800 block mb-0.5">Rusak / Retak</span>
+                        <span class="text-base font-bold font-mono text-amber-700">{{ $trip->total_trays_damaged ?? $trip->trayReturn?->trays_damaged ?? 0 }}</span>
+                    </div>
+                    <div class="p-2.5 rounded-xl bg-rose-50 border border-rose-200">
+                        <span class="text-[10px] font-semibold text-rose-800 block mb-0.5">Hilang</span>
+                        <span class="text-base font-bold font-mono text-rose-700">{{ $trip->total_trays_missing ?? $trip->trayReturn?->trays_missing ?? 0 }}</span>
+                    </div>
+                </div>
+
+                @if ($trip->tray_reconciliation_notes || $trip->trayReturn?->notes)
+                    <div class="p-2.5 rounded-lg bg-[#FAFBF9] border border-[#DCE5DD] text-[11px] text-[#53645B] mb-3">
+                        <span class="font-bold text-[#172923] block mb-0.5">Catatan Fisik Wadah:</span>
+                        {{ $trip->tray_reconciliation_notes ?? $trip->trayReturn?->notes }}
+                    </div>
+                @endif
+
+                <!-- Insiden Terkait Rekonsiliasi -->
+                @if ($trip->incidents->isNotEmpty())
+                    <div class="pt-2 border-t border-[#E8EEE9] space-y-2">
+                        <span class="text-[11px] font-bold text-[#172923] uppercase tracking-wider block">Insiden Selisih / Kerusakan:</span>
+                        @foreach ($trip->incidents as $incident)
+                            <div class="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-xs">
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="font-mono font-bold text-rose-900 text-[11px]">{{ $incident->incident_code }}</span>
+                                    <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-rose-200 text-rose-900 uppercase">{{ $incident->severity->value }}</span>
+                                </div>
+                                <p class="text-[11px] text-rose-800 leading-relaxed">{{ $incident->description }}</p>
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
+            </div>
+
+            <!-- Kontrol Penutupan Administratif Kepala SPPG (PBI-11) -->
+            @if (auth()->user()->role === \App\Enums\UserRole::KEPALA_SPPG && $trip->status === \App\Enums\TripStatus::IN_PROGRESS && ($closureReadiness['all_stops_handled'] ?? false))
+                <div class="p-5 rounded-2xl bg-amber-50 border-2 border-amber-300 text-xs space-y-3">
+                    <div class="flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-full bg-amber-600 text-white flex items-center justify-center font-bold text-xs">!</span>
+                        <h3 class="font-bold text-amber-900 text-sm">Otorisasi Penutupan Administratif</h3>
+                    </div>
+                    <p class="text-[11px] text-amber-800 leading-relaxed">
+                        Seluruh stop telah ditangani. Sebagai Kepala SPPG, Anda dapat menutup perjalanan secara administratif untuk menyelesaikan operasional harian.
+                    </p>
+
+                    @if (($closureReadiness['mode_b_unallocated_stops'] ?? 0) > 0)
+                        <div class="p-2.5 rounded-lg bg-white/80 border border-amber-300 text-[11px] text-amber-900">
+                            <strong>Peringatan Mode B:</strong> Terdapat {{ $closureReadiness['mode_b_unallocated_stops'] }} sekolah dengan serah terima darurat tanpa alokasi porsi. Nilai null tidak akan dimanipulasi atau diubah ke 0.
+                        </div>
+                    @endif
+
+                    <form action="{{ route('head.distribution.trips.close', $trip) }}" method="POST" class="space-y-2.5"
+                          onsubmit="return confirm('Apakah Anda yakin ingin menutup perjalanan ini secara administratif?');">
+                        @csrf
+                        <div>
+                            <label for="head_completion_notes" class="block text-[10px] font-bold text-amber-900 mb-1">Catatan Penutupan Administratif (Opsional):</label>
+                            <input type="text" name="completion_notes" id="head_completion_notes" placeholder="Catatan Kepala SPPG..." class="w-full text-xs p-2 rounded-lg border border-amber-300 bg-white">
+                        </div>
+                        <button type="submit" class="w-full min-h-[44px] py-2.5 px-4 rounded-xl font-bold text-xs bg-amber-700 text-white hover:bg-amber-800 transition-colors shadow-xs flex items-center justify-center gap-2 touch-target cursor-pointer">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                            <span>Tutup Perjalanan Administratif (Kepala SPPG)</span>
+                        </button>
+                    </form>
+                </div>
+            @endif
 
             <!-- Catatan Telemetri GPS Kejujuran Operasional -->
             <div class="p-4 rounded-xl bg-[#FAFBF9] border border-[#DCE5DD] text-xs text-[#53645B]">
@@ -246,10 +349,10 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
                     </svg>
-                    <span>Telemetri &amp; Pelacakan Real-time</span>
+                    <span>Telemetri &amp; Pelacakan Real-time (PBI-09 &amp; PBI-11)</span>
                 </div>
                 <p class="text-[11px] leading-relaxed">
-                    Pelacakan GPS aktif di lapangan dan pengembalian ompreng merupakan bagian dari <strong>PBI-09</strong>. Sistem tidak menyimulasikan rute palsu atau data lokasi buatan.
+                    Pelacakan GPS aktif di lapangan dan kepulangan armada ke SPPG menggunakan server timestamp aktual. Saat trip ditutup, sesi telemetri otomatis dialihkan ke status OFFLINE permanen.
                 </p>
             </div>
         </div>
