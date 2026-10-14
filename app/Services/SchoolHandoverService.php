@@ -97,7 +97,12 @@ class SchoolHandoverService
             }
 
             $now = Carbon::now();
-            $expectedPortions = $lockedStop->total_loaded_portions ?: (int) $lockedStop->planned_portions;
+            $expectedPortions = (int) ($lockedStop->deliveryItems->sum('loaded_portions') ?: $lockedStop->loaded_portions);
+            if ($expectedPortions <= 0) {
+                throw ValidationException::withMessages([
+                    'loaded_portions' => ['Muatan fisik stop ini bernilai 0 atau belum diverifikasi saat pemuatan. Tidak dapat menandai kedatangan tanpa manifest fisik sah.'],
+                ]);
+            }
 
             $lockedStop->update([
                 'status' => TripStopStatus::ARRIVED_AWAITING_CONFIRMATION,
@@ -139,260 +144,294 @@ class SchoolHandoverService
      */
     public function confirmReceipt(TripStop $stop, User $pic, array $data, ?UploadedFile $evidencePhoto = null): SchoolServiceRecord
     {
-        return DB::transaction(function () use ($stop, $pic, $data, $evidencePhoto) {
-            $lockedStop = TripStop::where('id', $stop->id)
-                ->with(['trip.stops', 'deliveryItems', 'schoolServiceRecord'])
-                ->lockForUpdate()
-                ->firstOrFail();
+        $storedFilePath = null;
 
-            $trip = Trip::where('id', $lockedStop->trip_id)
-                ->lockForUpdate()
-                ->firstOrFail();
+        try {
+            return DB::transaction(function () use ($stop, $pic, $data, $evidencePhoto, &$storedFilePath) {
+                $lockedStop = TripStop::where('id', $stop->id)
+                    ->with(['trip.stops', 'deliveryItems', 'schoolServiceRecord'])
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-            // 1. Role & Separation of Duties check
-            if ($pic->role !== UserRole::PIC_SEKOLAH) {
-                throw ValidationException::withMessages([
-                    'role' => ['Hanya petugas PIC Sekolah resmi yang berwenang memverifikasi dan menandatangani penerimaan makanan.'],
-                ]);
-            }
+                $trip = Trip::where('id', $lockedStop->trip_id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-            // Kurir cannot self-approve
-            if ((int) $pic->id === (int) $trip->driver_id) {
-                throw ValidationException::withMessages([
-                    'authorization' => ['Pelanggaran pemisahan tugas: Kurir pengantar tidak dapat mengonfirmasi penerimaan atas nama sekolah.'],
-                ]);
-            }
+                // 1. Role & Separation of Duties check
+                if ($pic->role !== UserRole::PIC_SEKOLAH) {
+                    throw ValidationException::withMessages([
+                        'role' => ['Hanya petugas PIC Sekolah resmi yang berwenang memverifikasi dan menandatangani penerimaan makanan.'],
+                    ]);
+                }
 
-            // Tenant isolation: PIC only accepts for their own assigned school
-            if ((int) $pic->school_id !== (int) $lockedStop->school_id) {
-                throw ValidationException::withMessages([
-                    'school' => ['Anda tidak memiliki otorisasi untuk menerima pengiriman sekolah lain.'],
-                ]);
-            }
+                // Kurir cannot self-approve
+                if ((int) $pic->id === (int) $trip->driver_id) {
+                    throw ValidationException::withMessages([
+                        'authorization' => ['Pelanggaran pemisahan tugas: Kurir pengantar tidak dapat mengonfirmasi penerimaan atas nama sekolah.'],
+                    ]);
+                }
 
-            // 2. Precondition: Stop must have ARRIVED
-            if (!in_array($lockedStop->status, [TripStopStatus::ARRIVED, TripStopStatus::ARRIVED_AWAITING_CONFIRMATION], true)) {
-                if (in_array($lockedStop->status, [TripStopStatus::HANDED_OVER, TripStopStatus::COMPLETED], true)) {
-                    // Idempotent return if already handed over
-                    $existing = SchoolServiceRecord::where('trip_stop_id', $lockedStop->id)->first();
-                    if ($existing && $existing->status !== SchoolReceiptStatus::WAITING) {
-                        return $existing;
+                // Tenant isolation: PIC only accepts for their own assigned school
+                if ((int) $pic->school_id !== (int) $lockedStop->school_id) {
+                    throw ValidationException::withMessages([
+                        'school' => ['Anda tidak memiliki otorisasi untuk menerima pengiriman sekolah lain.'],
+                    ]);
+                }
+
+                // Idempotency: If already confirmed, return the existing record without modifying any values
+                $existingRecord = SchoolServiceRecord::where('trip_stop_id', $lockedStop->id)->first();
+                if ($existingRecord && $existingRecord->isConfirmed()) {
+                    return $existingRecord;
+                }
+
+                // 2. Precondition: Stop must have ARRIVED
+                if (!in_array($lockedStop->status, [TripStopStatus::ARRIVED, TripStopStatus::ARRIVED_AWAITING_CONFIRMATION], true)) {
+                    throw new ConflictHttpException(
+                        "Kurir belum menandai kedatangan di sekolah. Serah terima hanya dapat dilakukan setelah status tiba (ARRIVED). Status saat ini: {$lockedStop->status->label()}."
+                    );
+                }
+
+                // 3. Portions calculation & validation (GATE B: Zero loaded portions fails safe)
+                $expectedPortions = (int) ($lockedStop->deliveryItems->sum('loaded_portions') ?: $lockedStop->loaded_portions);
+                if ($expectedPortions <= 0) {
+                    throw ValidationException::withMessages([
+                        'loaded_portions' => ['Muatan fisik stop ini bernilai 0 atau belum diverifikasi saat pemuatan. Tidak dapat membuat tanda terima tanpa manifest fisik sah.'],
+                    ]);
+                }
+
+                $receivedPortions = filter_var($data['received_portions'] ?? null, FILTER_VALIDATE_INT);
+                if ($receivedPortions === false || $receivedPortions < 0) {
+                    throw ValidationException::withMessages([
+                        'received_portions' => ['Jumlah porsi diterima wajib diisi dengan bilangan bulat positif atau 0.'],
+                    ]);
+                }
+
+                $damagedPortions = 0;
+                if (isset($data['damaged_portions']) && $data['damaged_portions'] !== '') {
+                    $val = filter_var($data['damaged_portions'], FILTER_VALIDATE_INT);
+                    if ($val === false || $val < 0) {
+                        throw ValidationException::withMessages([
+                            'damaged_portions' => ['Jumlah porsi rusak tidak boleh bernilai negatif.'],
+                        ]);
                     }
+                    $damagedPortions = $val;
                 }
 
-                throw new ConflictHttpException(
-                    "Kurir belum menandai kedatangan di sekolah. Serah terima hanya dapat dilakukan setelah status tiba (ARRIVED). Status saat ini: {$lockedStop->status->label()}."
-                );
-            }
-
-            // 3. Portions calculation & validation
-            $expectedPortions = $lockedStop->deliveryItems->sum('loaded_portions') ?: (int) $lockedStop->planned_portions;
-            if ($expectedPortions <= 0) {
-                $expectedPortions = (int) $lockedStop->planned_portions;
-            }
-
-            $receivedPortions = filter_var($data['received_portions'] ?? null, FILTER_VALIDATE_INT);
-            if ($receivedPortions === false || $receivedPortions < 0) {
-                throw ValidationException::withMessages([
-                    'received_portions' => ['Jumlah porsi diterima wajib diisi dengan bilangan bulat positif atau 0.'],
-                ]);
-            }
-
-            $damagedPortions = 0;
-            if (isset($data['damaged_portions']) && $data['damaged_portions'] !== '') {
-                $val = filter_var($data['damaged_portions'], FILTER_VALIDATE_INT);
-                if ($val === false || $val < 0) {
+                if ($damagedPortions > $receivedPortions) {
                     throw ValidationException::withMessages([
-                        'damaged_portions' => ['Jumlah porsi rusak tidak boleh bernilai negatif.'],
+                        'damaged_portions' => ['Jumlah porsi rusak tidak boleh melebihi jumlah porsi fisik yang diterima.'],
                     ]);
                 }
-                $damagedPortions = $val;
-            }
 
-            if ($damagedPortions > $receivedPortions) {
-                throw ValidationException::withMessages([
-                    'damaged_portions' => ['Jumlah porsi rusak tidak boleh melebihi jumlah porsi fisik yang diterima.'],
-                ]);
-            }
-
-            // Disallow unauthorized over-receipt without official manifest escalation
-            if ($receivedPortions > ($expectedPortions * 1.5)) {
-                throw ValidationException::withMessages([
-                    'received_portions' => ["Jumlah porsi yang diterima ({$receivedPortions}) melebihi ambang manifest resmi ({$expectedPortions} porsi)."],
-                ]);
-            }
-
-            $shortagePortions = max(0, $expectedPortions - $receivedPortions);
-
-            // 4. Organoleptic Quality Check on Arrival
-            $appearanceOk = filter_var($data['appearance_ok'] ?? false, FILTER_VALIDATE_BOOLEAN);
-            $aromaOk = filter_var($data['aroma_ok'] ?? false, FILTER_VALIDATE_BOOLEAN);
-            $textureOk = filter_var($data['texture_ok'] ?? false, FILTER_VALIDATE_BOOLEAN);
-            $tasteTested = filter_var($data['taste_tested'] ?? false, FILTER_VALIDATE_BOOLEAN);
-            $tasteOk = isset($data['taste_ok']) ? filter_var($data['taste_ok'], FILTER_VALIDATE_BOOLEAN) : null;
-            $tasteSkippedReason = isset($data['taste_skipped_reason']) ? trim((string) $data['taste_skipped_reason']) : null;
-
-            // Food Safety: Do NOT force tasting if food is suspected spoiled or damaged!
-            if (!$appearanceOk || !$aromaOk) {
-                if ($tasteTested && $tasteOk === true) {
+                // Disallow unauthorized over-receipt beyond 150% threshold
+                if ($receivedPortions > ($expectedPortions * 1.5)) {
                     throw ValidationException::withMessages([
-                        'taste_tested' => ['Makanan dengan rupa atau aroma tidak wajar dilarang dicicipi demi keamanan petugas/siswa.'],
+                        'received_portions' => ["Jumlah porsi yang diterima ({$receivedPortions}) melebihi ambang batas toleransi manifest resmi ({$expectedPortions} porsi)."],
                     ]);
                 }
-            }
 
-            $tempC = null;
-            if (isset($data['temperature_c']) && $data['temperature_c'] !== '') {
-                $val = filter_var($data['temperature_c'], FILTER_VALIDATE_FLOAT);
-                if ($val !== false) {
-                    $tempC = $val;
-                }
-            }
+                $shortagePortions = max(0, $expectedPortions - $receivedPortions);
+                $overagePortions = max(0, $receivedPortions - $expectedPortions);
+                $notes = isset($data['notes']) ? trim((string) $data['notes']) : null;
 
-            // Conclusion evaluation
-            $rawConclusion = $data['conclusion'] ?? null;
-            if ($rawConclusion instanceof QualityCheckConclusion) {
-                $conclusion = $rawConclusion;
-            } elseif (is_string($rawConclusion) && in_array(strtoupper($rawConclusion), ['SAFE', 'UNSAFE', 'HOLD'], true)) {
-                $conclusion = QualityCheckConclusion::from(strtoupper($rawConclusion));
-            } else {
-                // Derived conclusion from checks
-                if (!$appearanceOk || !$aromaOk || !$textureOk || ($tasteTested && $tasteOk === false)) {
-                    $conclusion = QualityCheckConclusion::UNSAFE;
-                } else {
-                    $conclusion = QualityCheckConclusion::SAFE;
-                }
-            }
-
-            // Invariant: Unsafe sensory checks CANNOT be marked SAFE
-            if ((!$appearanceOk || !$aromaOk || !$textureOk) && $conclusion === QualityCheckConclusion::SAFE) {
-                throw ValidationException::withMessages([
-                    'conclusion' => ['Hasil pemeriksaan organoleptik yang tidak normal tidak dapat dinyatakan Lolos QC (SAFE).'],
-                ]);
-            }
-
-            $primaryBatchId = $lockedStop->deliveryItems->first()?->food_batch_id;
-            if (!$primaryBatchId) {
-                // Fallback batch from trip if not linked on items
-                $firstItem = \App\Models\DeliveryItem::whereHas('tripStop', function ($q) use ($trip) {
-                    $q->where('trip_id', $trip->id);
-                })->first();
-                $primaryBatchId = $firstItem?->food_batch_id;
-            }
-
-            // Save Arrival Quality Check
-            if ($primaryBatchId) {
-                QualityCheck::create([
-                    'food_batch_id' => $primaryBatchId,
-                    'trip_stop_id' => $lockedStop->id,
-                    'check_stage' => QualityCheckStage::ON_ARRIVAL,
-                    'checked_by' => $pic->id,
-                    'appearance_ok' => $appearanceOk,
-                    'aroma_ok' => $aromaOk,
-                    'texture_ok' => $textureOk,
-                    'taste_tested' => $tasteTested,
-                    'taste_ok' => $tasteOk,
-                    'taste_skipped_reason' => $tasteSkippedReason,
-                    'temperature_c' => $tempC,
-                    'accepted_portions' => $conclusion === QualityCheckConclusion::SAFE ? $receivedPortions : 0,
-                    'rejected_portions' => $conclusion === QualityCheckConclusion::SAFE ? $damagedPortions : $receivedPortions,
-                    'conclusion' => $conclusion,
-                    'notes' => $data['notes'] ?? null,
-                    'checked_at' => Carbon::now(),
-                ]);
-            }
-
-            $now = Carbon::now();
-            $notes = $data['notes'] ?? null;
-
-            // 5. Decision & State Machine Transitions
-            if ($conclusion === QualityCheckConclusion::UNSAFE || $conclusion === QualityCheckConclusion::HOLD) {
-                // QC FAILED -> HOLD delivery for food safety!
-                $receiptStatus = SchoolReceiptStatus::HELD;
-                $lockedStop->update([
-                    'status' => TripStopStatus::EXCEPTION,
-                ]);
-            } else {
-                // QC PASSED
-                if ($shortagePortions > 0 || $damagedPortions > 0) {
+                // GATE C: Discrepancy enforcement
+                if ($shortagePortions > 0 || $damagedPortions > 0 || $overagePortions > 0) {
                     $receiptStatus = SchoolReceiptStatus::RECEIVED_WITH_DISCREPANCY;
+                    if (empty($notes)) {
+                        throw ValidationException::withMessages([
+                            'notes' => ['Catatan penjelasan wajib diisi jika terdapat selisih jumlah porsi (kurang/lebih) atau porsi makanan rusak.'],
+                        ]);
+                    }
                 } else {
                     $receiptStatus = SchoolReceiptStatus::RECEIVED;
                 }
 
-                $lockedStop->update([
-                    'status' => TripStopStatus::HANDED_OVER,
-                    'handed_over_at' => $now,
-                ]);
+                // 4. Organoleptic Quality Check on Arrival
+                $appearanceOk = filter_var($data['appearance_ok'] ?? false, FILTER_VALIDATE_BOOLEAN);
+                $aromaOk = filter_var($data['aroma_ok'] ?? false, FILTER_VALIDATE_BOOLEAN);
+                $textureOk = filter_var($data['texture_ok'] ?? false, FILTER_VALIDATE_BOOLEAN);
+                $tasteTested = filter_var($data['taste_tested'] ?? false, FILTER_VALIDATE_BOOLEAN);
+                $tasteOk = isset($data['taste_ok']) ? filter_var($data['taste_ok'], FILTER_VALIDATE_BOOLEAN) : null;
+                $tasteSkippedReason = isset($data['taste_skipped_reason']) ? trim((string) $data['taste_skipped_reason']) : null;
 
-                // Update delivered_portions on items
-                foreach ($lockedStop->deliveryItems as $item) {
-                    $item->update([
-                        'delivered_portions' => $receivedPortions,
+                // Food Safety: Do NOT force tasting if food is suspected spoiled or damaged!
+                if (!$appearanceOk || !$aromaOk) {
+                    if ($tasteTested && $tasteOk === true) {
+                        throw ValidationException::withMessages([
+                            'taste_tested' => ['Makanan dengan rupa atau aroma tidak wajar dilarang dicicipi demi keamanan petugas/siswa.'],
+                        ]);
+                    }
+                }
+
+                $tempC = null;
+                if (isset($data['temperature_c']) && $data['temperature_c'] !== '') {
+                    $val = filter_var($data['temperature_c'], FILTER_VALIDATE_FLOAT);
+                    if ($val !== false) {
+                        $tempC = $val;
+                    }
+                }
+
+                // Conclusion evaluation
+                $rawConclusion = $data['conclusion'] ?? null;
+                if ($rawConclusion instanceof QualityCheckConclusion) {
+                    $conclusion = $rawConclusion;
+                } elseif (is_string($rawConclusion) && in_array(strtoupper($rawConclusion), ['SAFE', 'UNSAFE', 'HOLD'], true)) {
+                    $conclusion = QualityCheckConclusion::from(strtoupper($rawConclusion));
+                } else {
+                    // Derived conclusion from checks
+                    if (!$appearanceOk || !$aromaOk || !$textureOk || ($tasteTested && $tasteOk === false)) {
+                        $conclusion = QualityCheckConclusion::UNSAFE;
+                    } else {
+                        $conclusion = QualityCheckConclusion::SAFE;
+                    }
+                }
+
+                // Invariant: Unsafe sensory checks CANNOT be marked SAFE
+                if ((!$appearanceOk || !$aromaOk || !$textureOk || ($tasteTested && $tasteOk === false)) && $conclusion === QualityCheckConclusion::SAFE) {
+                    throw ValidationException::withMessages([
+                        'conclusion' => ['Hasil pemeriksaan organoleptik yang tidak normal tidak dapat dinyatakan Lolos QC (SAFE).'],
                     ]);
                 }
 
-                // 6. NEXT STOP ACTIVATION
-                // The immediate next sequence pending stop becomes EN_ROUTE
-                $nextStop = TripStop::where('trip_id', $trip->id)
-                    ->where('sequence_number', '>', $lockedStop->sequence_number)
-                    ->where('status', TripStopStatus::PENDING)
-                    ->orderBy('sequence_number')
-                    ->first();
+                // GATE E: Batch Provenance — Only check batches on this stop's delivery items. NEVER fall back cross-stop!
+                $distinctBatches = $lockedStop->deliveryItems->pluck('food_batch_id')->filter()->unique();
+                if ($distinctBatches->isEmpty()) {
+                    throw ValidationException::withMessages([
+                        'batches' => ['Pemberhentian ini tidak memiliki alokasi batch makanan yang sah pada manifest pengiriman.'],
+                    ]);
+                }
 
-                if ($nextStop) {
-                    $nextStop->update([
-                        'status' => TripStopStatus::EN_ROUTE,
+                // Consistent QC portions calculation (GATE D)
+                $totalAccepted = ($conclusion === QualityCheckConclusion::SAFE) ? max(0, $receivedPortions - $damagedPortions) : 0;
+                $totalRejected = ($conclusion === QualityCheckConclusion::SAFE) ? $damagedPortions : $receivedPortions;
+
+                // Record QC for each distinct batch of this stop
+                $batchCount = $distinctBatches->count();
+                foreach ($distinctBatches as $batchId) {
+                    QualityCheck::create([
+                        'food_batch_id' => $batchId,
+                        'trip_stop_id' => $lockedStop->id,
+                        'check_stage' => QualityCheckStage::ON_ARRIVAL,
+                        'checked_by' => $pic->id,
+                        'appearance_ok' => $appearanceOk,
+                        'aroma_ok' => $aromaOk,
+                        'texture_ok' => $textureOk,
+                        'taste_tested' => $tasteTested,
+                        'taste_ok' => $tasteOk,
+                        'taste_skipped_reason' => $tasteSkippedReason,
+                        'temperature_c' => $tempC,
+                        'accepted_portions' => (int) round($totalAccepted / $batchCount),
+                        'rejected_portions' => (int) round($totalRejected / $batchCount),
+                        'conclusion' => $conclusion,
+                        'notes' => $notes,
+                        'checked_at' => Carbon::now(),
+                    ]);
+                }
+
+                $now = Carbon::now();
+
+                // 5. Decision & State Machine Transitions
+                if ($conclusion === QualityCheckConclusion::UNSAFE || $conclusion === QualityCheckConclusion::HOLD) {
+                    // QC FAILED -> HOLD delivery for food safety!
+                    $receiptStatus = SchoolReceiptStatus::HELD;
+                    $lockedStop->update([
+                        'status' => TripStopStatus::EXCEPTION,
+                    ]);
+                } else {
+                    $lockedStop->update([
+                        'status' => TripStopStatus::HANDED_OVER,
+                        'handed_over_at' => $now,
                     ]);
 
-                    ActivityLog::record(
-                        event: 'trip_stop.activated_en_route',
-                        auditable: $nextStop,
-                        actor: $pic,
-                        newValues: [
-                            'status' => TripStopStatus::EN_ROUTE->value,
-                            'activated_after_stop_id' => $lockedStop->id,
-                        ]
-                    );
+                    // GATE A: Multi-batch portion distribution without duplicate counting
+                    $remainingDelivered = $receivedPortions;
+                    $totalItems = $lockedStop->deliveryItems->count();
+
+                    foreach ($lockedStop->deliveryItems as $index => $item) {
+                        $itemLoaded = (int) ($item->loaded_portions ?: $item->planned_portions);
+                        $allocated = min($itemLoaded, $remainingDelivered);
+
+                        // If last item, allocate any remaining portions (handles over-receipt or exact balance)
+                        if ($index === $totalItems - 1) {
+                            $allocated = $remainingDelivered;
+                        }
+
+                        $item->update([
+                            'delivered_portions' => $allocated,
+                        ]);
+
+                        $remainingDelivered = max(0, $remainingDelivered - $allocated);
+                    }
+
+                    // 6. NEXT STOP ACTIVATION (GATE I)
+                    // Only activate next pending stop if current stop was successfully handed over
+                    $nextStop = TripStop::where('trip_id', $trip->id)
+                        ->where('sequence_number', '>', $lockedStop->sequence_number)
+                        ->where('status', TripStopStatus::PENDING)
+                        ->orderBy('sequence_number')
+                        ->first();
+
+                    if ($nextStop) {
+                        $nextStop->update([
+                            'status' => TripStopStatus::EN_ROUTE,
+                        ]);
+
+                        ActivityLog::record(
+                            event: 'trip_stop.activated_en_route',
+                            auditable: $nextStop,
+                            actor: $pic,
+                            newValues: [
+                                'status' => TripStopStatus::EN_ROUTE->value,
+                                'activated_after_stop_id' => $lockedStop->id,
+                            ]
+                        );
+                    }
                 }
+
+                // Persist SchoolServiceRecord
+                $serviceRecord = SchoolServiceRecord::updateOrCreate(
+                    ['trip_stop_id' => $lockedStop->id],
+                    [
+                        'received_by' => $pic->id,
+                        'received_at' => $now,
+                        'expected_portions' => $expectedPortions,
+                        'received_portions' => $receivedPortions,
+                        'damaged_portions' => $damagedPortions,
+                        'shortage_portions' => $shortagePortions,
+                        'status' => $receiptStatus,
+                        'notes' => $notes,
+                    ]
+                );
+
+                // Store evidence photo if provided (GATE F: with orphan cleanup tracking)
+                if ($evidencePhoto) {
+                    $photoModel = $this->storeRecordEvidence($serviceRecord, $pic, $evidencePhoto, 'RECEIPT_CONFIRMATION', $notes);
+                    $storedFilePath = $photoModel->file_path;
+                }
+
+                ActivityLog::record(
+                    event: 'school_service.receipt_confirmed',
+                    auditable: $serviceRecord,
+                    actor: $pic,
+                    newValues: [
+                        'status' => $receiptStatus->value,
+                        'expected_portions' => $expectedPortions,
+                        'received_portions' => $receivedPortions,
+                        'damaged_portions' => $damagedPortions,
+                        'shortage_portions' => $shortagePortions,
+                        'conclusion' => $conclusion->value,
+                    ]
+                );
+
+                return $serviceRecord;
+            });
+        } catch (\Throwable $e) {
+            // Clean up orphan file if database transaction rolled back
+            if ($storedFilePath && Storage::disk('local')->exists($storedFilePath)) {
+                Storage::disk('local')->delete($storedFilePath);
             }
-
-            // Persist SchoolServiceRecord
-            $serviceRecord = SchoolServiceRecord::updateOrCreate(
-                ['trip_stop_id' => $lockedStop->id],
-                [
-                    'received_by' => $pic->id,
-                    'received_at' => $now,
-                    'expected_portions' => $expectedPortions,
-                    'received_portions' => $receivedPortions,
-                    'damaged_portions' => $damagedPortions,
-                    'shortage_portions' => $shortagePortions,
-                    'status' => $receiptStatus,
-                    'notes' => $notes,
-                ]
-            );
-
-            // Store evidence photo if provided
-            if ($evidencePhoto) {
-                $this->storeRecordEvidence($serviceRecord, $pic, $evidencePhoto, 'RECEIPT_CONFIRMATION', $notes);
-            }
-
-            ActivityLog::record(
-                event: 'school_service.receipt_confirmed',
-                auditable: $serviceRecord,
-                actor: $pic,
-                newValues: [
-                    'status' => $receiptStatus->value,
-                    'expected_portions' => $expectedPortions,
-                    'received_portions' => $receivedPortions,
-                    'damaged_portions' => $damagedPortions,
-                    'shortage_portions' => $shortagePortions,
-                    'conclusion' => $conclusion->value,
-                ]
-            );
-
-            return $serviceRecord;
-        });
+            throw $e;
+        }
     }
 
     /**

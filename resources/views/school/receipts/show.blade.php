@@ -67,7 +67,7 @@
             $isConfirmed = $serviceRecord && $serviceRecord->isConfirmed();
             $arrivalQc = $stop->qualityChecks->where('check_stage', \App\Enums\QualityCheckStage::ON_ARRIVAL)->sortByDesc('created_at')->first();
             $driverPhoto = $stop->evidencePhotos->where('evidence_type', 'SCHOOL_HANDOVER')->sortByDesc('created_at')->first();
-            $expectedPortions = $serviceRecord?->expected_portions ?: ($stop->loaded_portions ?: $stop->planned_portions);
+            $expectedPortions = $serviceRecord?->expected_portions ?: ((int) ($stop->deliveryItems->sum('loaded_portions') ?: $stop->loaded_portions));
         @endphp
 
         <!-- Tampilan Sertifikat / Berita Acara Penerimaan (Read-only jika sudah dikonfirmasi) -->
@@ -207,6 +207,46 @@
 
                     <!-- Kolom Kiri (7 Kolom): Manifest Porsi & Organoleptik -->
                     <div class="lg:col-span-7 space-y-6">
+
+                        @if ($expectedPortions <= 0)
+                            <div class="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs space-y-1">
+                                <strong class="font-bold flex items-center gap-1.5 text-rose-900">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                                    </svg>
+                                    MANIFEST MUATAN TIDAK VALID / BELUM DIMUAT
+                                </strong>
+                                <p>Jumlah porsi fisik termuat (loaded portions) pada armada bernilai 0. Tanda terima fisik tidak dapat diproses tanpa verifikasi muatan dari SPPG.</p>
+                            </div>
+                        @endif
+
+                        @if ($stop->deliveryItems->count() > 1)
+                            <div class="bg-white rounded-2xl border border-[#DCE5DD] p-4 shadow-xs space-y-3">
+                                <div class="flex items-center justify-between pb-2 border-b border-[#EDF2ED]">
+                                    <h3 class="text-xs font-bold text-[#172923] uppercase tracking-wider flex items-center gap-1.5">
+                                        <svg class="w-4 h-4 text-[#1C6654]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                                        </svg>
+                                        Rincian Multi-Batch Pengiriman ({{ $stop->deliveryItems->count() }} Batch)
+                                    </h3>
+                                    <span class="text-xs font-bold text-[#1C6654] tabular-nums">Total: {{ $expectedPortions }} Porsi</span>
+                                </div>
+                                <div class="space-y-2">
+                                    @foreach ($stop->deliveryItems as $item)
+                                        <div class="p-2.5 rounded-xl bg-[#F5F7F3] border border-[#DCE5DD] flex items-center justify-between text-xs">
+                                            <div>
+                                                <span class="font-mono font-bold text-[#1C6654]">{{ $item->foodBatch?->batch_code ?? 'BATCH-' . $item->id }}</span>
+                                                <span class="text-[11px] text-[#53645B] block">{{ $item->foodBatch?->menu?->recipe_name ?? 'Menu MBG' }}</span>
+                                            </div>
+                                            <div class="text-right">
+                                                <span class="font-bold text-[#172923] tabular-nums">{{ $item->loaded_portions ?? 0 }} Porsi</span>
+                                                <span class="text-[10px] text-[#708177] block">Dimuat di SPPG</span>
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </div>
+                        @endif
 
                         <!-- 1. Rekonsiliasi Jumlah Porsi Fisik -->
                         <div class="bg-white rounded-2xl border border-[#DCE5DD] p-5 shadow-xs space-y-4">

@@ -47,7 +47,7 @@ class SchoolReceiptController extends Controller
      */
     public function show(Request $request, TripStop $stop): View
     {
-        Gate::authorize('confirmReceipt', $stop);
+        Gate::authorize('viewReceipt', $stop);
 
         $stop->loadMissing([
             'trip.driver',

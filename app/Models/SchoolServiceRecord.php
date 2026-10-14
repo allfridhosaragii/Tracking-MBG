@@ -61,4 +61,32 @@ class SchoolServiceRecord extends Model
     {
         return $this->morphMany(EvidencePhoto::class, 'evidenceable');
     }
+
+    /**
+     * Check if the service record has reached an officially confirmed state.
+     * All states other than WAITING represent confirmed decisions.
+     */
+    public function isConfirmed(): bool
+    {
+        return $this->status !== null && $this->status !== SchoolReceiptStatus::WAITING;
+    }
+
+    public function isHeld(): bool
+    {
+        return $this->status === SchoolReceiptStatus::HELD;
+    }
+
+    public function isRejected(): bool
+    {
+        return $this->status === SchoolReceiptStatus::REJECTED;
+    }
+
+    public function hasDiscrepancy(): bool
+    {
+        return $this->status === SchoolReceiptStatus::RECEIVED_WITH_DISCREPANCY
+            || (int) $this->damaged_portions > 0
+            || (int) $this->shortage_portions > 0
+            || ($this->received_portions !== null && (int) $this->received_portions > (int) $this->expected_portions);
+    }
 }
+

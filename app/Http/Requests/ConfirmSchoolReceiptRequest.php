@@ -70,6 +70,64 @@ class ConfirmSchoolReceiptRequest extends FormRequest
         ];
     }
 
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator) {
+            $stop = $this->route('stop');
+            if (!$stop instanceof TripStop) {
+                $stop = TripStop::with('deliveryItems')->find($stop);
+            }
+
+            if ($stop) {
+                $loadedPortions = (int) ($stop->deliveryItems->sum('loaded_portions') ?: $stop->loaded_portions);
+                if ($loadedPortions <= 0) {
+                    $validator->errors()->add(
+                        'loaded_portions',
+                        'Muatan fisik stop ini bernilai 0 atau belum diverifikasi saat pemuatan. Tidak dapat membuat tanda terima tanpa manifest fisik sah.'
+                    );
+                }
+
+                $received = filter_var($this->input('received_portions'), FILTER_VALIDATE_INT);
+                $damaged = filter_var($this->input('damaged_portions', 0), FILTER_VALIDATE_INT) ?: 0;
+                $notes = trim((string) $this->input('notes', ''));
+
+                if ($received !== false && $loadedPortions > 0) {
+                    $hasDiscrepancy = ($received !== $loadedPortions) || ($damaged > 0);
+                    if ($hasDiscrepancy && empty($notes)) {
+                        $validator->errors()->add(
+                            'notes',
+                            'Catatan keterangan wajib diisi jika terdapat selisih jumlah porsi (kurang/lebih) atau porsi makanan rusak.'
+                        );
+                    }
+                }
+            }
+
+            // Food Safety: conclusion=SAFE CANNOT ignore negative sensory checks
+            $appearanceOk = filter_var($this->input('appearance_ok'), FILTER_VALIDATE_BOOLEAN);
+            $aromaOk = filter_var($this->input('aroma_ok'), FILTER_VALIDATE_BOOLEAN);
+            $textureOk = filter_var($this->input('texture_ok'), FILTER_VALIDATE_BOOLEAN);
+            $tasteTested = filter_var($this->input('taste_tested'), FILTER_VALIDATE_BOOLEAN);
+            $tasteOk = $this->has('taste_ok') ? filter_var($this->input('taste_ok'), FILTER_VALIDATE_BOOLEAN) : null;
+            $conclusion = strtoupper((string) $this->input('conclusion', 'SAFE'));
+
+            if ($conclusion === 'SAFE') {
+                if (!$appearanceOk || !$aromaOk || !$textureOk) {
+                    $validator->errors()->add(
+                        'conclusion',
+                        'Kesimpulan Lolos QC (SAFE) ditolak: Makanan dengan rupa, aroma, atau tekstur tidak wajar tidak dapat dinyatakan aman.'
+                    );
+                }
+
+                if ($tasteTested && $tasteOk === false) {
+                    $validator->errors()->add(
+                        'conclusion',
+                        'Kesimpulan Lolos QC (SAFE) ditolak: Hasil pencicipan rasa terindikasi tidak layak/gagal.'
+                    );
+                }
+            }
+        });
+    }
+
     public function messages(): array
     {
         return [
