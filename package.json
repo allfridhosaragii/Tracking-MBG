@@ -5,7 +5,7 @@
     "scripts": {
         "build": "vite build",
         "dev": "vite",
-        "test": "node --test tests/js/dispatch-map-regression.test.mjs"
+        "test": "node --test tests/js/dispatch-map-regression.test.mjs tests/js/runtime-map-and-tracking.test.mjs"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",

@@ -680,7 +680,7 @@ class Pbi09GpsTrackingTest extends TestCase
     }
 
     /**
-     * Requirement C: Driver submitting new telemetry after stop resets ONLINE status.
+     * Requirement C: Driver restarting session and submitting new telemetry resets ONLINE status.
      */
     public function test_driver_submitting_new_telemetry_resets_online_status(): void
     {
@@ -688,7 +688,14 @@ class Pbi09GpsTrackingTest extends TestCase
             'last_location_at' => Carbon::now()->subMinutes(5),
             'tracking_status' => 'SHARING_STOPPED',
             'tracking_ended_at' => Carbon::now()->subMinutes(5),
+            'active_tracking_session_id' => null,
         ]);
+
+        // Resuming sharing requires server-authoritative session initialization (Gate A)
+        $startRes = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $startRes->assertStatus(200);
+        $sessionId = $startRes->json('session_id');
 
         $response = $this->actingAs($this->driverA)
             ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
@@ -696,6 +703,7 @@ class Pbi09GpsTrackingTest extends TestCase
                 'longitude' => 112.736000,
                 'accuracy' => 9.0,
                 'recorded_at' => Carbon::now()->toIso8601String(),
+                'session_id' => $sessionId,
             ]);
 
         $response->assertStatus(200);
@@ -921,6 +929,274 @@ class Pbi09GpsTrackingTest extends TestCase
             'latitude' => -7.251000,
             'longitude' => 112.769000,
         ]);
+    }
+
+    /**
+     * Skenario A: Sesi A aktif -> Stop A tertunda -> Sesi B aktif -> Stop A tiba -> Sesi B tetap aktif.
+     */
+    public function test_scenario_a_delayed_stop_from_old_session_does_not_cancel_new_session(): void
+    {
+        // 1. Driver starts Session A via authenticated endpoint
+        $startResA = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $startResA->assertStatus(200);
+        $sessionIdA = $startResA->json('session_id');
+        $this->assertNotEmpty($sessionIdA);
+
+        $this->inProgressTrip->refresh();
+        $this->assertEquals($sessionIdA, $this->inProgressTrip->active_tracking_session_id);
+        $this->assertEquals('ONLINE', $this->inProgressTrip->tracking_status);
+
+        // 2. Client captures stop request data for Session A, but request is delayed on network
+        $stopTimeA = Carbon::now()->toIso8601String();
+
+        // 3. Driver starts Session B (e.g. re-enables GPS after momentary disconnection)
+        $startResB = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $startResB->assertStatus(200);
+        $sessionIdB = $startResB->json('session_id');
+        $this->assertNotEquals($sessionIdA, $sessionIdB);
+
+        $this->inProgressTrip->refresh();
+        $this->assertEquals($sessionIdB, $this->inProgressTrip->active_tracking_session_id);
+
+        // 4. Delayed Stop request for Session A arrives at server
+        $stopResA = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.stop', $this->inProgressTrip), [
+                'session_id' => $sessionIdA,
+                'stopped_at' => $stopTimeA,
+            ]);
+        $stopResA->assertStatus(200);
+        $stopResA->assertJson([
+            'success' => true,
+            'tracking_status' => 'ONLINE',
+            'is_stale_stop' => true,
+        ]);
+
+        // 5. Assert Session B remains ACTIVE and untouched
+        $this->inProgressTrip->refresh();
+        $this->assertEquals($sessionIdB, $this->inProgressTrip->active_tracking_session_id);
+        $this->assertEquals('ONLINE', $this->inProgressTrip->tracking_status);
+        $this->assertNull($this->inProgressTrip->tracking_ended_at);
+    }
+
+    /**
+     * Skenario B: Sesi A aktif -> Stop A berhasil -> telemetry A tertunda tiba -> sesi A tidak hidup kembali.
+     */
+    public function test_scenario_b_delayed_telemetry_after_stop_does_not_revive_stopped_session(): void
+    {
+        // 1. Session A starts
+        $startResA = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $startResA->assertStatus(200);
+        $sessionIdA = $startResA->json('session_id');
+
+        // 2. Stop A succeeds
+        $stopResA = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.stop', $this->inProgressTrip), [
+                'session_id' => $sessionIdA,
+                'stopped_at' => Carbon::now()->toIso8601String(),
+            ]);
+        $stopResA->assertStatus(200);
+        $stopResA->assertJson([
+            'success' => true,
+            'tracking_status' => 'SHARING_STOPPED',
+            'is_stale_stop' => false,
+        ]);
+
+        $this->inProgressTrip->refresh();
+        $this->assertEquals('SHARING_STOPPED', $this->inProgressTrip->tracking_status);
+        $this->assertNull($this->inProgressTrip->active_tracking_session_id);
+
+        // 3. Delayed telemetry from Session A arrives
+        $telemetryRes = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
+                'latitude' => -7.252000,
+                'longitude' => 112.768000,
+                'accuracy' => 10.0,
+                'recorded_at' => Carbon::now()->subSeconds(10)->toIso8601String(),
+                'session_id' => $sessionIdA,
+            ]);
+        $telemetryRes->assertStatus(200);
+        $telemetryRes->assertJson([
+            'success' => true,
+            'tracking_status' => 'SHARING_STOPPED',
+            'is_stale_telemetry' => true,
+        ]);
+
+        // 4. Status must NOT revive to ONLINE
+        $this->inProgressTrip->refresh();
+        $this->assertEquals('SHARING_STOPPED', $this->inProgressTrip->tracking_status);
+        $this->assertNull($this->inProgressTrip->active_tracking_session_id);
+    }
+
+    /**
+     * Skenario C: Sesi A aktif -> Stop A -> Sesi B aktif -> telemetry B valid -> status ONLINE.
+     */
+    public function test_scenario_c_stopped_session_can_be_restarted_with_new_session_and_valid_telemetry(): void
+    {
+        // 1. Session A starts and stops
+        $startResA = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $sessionIdA = $startResA->json('session_id');
+
+        $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.stop', $this->inProgressTrip), [
+                'session_id' => $sessionIdA,
+                'stopped_at' => Carbon::now()->toIso8601String(),
+            ])->assertStatus(200);
+
+        // 2. Session B starts
+        $startResB = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $sessionIdB = $startResB->json('session_id');
+
+        // 3. Telemetry with Session B arrives
+        $telemetryRes = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
+                'latitude' => -7.253000,
+                'longitude' => 112.769000,
+                'accuracy' => 8.0,
+                'recorded_at' => Carbon::now()->toIso8601String(),
+                'session_id' => $sessionIdB,
+            ]);
+        $telemetryRes->assertStatus(200);
+        $telemetryRes->assertJson([
+            'success' => true,
+            'tracking_status' => 'ONLINE',
+            'is_stale_telemetry' => false,
+        ]);
+
+        $this->inProgressTrip->refresh();
+        $this->assertEquals('ONLINE', $this->inProgressTrip->tracking_status);
+        $this->assertEquals($sessionIdB, $this->inProgressTrip->active_tracking_session_id);
+        $this->assertEquals(-7.253000, (float) $this->inProgressTrip->last_latitude);
+    }
+
+    /**
+     * Skenario D: Dua tab browser membuka trip yang sama, sesi baru menggantikan sesi lama secara aman.
+     */
+    public function test_scenario_d_two_browser_tabs_safely_transition_sessions(): void
+    {
+        // Tab 1 starts tracking
+        $resTab1 = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $session1 = $resTab1->json('session_id');
+
+        // Tab 2 opens trip and also starts tracking
+        $resTab2 = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $session2 = $resTab2->json('session_id');
+
+        $this->assertNotEquals($session1, $session2);
+        $this->inProgressTrip->refresh();
+        $this->assertEquals($session2, $this->inProgressTrip->active_tracking_session_id);
+
+        // Tab 1 tries to send telemetry with old session1
+        $telemetryTab1 = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry', $this->inProgressTrip), [
+                'latitude' => -7.254000,
+                'longitude' => 112.770000,
+                'accuracy' => 12.0,
+                'recorded_at' => Carbon::now()->toIso8601String(),
+                'session_id' => $session1,
+            ]);
+        $telemetryTab1->assertStatus(200);
+        $telemetryTab1->assertJson(['is_stale_telemetry' => true]);
+
+        // Tab 1 closes and fires stop for session1
+        $stopTab1 = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.stop', $this->inProgressTrip), [
+                'session_id' => $session1,
+                'stopped_at' => Carbon::now()->toIso8601String(),
+            ]);
+        $stopTab1->assertStatus(200);
+        $stopTab1->assertJson(['is_stale_stop' => true]);
+
+        // Tab 2's session2 remains completely active
+        $this->inProgressTrip->refresh();
+        $this->assertEquals($session2, $this->inProgressTrip->active_tracking_session_id);
+        $this->assertEquals('ONLINE', $this->inProgressTrip->tracking_status);
+    }
+
+    /**
+     * Skenario E: Browser ditutup ketika stop request belum terkirim. Server memakai status stale/offline secara jujur.
+     */
+    public function test_scenario_e_honest_staleness_and_offline_when_browser_closes_without_stop(): void
+    {
+        $trackingService = app(GpsTrackingService::class);
+
+        // Simulate last location recorded 3 minutes ago without explicit stop
+        $this->inProgressTrip->update([
+            'last_latitude' => -7.250445,
+            'last_longitude' => 112.768845,
+            'last_location_at' => Carbon::now()->subMinutes(3),
+            'tracking_status' => 'ONLINE',
+            'tracking_ended_at' => null,
+        ]);
+
+        $status = $trackingService->getDriverTrackingStatus($this->inProgressTrip);
+        $this->assertEquals('STALE', $status['status']);
+        $this->assertTrue($status['is_stale']);
+        $this->assertFalse($status['is_online']);
+
+        // Simulate last location recorded 15 minutes ago
+        $this->inProgressTrip->update([
+            'last_location_at' => Carbon::now()->subMinutes(15),
+        ]);
+
+        $statusOffline = $trackingService->getDriverTrackingStatus($this->inProgressTrip);
+        $this->assertEquals('OFFLINE', $statusOffline['status']);
+        $this->assertTrue($statusOffline['is_offline']);
+        $this->assertFalse($statusOffline['is_online']);
+    }
+
+    /**
+     * Skenario F: Stopped_at kosong, malformed, masa depan, atau di luar batas yang masuk akal harus ditangani tanpa HTTP 500.
+     */
+    public function test_scenario_f_stopped_at_edge_cases_handled_gracefully_without_http_500(): void
+    {
+        // 1. Session start
+        $startRes = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $sessionId = $startRes->json('session_id');
+
+        // Case F1: malformed string
+        $resMalformed = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.stop', $this->inProgressTrip), [
+                'session_id' => $sessionId,
+                'stopped_at' => 'NOT_A_VALID_DATE_TIME_STRING_12345',
+            ]);
+        $resMalformed->assertStatus(200);
+        $resMalformed->assertJson(['success' => true]);
+
+        // Re-start session
+        $startRes2 = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $sessionId2 = $startRes2->json('session_id');
+
+        // Case F2: far future date (5 days ahead)
+        $resFuture = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.stop', $this->inProgressTrip), [
+                'session_id' => $sessionId2,
+                'stopped_at' => Carbon::now()->addDays(5)->toIso8601String(),
+            ]);
+        $resFuture->assertStatus(200);
+        $resFuture->assertJson(['success' => true]);
+
+        // Re-start session
+        $startRes3 = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.start', $this->inProgressTrip));
+        $sessionId3 = $startRes3->json('session_id');
+
+        // Case F3: empty string
+        $resEmpty = $this->actingAs($this->driverA)
+            ->postJson(route('driver.trips.telemetry.stop', $this->inProgressTrip), [
+                'session_id' => $sessionId3,
+                'stopped_at' => '',
+            ]);
+        $resEmpty->assertStatus(200);
+        $resEmpty->assertJson(['success' => true]);
     }
 }
 

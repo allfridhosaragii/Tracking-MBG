@@ -123,11 +123,11 @@ describe('Dispatch Map & Telemetry JavaScript Regression Suite (PBI-09)', () => 
             'clearWatch must be invoked immediately upon stop for privacy'
         );
 
-        // Session sequencing
+        // Server-authoritative session UUID assignment
         assert.match(
             activeViewContent,
-            /currentSessionId\s*=\s*Date\.now\(\)/,
-            'Session generation sequencing must be initialized on start'
+            /currentSessionId\s*=\s*data\.session_id/,
+            'Server-authoritative session UUID must be assigned on start'
         );
 
         // Check HTTP response ok and Content-Type

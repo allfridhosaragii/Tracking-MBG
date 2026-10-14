@@ -13,6 +13,7 @@ class GpsLocation extends Model
     protected $fillable = [
         'trip_id',
         'driver_id',
+        'session_id',
         'latitude',
         'longitude',
         'accuracy_m',

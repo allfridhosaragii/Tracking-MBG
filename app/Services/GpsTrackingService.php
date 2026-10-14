@@ -11,10 +11,75 @@ use App\Models\TripStop;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class GpsTrackingService
 {
+    /**
+     * Start a new authenticated driver GPS tracking session with server-authoritative session UUID (Gate A).
+     * Enforces tenant check, driver assignment, and in-progress status.
+     * Generates a cryptographically secure UUID session identifier, sets tracking_status to ONLINE,
+     * and logs the session creation for audit integrity.
+     *
+     * @return array{session_id: string, started_at: string, tracking_status: string}
+     */
+    public function startDriverTracking(Trip $trip, User $driver): array
+    {
+        return DB::transaction(function () use ($trip, $driver) {
+            $lockedTrip = Trip::where('id', $trip->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ((int) $lockedTrip->driver_id !== (int) $driver->id) {
+                throw ValidationException::withMessages([
+                    'driver' => ['Anda bukan kurir yang ditugaskan untuk perjalanan ini.'],
+                ]);
+            }
+
+            if ((int) $lockedTrip->sppg_id !== (int) $driver->sppg_id) {
+                throw ValidationException::withMessages([
+                    'tenant' => ['Kurir berada di luar lingkup unit SPPG perjalanan ini.'],
+                ]);
+            }
+
+            if ($lockedTrip->status !== TripStatus::IN_PROGRESS) {
+                throw ValidationException::withMessages([
+                    'status' => [
+                        "Pelacakan GPS hanya dapat dimulai saat perjalanan berstatus AKTIF (IN_PROGRESS). Status saat ini: {$lockedTrip->status->label()}.",
+                    ],
+                ]);
+            }
+
+            $sessionId = (string) Str::uuid();
+            $now = Carbon::now();
+
+            $lockedTrip->update([
+                'active_tracking_session_id' => $sessionId,
+                'tracking_status' => 'ONLINE',
+                'tracking_started_at' => $now,
+                'tracking_ended_at' => null,
+            ]);
+
+            ActivityLog::record(
+                event: 'trip.tracking_started',
+                auditable: $lockedTrip,
+                actor: $driver,
+                newValues: [
+                    'tracking_status' => 'ONLINE',
+                    'session_id' => $sessionId,
+                    'started_at' => $now->toIso8601String(),
+                ]
+            );
+
+            return [
+                'session_id' => $sessionId,
+                'started_at' => $now->toIso8601String(),
+                'tracking_status' => 'ONLINE',
+            ];
+        });
+    }
+
     /**
      * Record authenticated driver's real GPS telemetry point during active trip.
      * Enforces tenant check, driver assignment, trip in-progress state, coordinate validity, and time skew check.
@@ -153,7 +218,9 @@ class GpsTrackingService
                 }
             }
 
-            // 8. Create historical telemetry record
+            // 8. Create historical telemetry record (always persisted for audit trail)
+            $sessionId = isset($data['session_id']) && $data['session_id'] !== '' ? (string) $data['session_id'] : null;
+
             $gpsLocation = GpsLocation::create([
                 'trip_id' => $lockedTrip->id,
                 'driver_id' => $driver->id,
@@ -164,17 +231,27 @@ class GpsTrackingService
                 'heading_deg' => $heading,
                 'recorded_at' => $recordedAt,
                 'received_at' => $now,
+                'session_id' => $sessionId,
             ]);
 
-            // 9. Chronological ordering enforcement for trip cache (Gate B)
-            // Only update latest trip location cache if this telemetry point is newer than existing latest
+            // 9. Chronological ordering & Server-Authoritative Session Enforcement (Gate B & C)
+            // Session integrity check:
+            // Telemetry can only update active trip location and set status to ONLINE if:
+            // (a) If active_tracking_session_id is set on trip, the telemetry session_id MUST match it.
+            // (b) If active_tracking_session_id is NULL, old telemetry from a closed session must NOT revive ONLINE status.
+            // (c) The trip is not explicitly stopped (tracking_status != 'SHARING_STOPPED' and (tracking_ended_at is null or recorded_at > tracking_ended_at)).
+            // (d) The telemetry recorded_at is newer than the trip's last_location_at.
+            $isMatchingSession = false;
+            if ($lockedTrip->active_tracking_session_id !== null) {
+                $isMatchingSession = ($sessionId !== null && hash_equals($lockedTrip->active_tracking_session_id, $sessionId));
+            } else {
+                $isMatchingSession = ($lockedTrip->tracking_status !== 'SHARING_STOPPED' && $lockedTrip->tracking_ended_at === null);
+            }
+
             $isNewer = $lockedTrip->last_location_at === null || $recordedAt->gt($lockedTrip->last_location_at);
+            $isNotStopped = $lockedTrip->tracking_status !== 'SHARING_STOPPED' && ($lockedTrip->tracking_ended_at === null || $recordedAt->gt($lockedTrip->tracking_ended_at));
 
-            // Race condition guard: If telemetry was recorded at or before an explicit stop event,
-            // it must not revive tracking_status to ONLINE or clear tracking_ended_at.
-            $isAfterStop = $lockedTrip->tracking_ended_at === null || $recordedAt->gt($lockedTrip->tracking_ended_at);
-
-            if ($isNewer && $isAfterStop) {
+            if ($isMatchingSession && $isNotStopped && $isNewer) {
                 $lockedTrip->update([
                     'last_latitude' => $lat,
                     'last_longitude' => $lng,
@@ -184,7 +261,7 @@ class GpsTrackingService
                     'tracking_started_at' => $lockedTrip->tracking_started_at ?: $now,
                     'tracking_ended_at' => null,
                 ]);
-            } elseif ($isNewer) {
+            } elseif ($isMatchingSession && $isNewer) {
                 // Update coordinates for audit trail, but maintain SHARING_STOPPED status
                 $lockedTrip->update([
                     'last_latitude' => $lat,
@@ -329,10 +406,12 @@ class GpsTrackingService
     /**
      * Stop driver GPS telemetry sharing explicitly (Gate C).
      * Synchronizes stopped tracking state to server while preserving last known location.
-     * Enforces out-of-order race condition guard: If a newer tracking session has started after
-     * the client stopped this session, the stale stop request is ignored to protect active sharing.
+     * Enforces server-authoritative session identity check and race condition guards:
+     * - If sessionId does not match active_tracking_session_id, the stale stop request is ignored.
+     * - If clientStoppedAt is malformed, in the distant past/future, or null, it is safely normalized.
+     * - Clears active_tracking_session_id to null upon valid stop.
      */
-    public function stopDriverTracking(Trip $trip, User $driver, ?string $clientStoppedAt = null, ?int $sessionId = null): Trip
+    public function stopDriverTracking(Trip $trip, User $driver, ?string $clientStoppedAt = null, string|int|null $sessionId = null): Trip
     {
         return DB::transaction(function () use ($trip, $driver, $clientStoppedAt, $sessionId) {
             $lockedTrip = Trip::where('id', $trip->id)
@@ -352,15 +431,42 @@ class GpsTrackingService
             }
 
             $now = Carbon::now();
-            $stoppedAt = $clientStoppedAt ? Carbon::parse($clientStoppedAt) : $now;
+            $stoppedAt = $now;
 
-            // Race condition check: If a newer session has started AFTER client initiated this stop
-            if ($lockedTrip->tracking_started_at !== null && $lockedTrip->tracking_started_at->gt($stoppedAt)) {
-                // Return trip as-is without reverting tracking_status to SHARING_STOPPED
-                return $lockedTrip;
+            // Scenario F: Safe parsing of clientStoppedAt (handle null, malformed, future, or past bounds without HTTP 500)
+            if (!empty($clientStoppedAt)) {
+                try {
+                    $parsed = Carbon::parse($clientStoppedAt);
+                    if ($parsed->gt($now->copy()->addMinute())) {
+                        $stoppedAt = $now;
+                    } elseif ($parsed->lt($now->copy()->subHours(24))) {
+                        $stoppedAt = $now;
+                    } else {
+                        $stoppedAt = $parsed;
+                    }
+                } catch (\Throwable $e) {
+                    $stoppedAt = $now;
+                }
+            }
+
+            $sessionIdStr = $sessionId !== null ? (string) $sessionId : null;
+
+            // Session identity validation (Scenario A & D)
+            if ($lockedTrip->active_tracking_session_id !== null) {
+                // If a stop request arrives without a sessionId or does not match active server session,
+                // it is an out-of-order request from an older session or another tab -> ignore
+                if ($sessionIdStr === null || !hash_equals($lockedTrip->active_tracking_session_id, $sessionIdStr)) {
+                    return $lockedTrip;
+                }
+            } else {
+                // Fallback timestamp check for legacy calls without session ID
+                if ($lockedTrip->tracking_started_at !== null && $lockedTrip->tracking_started_at->gt($stoppedAt)) {
+                    return $lockedTrip;
+                }
             }
 
             $lockedTrip->update([
+                'active_tracking_session_id' => null,
                 'tracking_status' => 'SHARING_STOPPED',
                 'tracking_ended_at' => $stoppedAt,
             ]);
@@ -373,7 +479,7 @@ class GpsTrackingService
                     'tracking_status' => 'SHARING_STOPPED',
                     'tracking_ended_at' => $stoppedAt->toIso8601String(),
                     'last_location_at' => $lockedTrip->last_location_at?->toIso8601String(),
-                    'session_id' => $sessionId,
+                    'session_id' => $sessionIdStr,
                 ]
             );
 

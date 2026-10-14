@@ -169,6 +169,25 @@ class DriverTripController extends Controller
     }
 
     /**
+     * Start a new authenticated GPS telemetry session with server-authoritative session UUID (Gate A).
+     */
+    public function startTelemetry(Request $request, Trip $trip): \Illuminate\Http\JsonResponse
+    {
+        Gate::authorize('recordTelemetry', $trip);
+
+        $trackingService = app(\App\Services\GpsTrackingService::class);
+        $sessionData = $trackingService->startDriverTracking($trip, $request->user());
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Sesi pelacakan GPS aktif berhasil diterbitkan oleh server.',
+            'session_id' => $sessionData['session_id'],
+            'tracking_status' => $sessionData['tracking_status'],
+            'started_at' => $sessionData['started_at'],
+        ], 200);
+    }
+
+    /**
      * Ingest driver's real GPS telemetry point from browser Geolocation API.
      */
     public function telemetry(Request $request, Trip $trip): \Illuminate\Http\JsonResponse
@@ -179,7 +198,8 @@ class DriverTripController extends Controller
         $gpsPoint = $trackingService->recordDriverLocation($trip, $request->user(), $request->all());
 
         $refreshedTrip = $trip->fresh();
-        $isStaleAfterStop = $refreshedTrip->tracking_status === 'SHARING_STOPPED';
+        $isStaleAfterStop = $refreshedTrip->tracking_status === 'SHARING_STOPPED'
+            || ($refreshedTrip->active_tracking_session_id !== null && (string) $request->input('session_id') !== (string) $refreshedTrip->active_tracking_session_id);
 
         return response()->json([
             'success' => true,
@@ -194,7 +214,7 @@ class DriverTripController extends Controller
 
     /**
      * Driver explicitly stops GPS telemetry sharing (Gate C).
-     * Supports client session sequencing and stopped_at timestamp to prevent race conditions.
+     * Supports server-authoritative session UUID and safe stopped_at timestamp to prevent race conditions.
      */
     public function stopTelemetry(Request $request, Trip $trip): \Illuminate\Http\JsonResponse
     {
@@ -202,7 +222,7 @@ class DriverTripController extends Controller
 
         $trackingService = app(\App\Services\GpsTrackingService::class);
         $stoppedAt = $request->input('stopped_at');
-        $sessionId = $request->input('session_id') ? (int) $request->input('session_id') : null;
+        $sessionId = $request->input('session_id');
 
         $updatedTrip = $trackingService->stopDriverTracking($trip, $request->user(), $stoppedAt, $sessionId);
 

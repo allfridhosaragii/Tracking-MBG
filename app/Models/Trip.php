@@ -40,6 +40,7 @@ class Trip extends Model
         'total_distance_m',
         'estimated_duration_s',
         'tracking_status',
+        'active_tracking_session_id',
         'tracking_started_at',
         'tracking_ended_at',
         'last_location_at',

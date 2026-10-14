@@ -221,6 +221,7 @@
             }
 
             // Client Geolocation Telemetry Logic
+            const telemetryStartUrl = '{{ route('driver.trips.telemetry.start', $trip) }}';
             const telemetryUrl = '{{ route('driver.trips.telemetry', $trip) }}';
             const telemetryStopUrl = '{{ route('driver.trips.telemetry.stop', $trip) }}';
             const telemetryStatusUrl = '{{ route('driver.trips.telemetry.status', $trip) }}';
@@ -234,7 +235,7 @@
 
             let watchId = null;
             let lastSentTime = 0;
-            let currentSessionId = 0;
+            let currentSessionId = null;
             let isSyncingStop = false;
 
             function setButtonState(mode) {
@@ -441,27 +442,62 @@
                     return;
                 }
 
-                currentSessionId = Date.now();
-                statusText.textContent = 'Meminta Izin Lokasi...';
+                statusText.textContent = 'Menghubungkan ke Server...';
                 statusText.className = 'text-xs font-semibold px-2 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200';
-                statusDetail.textContent = 'Harap izinkan akses lokasi pada dialog peramban.';
+                statusDetail.textContent = 'Meminta identitas sesi pelacakan resmi dari server SPPG...';
                 btnGpsLabel.textContent = 'Menghubungkan...';
+                setButtonState('syncing');
 
-                watchId = navigator.geolocation.watchPosition(
-                    (pos) => {
-                        sendLocation(pos);
-                    },
-                    (err) => {
-                        handleGeoError(err);
-                    },
-                    {
-                        enableHighAccuracy: true,
-                        maximumAge: 10000,
-                        timeout: 20000
+                fetch(telemetryStartUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken
                     }
-                );
+                })
+                .then(async (res) => {
+                    const contentType = res.headers.get('content-type') || '';
+                    if (!res.ok || !contentType.includes('application/json')) {
+                        const err = await res.json().catch(() => ({}));
+                        throw new Error(err.message || `Gagal otorisasi sesi (HTTP ${res.status})`);
+                    }
+                    return res.json();
+                })
+                .then((data) => {
+                    if (!data.success || !data.session_id) {
+                        throw new Error(data.message || 'Server tidak mengembalikan session_id.');
+                    }
 
-                setButtonState('active');
+                    currentSessionId = data.session_id;
+
+                    statusText.textContent = 'Meminta Izin Lokasi...';
+                    statusText.className = 'text-xs font-semibold px-2 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200';
+                    statusDetail.textContent = 'Harap izinkan akses lokasi pada dialog peramban.';
+                    setButtonState('active');
+
+                    watchId = navigator.geolocation.watchPosition(
+                        (pos) => {
+                            sendLocation(pos);
+                        },
+                        (err) => {
+                            handleGeoError(err);
+                        },
+                        {
+                            enableHighAccuracy: true,
+                            maximumAge: 10000,
+                            timeout: 20000
+                        }
+                    );
+                })
+                .catch((err) => {
+                    console.error('Gagal menginisialisasi sesi GPS:', err);
+                    statusText.textContent = 'Gagal Memulai Sesi GPS';
+                    statusText.className = 'text-xs font-semibold px-2 py-0.5 rounded border bg-rose-50 text-rose-700 border-rose-200';
+                    statusDetail.textContent = err.message || 'Tidak dapat menghubungi server untuk otorisasi sesi GPS.';
+                    indicatorDot.className = 'w-4 h-4 rounded-full bg-rose-500 shrink-0';
+                    setButtonState('idle');
+                });
             }
 
             function stopTracking(notify = true) {
@@ -473,7 +509,7 @@
                     navigator.geolocation.clearWatch(watchId);
                     watchId = null;
                 }
-                currentSessionId = 0; // Invalidate current session
+                currentSessionId = null; // Invalidate current session
 
                 if (notify) {
                     syncStopToServer(stoppedAtIso, stoppedSessionId, 0);
@@ -507,11 +543,14 @@
             // Clean up watcher when leaving page and notify server
             window.addEventListener('beforeunload', function() {
                 if (watchId !== null) {
+                    const leavingSessionId = currentSessionId;
                     navigator.geolocation.clearWatch(watchId);
                     watchId = null;
+                    currentSessionId = null;
                     if (navigator.sendBeacon) {
                         const blob = new Blob([JSON.stringify({ 
                             _token: csrfToken,
+                            session_id: leavingSessionId,
                             stopped_at: new Date().toISOString()
                         })], { type: 'application/json' });
                         navigator.sendBeacon(telemetryStopUrl, blob);

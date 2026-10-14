@@ -146,6 +146,7 @@ Route::middleware(['auth', 'active'])->group(function () {
 
             // PBI-09: Real GPS Telemetry & Active Trip Navigation (Page D03)
             Route::get('/trips/{trip}/active', [DriverTripController::class, 'active'])->name('trips.active');
+            Route::post('/trips/{trip}/telemetry/start', [DriverTripController::class, 'startTelemetry'])->name('trips.telemetry.start');
             Route::post('/trips/{trip}/telemetry', [DriverTripController::class, 'telemetry'])->name('trips.telemetry');
             Route::post('/trips/{trip}/telemetry/stop', [DriverTripController::class, 'stopTelemetry'])->name('trips.telemetry.stop');
             Route::get('/trips/{trip}/telemetry/status', [DriverTripController::class, 'telemetryStatus'])->name('trips.telemetry.status');
