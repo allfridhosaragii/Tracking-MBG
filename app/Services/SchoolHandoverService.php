@@ -160,6 +160,10 @@ class SchoolHandoverService
      */
     public function confirmReceipt(TripStop $stop, User $pic, array $data, ?UploadedFile $evidencePhoto = null): SchoolServiceRecord
     {
+        if (!$evidencePhoto && isset($data['evidence_photo']) && $data['evidence_photo'] instanceof UploadedFile) {
+            $evidencePhoto = $data['evidence_photo'];
+        }
+
         $uploadedPaths = [];
 
         try {
@@ -325,36 +329,78 @@ class SchoolHandoverService
                 $now = Carbon::now();
 
                 // Check if client provided verified per-item receipts
-                $hasVerifiedItemInputs = !empty($data['items']) && is_array($data['items']);
+                $verificationMode = strtoupper((string) ($data['verification_mode'] ?? ''));
+                $hasVerifiedItemInputs = ($verificationMode === 'PER_BATCH') || (!empty($data['items']) && is_array($data['items']));
                 $verifiedItemMap = [];
 
                 if ($hasVerifiedItemInputs) {
+                    if (empty($data['items']) || !is_array($data['items'])) {
+                        throw ValidationException::withMessages([
+                            'items' => ['Rincian fisik per-batch wajib dikirimkan dalam mode verifikasi per batch.'],
+                        ]);
+                    }
+
+                    $validItemIds = $lockedStop->deliveryItems->pluck('id')->all();
+                    $submittedItemIds = array_map('intval', array_keys($data['items']));
+
+                    // GATE 1: All items belonging to stop must be present
+                    $missingItemIds = array_diff($validItemIds, $submittedItemIds);
+                    if (!empty($missingItemIds)) {
+                        throw ValidationException::withMessages([
+                            'items' => ['Seluruh item batch pengiriman wajib diverifikasi secara lengkap. Item berikut belum memiliki data verifikasi: #' . implode(', #', $missingItemIds) . '.'],
+                        ]);
+                    }
+
+                    $foreignItemIds = array_diff($submittedItemIds, $validItemIds);
+                    if (!empty($foreignItemIds)) {
+                        throw ValidationException::withMessages([
+                            'items' => ['Terdapat item pengiriman yang tidak terdaftar pada pemberhentian sekolah ini.'],
+                        ]);
+                    }
+
                     $itemReceivedSum = 0;
                     $itemDamagedSum = 0;
 
                     foreach ($lockedStop->deliveryItems as $item) {
-                        if (isset($data['items'][$item->id])) {
-                            $iRec = filter_var($data['items'][$item->id]['received_portions'] ?? 0, FILTER_VALIDATE_INT);
-                            $iDmg = filter_var($data['items'][$item->id]['damaged_portions'] ?? 0, FILTER_VALIDATE_INT);
-
-                            if ($iRec === false || $iRec < 0) {
-                                throw ValidationException::withMessages([
-                                    "items.{$item->id}.received_portions" => ['Jumlah diterima per batch harus berupa bilangan bulat >= 0.'],
-                                ]);
-                            }
-                            if ($iDmg === false || $iDmg < 0 || $iDmg > $iRec) {
-                                throw ValidationException::withMessages([
-                                    "items.{$item->id}.damaged_portions" => ['Jumlah rusak per batch tidak boleh melebihi jumlah diterima fisik pada batch tersebut.'],
-                                ]);
-                            }
-
-                            $verifiedItemMap[$item->id] = [
-                                'received' => $iRec,
-                                'damaged' => $iDmg,
-                            ];
-                            $itemReceivedSum += $iRec;
-                            $itemDamagedSum += $iDmg;
+                        $itemRow = $data['items'][$item->id] ?? null;
+                        if (!is_array($itemRow)) {
+                            throw ValidationException::withMessages([
+                                "items.{$item->id}" => ["Data item #{$item->id} harus berupa array."],
+                            ]);
                         }
+
+                        if (!isset($itemRow['received_portions']) || $itemRow['received_portions'] === null || $itemRow['received_portions'] === '') {
+                            throw ValidationException::withMessages([
+                                "items.{$item->id}.received_portions" => ["Kuantitas diterima fisik item #{$item->id} wajib diisi eksplisit."],
+                            ]);
+                        }
+
+                        $iRec = filter_var($itemRow['received_portions'], FILTER_VALIDATE_INT);
+                        if ($iRec === false || $iRec < 0) {
+                            throw ValidationException::withMessages([
+                                "items.{$item->id}.received_portions" => ['Jumlah diterima per batch harus berupa bilangan bulat >= 0.'],
+                            ]);
+                        }
+
+                        if (!isset($itemRow['damaged_portions']) || $itemRow['damaged_portions'] === null || $itemRow['damaged_portions'] === '') {
+                            throw ValidationException::withMessages([
+                                "items.{$item->id}.damaged_portions" => ["Kuantitas rusak fisik item #{$item->id} wajib diisi eksplisit (0 jika tidak ada kerusakan)."],
+                            ]);
+                        }
+
+                        $iDmg = filter_var($itemRow['damaged_portions'], FILTER_VALIDATE_INT);
+                        if ($iDmg === false || $iDmg < 0 || $iDmg > $iRec) {
+                            throw ValidationException::withMessages([
+                                "items.{$item->id}.damaged_portions" => ['Jumlah rusak per batch tidak boleh melebihi jumlah diterima fisik pada batch tersebut.'],
+                            ]);
+                        }
+
+                        $verifiedItemMap[$item->id] = [
+                            'received' => $iRec,
+                            'damaged' => $iDmg,
+                        ];
+                        $itemReceivedSum += $iRec;
+                        $itemDamagedSum += $iDmg;
                     }
 
                     if ($itemReceivedSum !== $receivedPortions) {
@@ -416,12 +462,34 @@ class SchoolHandoverService
                         $itemRec = $vData['received'];
                         $itemDmg = $vData['damaged'];
 
-                        // Invariant: 0 <= delivered_portions <= loaded_portions
-                        $itemDelivered = min($itemLoaded, $itemRec);
-                        $item->update(['delivered_portions' => $itemDelivered]);
+                        // GATE 3: Physical Bounds & Over-Receipt Defense
+                        // Legitimate portions cannot exceed loaded_portions
+                        $legitReceived = min($itemLoaded, $itemRec);
+                        $legitDamaged = min($legitReceived, $itemDmg);
+                        $legitGood = max(0, $legitReceived - $legitDamaged);
 
-                        $batchAccepted = ($conclusion === QualityCheckConclusion::SAFE) ? max(0, min($itemLoaded, $itemRec - $itemDmg)) : 0;
-                        $batchRejected = ($conclusion === QualityCheckConclusion::SAFE) ? $itemDmg : $itemRec;
+                        $itemDelivered = min($itemLoaded, $itemRec);
+                        $item->update([
+                            'delivered_portions' => $itemDelivered,
+                            'status' => $itemDelivered > 0 ? 'DELIVERED' : ($itemRec === 0 ? 'NOT_DELIVERED' : 'DELIVERED'),
+                        ]);
+
+                        if ($conclusion === QualityCheckConclusion::SAFE) {
+                            $batchAccepted = $legitGood;
+                            $batchRejected = $legitDamaged;
+                        } else {
+                            $batchAccepted = 0;
+                            $batchRejected = $legitReceived;
+                        }
+
+                        $reasonNote = 'Verifikasi fisik per batch terkonfirmasi pada saat kedatangan di sekolah.';
+                        if ($itemRec > $itemLoaded) {
+                            $surplus = $itemRec - $itemLoaded;
+                            $reasonNote .= " Terdeteksi selisih surplus fisik per batch: +{$surplus} porsi melebihi muatan manifes ({$itemLoaded} porsi).";
+                        } elseif ($itemRec < $itemLoaded) {
+                            $shortage = $itemLoaded - $itemRec;
+                            $reasonNote .= " Terdeteksi kekurangan fisik per batch: -{$shortage} porsi dari muatan manifes ({$itemLoaded} porsi).";
+                        }
 
                         QualityCheck::create([
                             'food_batch_id' => $item->food_batch_id,
@@ -439,7 +507,7 @@ class SchoolHandoverService
                             'rejected_portions' => $batchRejected,
                             'conclusion' => $conclusion,
                             'notes' => $notes,
-                            'decision_reason' => 'Verifikasi fisik per batch terkonfirmasi pada saat kedatangan di sekolah.',
+                            'decision_reason' => $reasonNote,
                             'checked_at' => $now,
                         ]);
                     }
@@ -448,12 +516,30 @@ class SchoolHandoverService
                     $item = $lockedStop->deliveryItems->first();
                     $itemLoaded = (int) ($item->loaded_portions ?? 0);
 
-                    // Invariant: delivered_portions cannot exceed loaded_portions
-                    $itemDelivered = min($itemLoaded, $receivedPortions);
-                    $item->update(['delivered_portions' => $itemDelivered]);
+                    // Legitimate portions cannot exceed loaded_portions
+                    $legitReceived = min($itemLoaded, $receivedPortions);
+                    $legitDamaged = min($legitReceived, $damagedPortions);
+                    $legitGood = max(0, $legitReceived - $legitDamaged);
 
-                    $batchAccepted = ($conclusion === QualityCheckConclusion::SAFE) ? max(0, min($itemLoaded, $receivedPortions - $damagedPortions)) : 0;
-                    $batchRejected = ($conclusion === QualityCheckConclusion::SAFE) ? min($receivedPortions, $damagedPortions) : $receivedPortions;
+                    $itemDelivered = min($itemLoaded, $receivedPortions);
+                    $item->update([
+                        'delivered_portions' => $itemDelivered,
+                        'status' => $itemDelivered > 0 ? 'DELIVERED' : ($receivedPortions === 0 ? 'NOT_DELIVERED' : 'DELIVERED'),
+                    ]);
+
+                    if ($conclusion === QualityCheckConclusion::SAFE) {
+                        $batchAccepted = $legitGood;
+                        $batchRejected = $legitDamaged;
+                    } else {
+                        $batchAccepted = 0;
+                        $batchRejected = $legitReceived;
+                    }
+
+                    $reasonNote = 'Pemeriksaan organoleptik kedatangan single batch terverifikasi.';
+                    if ($receivedPortions > $itemLoaded) {
+                        $surplus = $receivedPortions - $itemLoaded;
+                        $reasonNote .= " Terdeteksi selisih surplus fisik stop: +{$surplus} porsi melebihi muatan manifes ({$itemLoaded} porsi).";
+                    }
 
                     QualityCheck::create([
                         'food_batch_id' => $item->food_batch_id,
@@ -471,7 +557,7 @@ class SchoolHandoverService
                         'rejected_portions' => $batchRejected,
                         'conclusion' => $conclusion,
                         'notes' => $notes,
-                        'decision_reason' => 'Pemeriksaan organoleptik kedatangan single batch terverifikasi.',
+                        'decision_reason' => $reasonNote,
                         'checked_at' => $now,
                     ]);
                 } else {
@@ -482,7 +568,10 @@ class SchoolHandoverService
                         // Exact clean receipt: every batch arrived in full without discrepancy!
                         foreach ($lockedStop->deliveryItems as $item) {
                             $itemLoaded = (int) ($item->loaded_portions ?? 0);
-                            $item->update(['delivered_portions' => $itemLoaded]);
+                            $item->update([
+                                'delivered_portions' => $itemLoaded,
+                                'status' => 'DELIVERED',
+                            ]);
 
                             QualityCheck::create([
                                 'food_batch_id' => $item->food_batch_id,
@@ -506,20 +595,16 @@ class SchoolHandoverService
                         }
                     } else {
                         // Multi-batch WITH discrepancy (shortage, damage, or over-receipt) AND no per-batch breakdown
-                        // GATE A & D: DO NOT fabricate mathematical split across batches!
-                        // Record delivered_portions capped by loaded per item
-                        $remainingDelivered = min($receivedPortions, $expectedPortions);
-
+                        // GATE 2: DO NOT USE FIFO TO INVENT DELIVERED PORTIONS!
+                        // When per-batch attribution is unresolved, delivered_portions is NULL!
                         foreach ($lockedStop->deliveryItems as $item) {
-                            $itemLoaded = (int) ($item->loaded_portions ?? 0);
-                            $allocated = min($itemLoaded, $remainingDelivered);
-
-                            // GATE B & C: Strictly capped by loaded_portions. NEVER assign remainder to last item beyond loaded!
-                            $item->update(['delivered_portions' => $allocated]);
-                            $remainingDelivered = max(0, $remainingDelivered - $allocated);
+                            $item->update([
+                                'delivered_portions' => null,
+                                'status' => 'UNRESOLVED_DISCREPANCY',
+                            ]);
                         }
 
-                        // Record QualityCheck with unallocated portions (null accepted, 0 rejected) to prevent fabricated provenance
+                        // Record QualityCheck with unallocated portions (null accepted, null rejected) to prevent fabricated provenance
                         foreach ($distinctBatches as $batchId) {
                             QualityCheck::create([
                                 'food_batch_id' => $batchId,
@@ -534,7 +619,7 @@ class SchoolHandoverService
                                 'taste_skipped_reason' => $tasteSkippedReason,
                                 'temperature_c' => $tempC,
                                 'accepted_portions' => null, // Unattributed at batch level
-                                'rejected_portions' => 0,
+                                'rejected_portions' => null, // Unknown batch damage, NOT false 0!
                                 'conclusion' => $conclusion,
                                 'notes' => $notes,
                                 'decision_reason' => "Pemeriksaan kedatangan organoleptik multi-batch ({$totalDeliveryItems} batch). Atribusi porsi diterima dan rusak belum dirinci per batch sehingga dicatat sebagai unresolved discrepancy pada tingkat stop sekolah.",

@@ -274,8 +274,13 @@ class Pbi10IntegrityAndHardeningTest extends TestCase
         $itemB->refresh();
         $itemC->refresh();
 
-        $totalDelivered = $itemA->delivered_portions + $itemB->delivered_portions + $itemC->delivered_portions;
-        $this->assertEquals(280, $totalDelivered, "Sum of delivered across 3 items must equal 280.");
+        // GATE 2: Multi-batch shortage without verified per-batch breakdown leaves delivered_portions null
+        $this->assertNull($itemA->delivered_portions, "Item A delivered is null when attribution unresolved");
+        $this->assertNull($itemB->delivered_portions, "Item B delivered is null when attribution unresolved");
+        $this->assertNull($itemC->delivered_portions, "Item C delivered is null when attribution unresolved");
+        $this->assertSame('UNRESOLVED_DISCREPANCY', $itemA->status);
+        $this->assertSame('UNRESOLVED_DISCREPANCY', $itemB->status);
+        $this->assertSame('UNRESOLVED_DISCREPANCY', $itemC->status);
     }
 
     /**

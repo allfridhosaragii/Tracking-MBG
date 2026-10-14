@@ -30,6 +30,7 @@ class PortionRequestTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        Carbon::setTestNow(Carbon::parse('2026-10-14 09:00:00', 'Asia/Jakarta'));
         $this->seed(MbgTrackBaselineSeeder::class);
 
         $this->sppg = Sppg::where('code', 'SPPG-SUB-01')->firstOrFail();
@@ -40,6 +41,12 @@ class PortionRequestTest extends TestCase
         $this->picSchoolA = User::where('email', 'pic.sdn01@mbgtrack.test')->firstOrFail();
         $this->picSchoolB = User::where('email', 'pic.smpn02@mbgtrack.test')->firstOrFail();
         $this->headSppg = User::where('email', 'kepala@mbgtrack.test')->firstOrFail();
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
     }
 
     /**

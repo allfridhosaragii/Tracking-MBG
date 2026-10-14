@@ -67,6 +67,7 @@ class ConfirmSchoolReceiptRequest extends FormRequest
             'notes' => ['nullable', 'string', 'max:1000'],
             'evidence_photo' => ['nullable', 'file', 'image', 'max:5120'], // Max 5MB
             'idempotency_key' => ['nullable', 'string', 'max:64'],
+            'verification_mode' => ['nullable', 'string', 'in:PER_BATCH,AGGREGATE,SINGLE_BATCH,per_batch,aggregate,single_batch'],
             'items' => ['nullable', 'array'],
             'items.*.received_portions' => ['required_with:items', 'integer', 'min:0'],
             'items.*.damaged_portions' => ['nullable', 'integer', 'min:0'],
@@ -107,47 +108,116 @@ class ConfirmSchoolReceiptRequest extends FormRequest
                     }
                 }
 
-                // If per-item multi-batch breakdown is submitted, validate reconciliation
+                // GATE 1 & 4: Per-item multi-batch validation
+                $verificationMode = strtoupper((string) $this->input('verification_mode', ''));
                 $itemsInput = $this->input('items');
-                if (!empty($itemsInput) && is_array($itemsInput)) {
-                    $validItemIds = $stop->deliveryItems->pluck('id')->all();
-                    $itemsReceivedSum = 0;
-                    $itemsDamagedSum = 0;
 
-                    foreach ($itemsInput as $itemId => $itemRow) {
-                        if (!in_array((int) $itemId, $validItemIds, true)) {
-                            $validator->errors()->add("items.{$itemId}", "Item pengiriman #{$itemId} tidak terdaftar pada pemberhentian sekolah ini.");
-                            continue;
-                        }
-
-                        $iRec = filter_var($itemRow['received_portions'] ?? 0, FILTER_VALIDATE_INT);
-                        $iDmg = filter_var($itemRow['damaged_portions'] ?? 0, FILTER_VALIDATE_INT);
-
-                        if ($iRec === false || $iRec < 0) {
-                            $validator->errors()->add("items.{$itemId}.received_portions", "Kuantitas diterima fisik item #{$itemId} tidak valid.");
-                        }
-                        if ($iDmg === false || $iDmg < 0) {
-                            $validator->errors()->add("items.{$itemId}.damaged_portions", "Kuantitas rusak item #{$itemId} tidak valid.");
-                        } elseif ($iRec !== false && $iDmg > $iRec) {
-                            $validator->errors()->add("items.{$itemId}.damaged_portions", "Porsi rusak item #{$itemId} melebihi fisik yang diterima.");
-                        }
-
-                        if ($iRec !== false) $itemsReceivedSum += $iRec;
-                        if ($iDmg !== false) $itemsDamagedSum += $iDmg;
+                if ($verificationMode === 'AGGREGATE') {
+                    if (!empty($itemsInput)) {
+                        $validator->errors()->add('items', 'Mode verifikasi total fisik gabungan (Mode B) tidak boleh menyertakan input rincian per batch.');
                     }
+                    $isPerBatch = false;
+                } else {
+                    $isPerBatch = ($verificationMode === 'PER_BATCH') || (!empty($itemsInput) && is_array($itemsInput));
+                }
 
-                    if ($received !== false && $itemsReceivedSum !== $received) {
-                        $validator->errors()->add(
-                            'received_portions',
-                            "Total porsi per-batch ({$itemsReceivedSum}) harus sama dengan total fisik diterima ({$received})."
-                        );
-                    }
+                if ($isPerBatch) {
+                    if (empty($itemsInput) || !is_array($itemsInput)) {
+                        $validator->errors()->add('items', 'Rincian fisik per-batch wajib dikirimkan secara lengkap dalam mode verifikasi per batch (Mode A).');
+                    } else {
+                        $validItemIds = $stop->deliveryItems->pluck('id')->all();
+                        $submittedItemIds = array_map('intval', array_keys($itemsInput));
 
-                    if ($itemsDamagedSum !== $damaged) {
-                        $validator->errors()->add(
-                            'damaged_portions',
-                            "Total porsi rusak per-batch ({$itemsDamagedSum}) harus sama dengan total rusak ({$damaged})."
-                        );
+                        // 1. All stop delivery items must be present (no partial items allowed!)
+                        $missingItemIds = array_diff($validItemIds, $submittedItemIds);
+                        if (!empty($missingItemIds)) {
+                            $validator->errors()->add(
+                                'items',
+                                'Seluruh item batch pengiriman wajib diverifikasi secara lengkap. Item berikut belum memiliki data verifikasi: #' . implode(', #', $missingItemIds) . '.'
+                            );
+                        }
+
+                        // 2. Reject foreign item IDs
+                        $foreignItemIds = array_diff($submittedItemIds, $validItemIds);
+                        if (!empty($foreignItemIds)) {
+                            foreach ($foreignItemIds as $fId) {
+                                $validator->errors()->add("items.{$fId}", "Item pengiriman #{$fId} tidak terdaftar pada pemberhentian sekolah ini.");
+                            }
+                        }
+
+                        $itemsReceivedSum = 0;
+                        $itemsDamagedSum = 0;
+                        $hasPerBatchDiscrepancy = false;
+
+                        foreach ($itemsInput as $itemId => $itemRow) {
+                            if (!in_array((int) $itemId, $validItemIds, true)) {
+                                continue;
+                            }
+
+                            if (!is_array($itemRow)) {
+                                $validator->errors()->add("items.{$itemId}", "Data item #{$itemId} harus berupa array.");
+                                continue;
+                            }
+
+                            if (!isset($itemRow['received_portions']) || $itemRow['received_portions'] === null || $itemRow['received_portions'] === '') {
+                                $validator->errors()->add("items.{$itemId}.received_portions", "Kuantitas diterima fisik item #{$itemId} wajib diisi eksplisit.");
+                                $iRec = false;
+                            } else {
+                                $iRec = filter_var($itemRow['received_portions'], FILTER_VALIDATE_INT);
+                                if ($iRec === false || $iRec < 0) {
+                                    $validator->errors()->add("items.{$itemId}.received_portions", "Kuantitas diterima fisik item #{$itemId} harus berupa bilangan bulat >= 0.");
+                                }
+                            }
+
+                            if (!isset($itemRow['damaged_portions']) || $itemRow['damaged_portions'] === null || $itemRow['damaged_portions'] === '') {
+                                $validator->errors()->add("items.{$itemId}.damaged_portions", "Kuantitas rusak fisik item #{$itemId} wajib diisi eksplisit (0 jika tidak ada kerusakan).");
+                                $iDmg = false;
+                            } else {
+                                $iDmg = filter_var($itemRow['damaged_portions'], FILTER_VALIDATE_INT);
+                                if ($iDmg === false || $iDmg < 0) {
+                                    $validator->errors()->add("items.{$itemId}.damaged_portions", "Kuantitas rusak item #{$itemId} harus berupa bilangan bulat >= 0.");
+                                } elseif ($iRec !== false && $iDmg > $iRec) {
+                                    $validator->errors()->add("items.{$itemId}.damaged_portions", "Porsi rusak item #{$itemId} ({$iDmg}) tidak boleh melebihi porsi fisik yang diterima ({$iRec}).");
+                                }
+                            }
+
+                            if ($iRec !== false) {
+                                $itemsReceivedSum += $iRec;
+                            }
+                            if ($iDmg !== false) {
+                                $itemsDamagedSum += $iDmg;
+                            }
+
+                            // Gate 3: Track per-batch discrepancies (overage, shortage, damage)
+                            $deliveryItem = $stop->deliveryItems->firstWhere('id', (int) $itemId);
+                            if ($deliveryItem && $iRec !== false) {
+                                $loaded = (int) ($deliveryItem->loaded_portions ?? 0);
+                                if ($iRec !== $loaded || ($iDmg !== false && $iDmg > 0)) {
+                                    $hasPerBatchDiscrepancy = true;
+                                }
+                            }
+                        }
+
+                        if ($received !== false && $itemsReceivedSum !== $received) {
+                            $validator->errors()->add(
+                                'received_portions',
+                                "Total porsi per-batch ({$itemsReceivedSum}) harus sama dengan total fisik diterima ({$received})."
+                            );
+                        }
+
+                        if ($itemsDamagedSum !== $damaged) {
+                            $validator->errors()->add(
+                                'damaged_portions',
+                                "Total porsi rusak per-batch ({$itemsDamagedSum}) harus sama dengan total rusak ({$damaged})."
+                            );
+                        }
+
+                        if ($hasPerBatchDiscrepancy && empty($notes)) {
+                            $validator->errors()->add(
+                                'notes',
+                                'Catatan keterangan wajib diisi jika terdapat selisih jumlah porsi (kurang/lebih) atau porsi makanan rusak pada salah satu batch.'
+                            );
+                        }
                     }
                 }
             }

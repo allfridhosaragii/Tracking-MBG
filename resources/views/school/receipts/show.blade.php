@@ -117,7 +117,10 @@
                 @endif
 
                 <!-- Ringkasan Rekonsiliasi Porsi Fisik -->
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                @php
+                    $overageCount = max(0, $serviceRecord->received_portions - $serviceRecord->expected_portions);
+                @endphp
+                <div class="grid grid-cols-2 {{ $overageCount > 0 ? 'sm:grid-cols-5' : 'sm:grid-cols-4' }} gap-3 text-center">
                     <div class="p-3 rounded-xl bg-[#F5F7F3] border border-[#DCE5DD]">
                         <span class="text-[10px] text-[#53645B] block font-medium">Target / Dikirim</span>
                         <span class="text-base font-bold text-[#172923] tabular-nums mt-0.5 block">{{ $serviceRecord->expected_portions }}</span>
@@ -138,7 +141,42 @@
                         <span class="text-base font-bold tabular-nums mt-0.5 block">{{ $serviceRecord->shortage_portions }}</span>
                         <span class="text-[10px]">Porsi</span>
                     </div>
+                    @if ($overageCount > 0)
+                        <div class="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-900">
+                            <span class="text-[10px] block font-medium text-amber-800">Selisih Lebih (Surplus)</span>
+                            <span class="text-base font-bold tabular-nums mt-0.5 block text-amber-900">+{{ $overageCount }}</span>
+                            <span class="text-[10px] text-amber-700">Porsi Ekstra</span>
+                        </div>
+                    @endif
                 </div>
+
+                @if ($stop->deliveryItems->count() > 1)
+                    <div class="p-4 rounded-xl bg-[#F5F7F3] border border-[#DCE5DD] space-y-2">
+                        <span class="text-xs font-bold text-[#172923] uppercase tracking-wider block">Status Rekonsiliasi Per Batch</span>
+                        <div class="space-y-2">
+                            @foreach ($stop->deliveryItems as $dItem)
+                                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between p-2.5 rounded-lg bg-white border border-[#DCE5DD] text-xs gap-2">
+                                    <div class="flex items-center gap-2">
+                                        <span class="font-mono font-bold text-[#1C6654]">{{ $dItem->foodBatch?->batch_code ?? 'BATCH-' . $dItem->id }}</span>
+                                        <span class="text-[#53645B]">({{ $dItem->foodBatch?->menu?->recipe_name ?? 'Menu MBG' }})</span>
+                                    </div>
+                                    <div class="text-left sm:text-right flex items-center gap-3">
+                                        <span class="text-[#708177]">Manifes: <strong class="text-[#172923]">{{ $dItem->loaded_portions ?? 0 }}</strong></span>
+                                        @if ($dItem->delivered_portions !== null)
+                                            <span class="text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                                Terkirim: {{ $dItem->delivered_portions }} Porsi
+                                            </span>
+                                        @else
+                                            <span class="text-amber-800 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                                Atribusi Belum Terekonsiliasi (Unresolved)
+                                            </span>
+                                        @endif
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
 
                 <!-- Hasil Pemeriksaan Organoleptik Kedatangan -->
                 @if ($arrivalQc)
@@ -223,61 +261,138 @@
                                     </svg>
                                     MANIFEST MUATAN TIDAK VALID / BELUM DIMUAT
                                 </strong>
-                                <p>Jumlah porsi fisik termuat (loaded portions) pada armada bernilai 0. Tanda terima fisik tidak dapat diproses tanpa verifikasi muatan dari SPPG.</p>
-                            </div>
                         @endif
 
                         @if ($stop->deliveryItems->count() > 1)
-                            <div class="bg-white rounded-2xl border border-[#DCE5DD] p-4 shadow-xs space-y-3">
-                                <div class="flex items-center justify-between pb-2 border-b border-[#EDF2ED]">
-                                    <h3 class="text-xs font-bold text-[#172923] uppercase tracking-wider flex items-center gap-1.5">
-                                        <svg class="w-4 h-4 text-[#1C6654]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
-                                        </svg>
-                                        Verifikasi Fisik Multi-Batch ({{ $stop->deliveryItems->count() }} Batch)
-                                    </h3>
-                                    <span class="text-xs font-bold text-[#1C6654] tabular-nums">Muatan: {{ $expectedPortions }} Porsi</span>
+                            <div class="bg-white rounded-2xl border border-[#DCE5DD] p-5 shadow-xs space-y-4">
+                                <div class="flex items-center justify-between pb-3 border-b border-[#EDF2ED]">
+                                    <div class="flex items-center gap-2">
+                                        <span class="w-6 h-6 rounded-full bg-[#1C6654] text-white text-xs font-bold flex items-center justify-center">A</span>
+                                        <h2 class="text-sm font-bold text-[#172923]">Metode Verifikasi Muatan Multi-Batch</h2>
+                                    </div>
+                                    <span class="text-xs font-bold text-[#1C6654] tabular-nums">{{ $stop->deliveryItems->count() }} Batch ({{ $expectedPortions }} Porsi)</span>
                                 </div>
-                                <p class="text-[11px] text-[#53645B] leading-relaxed">
-                                    Periksa dan verifikasi jumlah fisik per batch bila kontainer terpisah. Jumlah total di bawah akan disinkronkan secara otomatis.
+
+                                <p class="text-xs text-[#53645B] leading-relaxed">
+                                    Armada ini membawa beberapa batch makanan berbeda. Pilih metode penghitungan fisik yang benar-benar Anda lakukan untuk menjaga integritas data rantai pasok:
                                 </p>
-                                <div class="space-y-3">
-                                    @foreach ($stop->deliveryItems as $item)
-                                        <div class="p-3 rounded-xl bg-[#F5F7F3] border border-[#DCE5DD] space-y-2">
-                                            <div class="flex items-center justify-between text-xs">
-                                                <div>
-                                                    <span class="font-mono font-bold text-[#1C6654]">{{ $item->foodBatch?->batch_code ?? 'BATCH-' . $item->id }}</span>
-                                                    <span class="text-[11px] text-[#53645B] block">{{ $item->foodBatch?->menu?->recipe_name ?? 'Menu MBG' }}</span>
-                                                </div>
-                                                <div class="text-right">
-                                                    <span class="font-bold text-[#172923] tabular-nums">{{ $item->loaded_portions ?? 0 }} Porsi</span>
-                                                    <span class="text-[10px] text-[#708177] block">Dimuat di SPPG</span>
-                                                </div>
-                                            </div>
-                                            <div class="grid grid-cols-2 gap-2 pt-1 border-t border-[#EDF2ED]">
-                                                <div>
-                                                    <label class="block text-[10px] font-bold text-[#53645B] mb-0.5">Diterima Fisik</label>
-                                                    <input type="number" 
-                                                           name="items[{{ $item->id }}][received_portions]" 
-                                                           value="{{ old('items.' . $item->id . '.received_portions', $item->loaded_portions ?? 0) }}" 
-                                                           min="0"
-                                                           class="batch-item-received w-full text-xs text-[#172923] rounded-lg border border-[#DCE5DD] p-1.5 bg-white font-bold tabular-nums"
-                                                           oninput="syncBatchTotals()">
-                                                </div>
-                                                <div>
-                                                    <label class="block text-[10px] font-bold text-[#53645B] mb-0.5">Porsi Rusak</label>
-                                                    <input type="number" 
-                                                           name="items[{{ $item->id }}][damaged_portions]" 
-                                                           value="{{ old('items.' . $item->id . '.damaged_portions', 0) }}" 
-                                                           min="0"
-                                                           class="batch-item-damaged w-full text-xs text-[#172923] rounded-lg border border-[#DCE5DD] p-1.5 bg-white font-bold tabular-nums"
-                                                           oninput="syncBatchTotals()">
-                                                </div>
-                                            </div>
+
+                                <!-- Radio Options (GATE 4) -->
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" role="radiogroup" aria-label="Metode Verifikasi Muatan">
+                                    <!-- Mode B: AGGREGATE (Default, aman & jujur jika PIC hanya menghitung total) -->
+                                    <label id="mode-b-card" class="relative flex items-start gap-3 p-3.5 rounded-xl border-2 transition-all cursor-pointer {{ old('verification_mode', 'AGGREGATE') === 'AGGREGATE' ? 'border-[#1C6654] bg-[#F2F7F4]' : 'border-[#DCE5DD] bg-white hover:bg-[#F5F7F3]' }}">
+                                        <input type="radio" 
+                                               name="verification_mode" 
+                                               id="mode_aggregate" 
+                                               value="AGGREGATE" 
+                                               {{ old('verification_mode', 'AGGREGATE') === 'AGGREGATE' ? 'checked' : '' }}
+                                               onchange="switchVerificationMode('AGGREGATE')"
+                                               class="mt-1 text-[#1C6654] focus:ring-[#1C6654]">
+                                        <div class="text-xs">
+                                            <span class="font-bold text-[#172923] block mb-0.5">Mode B — Verifikasi Total Fisik Saja</span>
+                                            <span class="text-[11px] text-[#53645B] block leading-relaxed">
+                                                Hanya memastikan total fisik seluruh kontainer yang diterima. Rincian batch individual tidak diverifikasi satu per satu.
+                                            </span>
                                         </div>
-                                    @endforeach
+                                    </label>
+
+                                    <!-- Mode A: PER_BATCH -->
+                                    <label id="mode-a-card" class="relative flex items-start gap-3 p-3.5 rounded-xl border-2 transition-all cursor-pointer {{ old('verification_mode') === 'PER_BATCH' ? 'border-[#1C6654] bg-[#F2F7F4]' : 'border-[#DCE5DD] bg-white hover:bg-[#F5F7F3]' }}">
+                                        <input type="radio" 
+                                               name="verification_mode" 
+                                               id="mode_per_batch" 
+                                               value="PER_BATCH" 
+                                               {{ old('verification_mode') === 'PER_BATCH' ? 'checked' : '' }}
+                                               onchange="switchVerificationMode('PER_BATCH')"
+                                               class="mt-1 text-[#1C6654] focus:ring-[#1C6654]">
+                                        <div class="text-xs">
+                                            <span class="font-bold text-[#172923] block mb-0.5">Mode A — Verifikasi Rinci Tiap Batch</span>
+                                            <span class="text-[11px] text-[#53645B] block leading-relaxed">
+                                                Saya telah memeriksa, membedakan, dan menghitung fisik porsi tiap kontainer batch secara terpisah.
+                                            </span>
+                                        </div>
+                                    </label>
+                                </div>
+
+                                <!-- Mode B Notice -->
+                                <div id="mode-b-notice" class="p-3.5 rounded-xl bg-[#F5F7F3] border border-[#DCE5DD] text-xs space-y-1.5 {{ old('verification_mode', 'AGGREGATE') === 'PER_BATCH' ? 'hidden' : '' }}">
+                                    <div class="flex items-center gap-1.5 font-bold text-[#172923]">
+                                        <svg class="w-4 h-4 text-[#1C6654]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                        </svg>
+                                        <span>Mode B Aktif: Penghitungan Total Langsung</span>
+                                    </div>
+                                    <p class="text-[11px] text-[#53645B] leading-relaxed">
+                                        Input per-batch di bawah dinonaktifkan dan tidak dikirimkan ke server. Masukkan total fisik yang Anda terima langsung pada Langkah 1 di bawah. Jika terjadi selisih, sistem mencatat status atribusi sebagai <strong class="text-[#172923]">Unresolved Discrepancy</strong> tanpa membuat data distribusi fiktif.
+                                    </p>
+                                </div>
+
+                                <!-- Mode A: Batch Breakdown Card -->
+                                <div id="mode-a-container" class="space-y-3 {{ old('verification_mode', 'AGGREGATE') === 'PER_BATCH' ? '' : 'hidden opacity-50' }}">
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs font-bold text-[#172923]">Rincian Pemeriksaan Fisik Tiap Batch</span>
+                                        <span class="text-[11px] text-[#708177]">Total otomatis disinkronkan ke bawah</span>
+                                    </div>
+
+                                    <!-- Warning Banner if Batch Discrepancy Detected -->
+                                    <div id="batch-discrepancy-warning" class="hidden p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 space-y-1">
+                                        <div class="font-bold flex items-center gap-1.5">
+                                            <svg class="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                                            </svg>
+                                            <span>Perhatian: Terdeteksi Selisih Fisik Pada Batch</span>
+                                        </div>
+                                        <p class="text-[11px] text-amber-700" id="batch-discrepancy-desc">
+                                            Terdapat batch dengan porsi diterima tidak sama dengan muatan atau terdapat porsi rusak. Catatan keterangan wajib diisi.
+                                        </p>
+                                    </div>
+
+                                    <div class="space-y-3" id="batch-items-list">
+                                        @foreach ($stop->deliveryItems as $item)
+                                            <div class="p-3.5 rounded-xl bg-[#F5F7F3] border border-[#DCE5DD] space-y-2 batch-card" data-item-id="{{ $item->id }}" data-loaded="{{ $item->loaded_portions ?? 0 }}">
+                                                <div class="flex items-center justify-between text-xs">
+                                                    <div>
+                                                        <span class="font-mono font-bold text-[#1C6654]">{{ $item->foodBatch?->batch_code ?? 'BATCH-' . $item->id }}</span>
+                                                        <span class="text-[11px] text-[#53645B] block">{{ $item->foodBatch?->menu?->recipe_name ?? 'Menu MBG' }}</span>
+                                                    </div>
+                                                    <div class="text-right">
+                                                        <span class="font-bold text-[#172923] tabular-nums">{{ $item->loaded_portions ?? 0 }} Porsi</span>
+                                                        <span class="text-[10px] text-[#708177] block">Dimuat di SPPG</span>
+                                                    </div>
+                                                </div>
+                                                <div class="grid grid-cols-2 gap-3 pt-2 border-t border-[#EDF2ED]">
+                                                    <div>
+                                                        <label class="block text-[10px] font-bold text-[#53645B] mb-0.5">Porsi Diterima Fisik</label>
+                                                        <input type="number" 
+                                                               name="items[{{ $item->id }}][received_portions]" 
+                                                               id="item_rec_{{ $item->id }}"
+                                                               value="{{ old('items.' . $item->id . '.received_portions', $item->loaded_portions ?? 0) }}" 
+                                                               min="0"
+                                                               class="batch-item-received w-full text-xs text-[#172923] rounded-lg border border-[#DCE5DD] p-2 bg-white font-bold tabular-nums"
+                                                               oninput="syncBatchTotals()">
+                                                    </div>
+                                                    <div>
+                                                        <label class="block text-[10px] font-bold text-[#53645B] mb-0.5">Porsi Rusak / Tumpah</label>
+                                                        <input type="number" 
+                                                               name="items[{{ $item->id }}][damaged_portions]" 
+                                                               id="item_dmg_{{ $item->id }}"
+                                                               value="{{ old('items.' . $item->id . '.damaged_portions', 0) }}" 
+                                                               min="0"
+                                                               class="batch-item-damaged w-full text-xs text-[#172923] rounded-lg border border-[#DCE5DD] p-2 bg-white font-bold tabular-nums"
+                                                               oninput="syncBatchTotals()">
+                                                    </div>
+                                                </div>
+                                                <div class="flex items-center justify-between text-[11px] pt-1">
+                                                    <span class="text-[#708177]">Status Batch:</span>
+                                                    <span class="font-bold tabular-nums batch-status-badge text-[#1C6654]" id="batch_status_{{ $item->id }}">Sesuai Manifest</span>
+                                                </div>
+                                            </div>
+                                        @endforeach
+                                    </div>
                                 </div>
                             </div>
+                        @else
+                            <input type="hidden" name="verification_mode" value="SINGLE_BATCH">
                         @endif
 
 
@@ -289,19 +404,14 @@
                                     <h2 class="text-sm font-bold text-[#172923]">Penghitungan Porsi Fisik</h2>
                                 </div>
                                 <span class="text-xs font-bold text-[#1C6654] tabular-nums">
-                                    Dikirim: {{ $expectedPortions }} Porsi
+                                    Muatan SPPG: {{ $expectedPortions }} Porsi
                                 </span>
-                            </div>
-
-                            <div class="p-3 rounded-xl bg-[#F5F7F3] border border-[#DCE5DD] text-xs text-[#53645B] flex items-center justify-between">
-                                <span>Rumus Selisih:</span>
-                                <span class="font-mono text-[#172923] font-bold">Selisih = max(0, Dikirim - Diterima)</span>
                             </div>
 
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label for="received_portions" class="block text-xs font-bold text-[#172923] mb-1.5">
-                                        Porsi Fisik Diterima <span class="text-rose-600">*</span>
+                                        Total Porsi Fisik Diterima <span class="text-rose-600">*</span>
                                     </label>
                                     <input type="number" 
                                            name="received_portions" 
@@ -311,8 +421,8 @@
                                            value="{{ old('received_portions', $expectedPortions) }}" 
                                            required
                                            class="w-full text-sm font-bold text-[#172923] rounded-xl border border-[#DCE5DD] p-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#1C6654] tabular-nums"
-                                           oninput="calculateShortage()">
-                                    <span class="text-[10px] text-[#708177] mt-1 block">Total ompreng yang diserahkan kurir.</span>
+                                           oninput="calculateDiscrepancy()">
+                                    <span class="text-[10px] text-[#708177] mt-1 block" id="rec-hint">Total ompreng yang diserahkan kurir.</span>
                                     @error('received_portions')
                                         <span class="text-xs text-rose-600 font-medium block mt-1">{{ $message }}</span>
                                     @enderror
@@ -329,7 +439,7 @@
                                            max="5000" 
                                            value="{{ old('damaged_portions', 0) }}" 
                                            class="w-full text-sm font-bold text-[#172923] rounded-xl border border-[#DCE5DD] p-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#1C6654] tabular-nums"
-                                           oninput="calculateShortage()">
+                                           oninput="calculateDiscrepancy()">
                                     <span class="text-[10px] text-[#708177] mt-1 block">Wadah pecah/isi tercemar saat perjalanan.</span>
                                     @error('damaged_portions')
                                         <span class="text-xs text-rose-600 font-medium block mt-1">{{ $message }}</span>
@@ -337,15 +447,18 @@
                                 </div>
                             </div>
 
-                            <!-- Live Derived Shortage Preview -->
-                            <div class="p-3.5 rounded-xl border border-[#DCE5DD] bg-white flex items-center justify-between text-xs">
+                            <!-- Live Derived Discrepancy Preview (GATE 5: Accurate Shortage & Overage) -->
+                            <div class="p-3.5 rounded-xl border border-[#DCE5DD] bg-white flex items-center justify-between text-xs" id="discrepancy-card">
                                 <div>
-                                    <span class="font-bold text-[#172923] block">Kalkulasi Selisih Otomatis:</span>
-                                    <span class="text-[11px] text-[#53645B]" id="shortage-desc">Tidak ada kekurangan porsi.</span>
+                                    <span class="font-bold text-[#172923] block" id="discrepancy-title">Status Rekonsiliasi Muatan:</span>
+                                    <span class="text-[11px] text-[#53645B]" id="discrepancy-desc">Diterima lengkap sesuai manifest muatan.</span>
+                                    <span class="text-[10px] text-amber-700 font-medium block mt-0.5 hidden" id="attribution-mode-note">
+                                        ⚠️ Atribusi batch: Unresolved (tidak diketahui pasti karena Mode B total gabungan).
+                                    </span>
                                 </div>
                                 <div class="text-right">
-                                    <span class="text-lg font-bold tabular-nums text-[#1C6654]" id="shortage-value">0</span>
-                                    <span class="text-[10px] text-[#708177] block">Porsi Kurang</span>
+                                    <span class="text-lg font-bold tabular-nums text-[#1C6654]" id="discrepancy-value">0</span>
+                                    <span class="text-[10px] text-[#708177] block" id="discrepancy-label">Selisih Porsi</span>
                                 </div>
                             </div>
                         </div>
@@ -605,49 +718,173 @@
             </form>
 
             <script>
-                function syncBatchTotals() {
+                let currentMode = '{{ old('verification_mode', $stop->deliveryItems->count() > 1 ? 'AGGREGATE' : 'SINGLE_BATCH') }}';
+
+                function switchVerificationMode(mode) {
+                    currentMode = mode;
+                    const container = document.getElementById('mode-a-container');
+                    const notice = document.getElementById('mode-b-notice');
+                    const cardA = document.getElementById('mode-a-card');
+                    const cardB = document.getElementById('mode-b-card');
                     const receivedInputs = document.querySelectorAll('.batch-item-received');
                     const damagedInputs = document.querySelectorAll('.batch-item-damaged');
+                    const recTotal = document.getElementById('received_portions');
+                    const dmgTotal = document.getElementById('damaged_portions');
+                    const recHint = document.getElementById('rec-hint');
 
-                    if (receivedInputs.length > 0) {
-                        let totalRec = 0;
-                        receivedInputs.forEach(input => {
-                            totalRec += parseInt(input.value) || 0;
-                        });
-                        const recEl = document.getElementById('received_portions');
-                        if (recEl) recEl.value = totalRec;
+                    if (mode === 'PER_BATCH') {
+                        if (container) container.classList.remove('hidden', 'opacity-50');
+                        if (notice) notice.classList.add('hidden');
+                        if (cardA) {
+                            cardA.classList.add('border-[#1C6654]', 'bg-[#F2F7F4]');
+                            cardA.classList.remove('border-[#DCE5DD]', 'bg-white');
+                        }
+                        if (cardB) {
+                            cardB.classList.remove('border-[#1C6654]', 'bg-[#F2F7F4]');
+                            cardB.classList.add('border-[#DCE5DD]', 'bg-white');
+                        }
+
+                        // Enable per-batch inputs so they are submitted
+                        receivedInputs.forEach(i => i.disabled = false);
+                        damagedInputs.forEach(i => i.disabled = false);
+
+                        if (recTotal) recTotal.readOnly = true;
+                        if (dmgTotal) dmgTotal.readOnly = true;
+                        if (recHint) recHint.innerText = 'Dihitung otomatis dari penjumlahan rincian per-batch di atas.';
+
+                        syncBatchTotals();
+                    } else {
+                        // Mode B: AGGREGATE
+                        if (container) container.classList.add('hidden', 'opacity-50');
+                        if (notice) notice.classList.remove('hidden');
+                        if (cardB) {
+                            cardB.classList.add('border-[#1C6654]', 'bg-[#F2F7F4]');
+                            cardB.classList.remove('border-[#DCE5DD]', 'bg-white');
+                        }
+                        if (cardA) {
+                            cardA.classList.remove('border-[#1C6654]', 'bg-[#F2F7F4]');
+                            cardA.classList.add('border-[#DCE5DD]', 'bg-white');
+                        }
+
+                        // Disable per-batch inputs so they are NOT submitted in request!
+                        receivedInputs.forEach(i => i.disabled = true);
+                        damagedInputs.forEach(i => i.disabled = true);
+
+                        if (recTotal) recTotal.readOnly = false;
+                        if (dmgTotal) dmgTotal.readOnly = false;
+                        if (recHint) recHint.innerText = 'Total ompreng yang diserahkan kurir.';
+
+                        calculateDiscrepancy();
                     }
-
-                    if (damagedInputs.length > 0) {
-                        let totalDmg = 0;
-                        damagedInputs.forEach(input => {
-                            totalDmg += parseInt(input.value) || 0;
-                        });
-                        const dmgEl = document.getElementById('damaged_portions');
-                        if (dmgEl) dmgEl.value = totalDmg;
-                    }
-
-                    calculateShortage();
                 }
 
-                function calculateShortage() {
+                function syncBatchTotals() {
+                    const batchCards = document.querySelectorAll('.batch-card');
+                    let totalRec = 0;
+                    let totalDmg = 0;
+                    let hasBatchDiscrepancy = false;
+
+                    batchCards.forEach(card => {
+                        const itemId = card.dataset.itemId;
+                        const loaded = parseInt(card.dataset.loaded) || 0;
+                        const recEl = document.getElementById('item_rec_' + itemId);
+                        const dmgEl = document.getElementById('item_dmg_' + itemId);
+                        const statusEl = document.getElementById('batch_status_' + itemId);
+
+                        const recVal = recEl ? (parseInt(recEl.value) || 0) : 0;
+                        const dmgVal = dmgEl ? (parseInt(dmgEl.value) || 0) : 0;
+
+                        totalRec += recVal;
+                        totalDmg += dmgVal;
+
+                        if (statusEl) {
+                            if (recVal === loaded && dmgVal === 0) {
+                                statusEl.innerText = 'Sesuai Manifest';
+                                statusEl.className = 'font-bold tabular-nums batch-status-badge text-[#1C6654]';
+                            } else {
+                                hasBatchDiscrepancy = true;
+                                let diffText = '';
+                                if (recVal < loaded) diffText = `Kurang ${loaded - recVal}`;
+                                else if (recVal > loaded) diffText = `Lebih +${recVal - loaded}`;
+                                if (dmgVal > 0) diffText += (diffText ? ', ' : '') + `${dmgVal} Rusak`;
+
+                                statusEl.innerText = diffText;
+                                statusEl.className = 'font-bold tabular-nums batch-status-badge text-amber-700';
+                            }
+                        }
+                    });
+
+                    const recEl = document.getElementById('received_portions');
+                    if (recEl) recEl.value = totalRec;
+
+                    const dmgEl = document.getElementById('damaged_portions');
+                    if (dmgEl) dmgEl.value = totalDmg;
+
+                    const warningBanner = document.getElementById('batch-discrepancy-warning');
+                    if (warningBanner) {
+                        if (hasBatchDiscrepancy) {
+                            warningBanner.classList.remove('hidden');
+                        } else {
+                            warningBanner.classList.add('hidden');
+                        }
+                    }
+
+                    calculateDiscrepancy();
+                }
+
+                function calculateDiscrepancy() {
                     const expected = {{ (int) $expectedPortions }};
                     const receivedInput = document.getElementById('received_portions');
                     const damagedInput = document.getElementById('damaged_portions');
-                    const shortageVal = document.getElementById('shortage-value');
-                    const shortageDesc = document.getElementById('shortage-desc');
+                    const valEl = document.getElementById('discrepancy-value');
+                    const descEl = document.getElementById('discrepancy-desc');
+                    const labelEl = document.getElementById('discrepancy-label');
+                    const attributionNote = document.getElementById('attribution-mode-note');
 
-                    const received = parseInt(receivedInput.value) || 0;
-                    const damaged = parseInt(damagedInput.value) || 0;
+                    const received = parseInt(receivedInput ? receivedInput.value : 0) || 0;
+                    const damaged = parseInt(damagedInput ? damagedInput.value : 0) || 0;
+
                     const shortage = Math.max(0, expected - received);
+                    const overage = Math.max(0, received - expected);
+                    const isMultiBatch = {{ $stop->deliveryItems->count() > 1 ? 'true' : 'false' }};
 
-                    shortageVal.innerText = shortage;
-                    if (shortage > 0 || damaged > 0) {
-                        shortageVal.className = 'text-lg font-bold tabular-nums text-rose-600';
-                        shortageDesc.innerText = `Terjadi selisih kurang ${shortage} porsi dan ${damaged} rusak.`;
-                    } else {
-                        shortageVal.className = 'text-lg font-bold tabular-nums text-[#1C6654]';
-                        shortageDesc.innerText = 'Jumlah porsi sesuai dengan muatan dikirim.';
+                    // Check attribution note for Mode B
+                    if (attributionNote) {
+                        if (isMultiBatch && currentMode === 'AGGREGATE' && (shortage > 0 || overage > 0 || damaged > 0)) {
+                            attributionNote.classList.remove('hidden');
+                        } else {
+                            attributionNote.classList.add('hidden');
+                        }
+                    }
+
+                    if (shortage === 0 && overage === 0 && damaged === 0) {
+                        valEl.innerText = '0';
+                        valEl.className = 'text-lg font-bold tabular-nums text-[#1C6654]';
+                        labelEl.innerText = 'Selisih Porsi';
+                        descEl.innerText = `Diterima lengkap & sesuai manifest. Seluruh ${expected} porsi diterima utuh tanpa kerusakan.`;
+                    } else if (shortage > 0) {
+                        valEl.innerText = '-' + shortage;
+                        valEl.className = 'text-lg font-bold tabular-nums text-rose-600';
+                        labelEl.innerText = 'Kekurangan Porsi (Shortage)';
+                        if (damaged > 0) {
+                            descEl.innerText = `Kekurangan ${shortage} porsi dari muatan (${expected} porsi) dan terdapat ${damaged} porsi rusak. Catatan keterangan wajib diisi.`;
+                        } else {
+                            descEl.innerText = `Kekurangan ${shortage} porsi dari manifest muatan (${expected} porsi). Catatan keterangan wajib diisi.`;
+                        }
+                    } else if (overage > 0) {
+                        valEl.innerText = '+' + overage;
+                        valEl.className = 'text-lg font-bold tabular-nums text-blue-600';
+                        labelEl.innerText = 'Kelebihan Porsi (Overage)';
+                        if (damaged > 0) {
+                            descEl.innerText = `Kelebihan fisik +${overage} porsi di atas manifest muatan (${expected} porsi), dan terdapat ${damaged} porsi rusak. Catatan keterangan wajib diisi.`;
+                        } else {
+                            descEl.innerText = `Kelebihan fisik +${overage} porsi di atas manifest muatan (${expected} porsi). Catatan keterangan wajib diisi.`;
+                        }
+                    } else if (damaged > 0) {
+                        valEl.innerText = damaged;
+                        valEl.className = 'text-lg font-bold tabular-nums text-rose-600';
+                        labelEl.innerText = 'Porsi Rusak (Damaged)';
+                        descEl.innerText = `Jumlah fisik total sesuai (${expected} porsi), namun terdapat ${damaged} porsi rusak/tumpah. Catatan keterangan wajib diisi.`;
                     }
                 }
 
@@ -658,13 +895,13 @@
                     const tasteStatus = document.getElementById('taste_status');
                     const skipReason = document.getElementById('taste_skipped_reason');
 
-                    if (checkbox.checked) {
-                        enabledSection.classList.remove('hidden');
-                        disabledSection.classList.add('hidden');
+                    if (checkbox && checkbox.checked) {
+                        if (enabledSection) enabledSection.classList.remove('hidden');
+                        if (disabledSection) disabledSection.classList.add('hidden');
                         if (skipReason) skipReason.required = false;
                     } else {
-                        enabledSection.classList.add('hidden');
-                        disabledSection.classList.remove('hidden');
+                        if (enabledSection) enabledSection.classList.add('hidden');
+                        if (disabledSection) disabledSection.classList.remove('hidden');
                         if (skipReason) skipReason.required = true;
                     }
                 }
@@ -674,22 +911,30 @@
                     const alertBox = document.getElementById('safety-alert');
                     const submitBtn = document.getElementById('submit-receipt-btn');
 
-                    if (select.value === 'UNSAFE') {
-                        alertBox.classList.remove('hidden');
-                        submitBtn.classList.remove('bg-[#1C6654]', 'hover:bg-[#154E40]');
-                        submitBtn.classList.add('bg-rose-600', 'hover:bg-rose-700');
-                        submitBtn.innerText = 'TAHAN & BATALKAN DISTRIBUSI (UNSAFE)';
+                    if (select && select.value === 'UNSAFE') {
+                        if (alertBox) alertBox.classList.remove('hidden');
+                        if (submitBtn) {
+                            submitBtn.classList.remove('bg-[#1C6654]', 'hover:bg-[#154E40]');
+                            submitBtn.classList.add('bg-rose-600', 'hover:bg-rose-700');
+                            submitBtn.innerText = 'TAHAN & BATALKAN DISTRIBUSI (UNSAFE)';
+                        }
                     } else {
-                        alertBox.classList.add('hidden');
-                        submitBtn.classList.remove('bg-rose-600', 'hover:bg-rose-700');
-                        submitBtn.classList.add('bg-[#1C6654]', 'hover:bg-[#154E40]');
-                        submitBtn.innerText = 'Konfirmasi Penerimaan Elektronik (P04)';
+                        if (alertBox) alertBox.classList.add('hidden');
+                        if (submitBtn) {
+                            submitBtn.classList.remove('bg-rose-600', 'hover:bg-rose-700');
+                            submitBtn.classList.add('bg-[#1C6654]', 'hover:bg-[#154E40]');
+                            submitBtn.innerText = 'Konfirmasi Penerimaan Elektronik (P04)';
+                        }
                     }
                 }
 
                 // Inisialisasi awal kalkulasi
                 document.addEventListener('DOMContentLoaded', function () {
-                    calculateShortage();
+                    @if ($stop->deliveryItems->count() > 1)
+                        switchVerificationMode('{{ old('verification_mode', 'AGGREGATE') }}');
+                    @else
+                        calculateDiscrepancy();
+                    @endif
                     toggleTasteTest();
                     updateSafetyWarning();
                 });

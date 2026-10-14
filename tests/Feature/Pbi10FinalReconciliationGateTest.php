@@ -477,10 +477,11 @@ class Pbi10FinalReconciliationGateTest extends TestCase
         $itemA->refresh();
         $itemB->refresh();
 
-        $this->assertLessThanOrEqual(50, $itemA->delivered_portions, "Item A cannot exceed loaded (50)!");
-        $this->assertLessThanOrEqual(50, $itemB->delivered_portions, "Item B cannot exceed loaded (50)!");
-        $this->assertEquals(100, $itemA->delivered_portions + $itemB->delivered_portions, "Sum of delivered portions cannot exceed total loaded (100)!");
-
+        // GATE 2: Multi-batch over-receipt without per-batch verification leaves delivered_portions null (unresolved discrepancy)
+        $this->assertNull($itemA->delivered_portions, "Item A delivered must be null when attribution unresolved");
+        $this->assertNull($itemB->delivered_portions, "Item B delivered must be null when attribution unresolved");
+        $this->assertSame('UNRESOLVED_DISCREPANCY', $itemA->status);
+        $this->assertSame('UNRESOLVED_DISCREPANCY', $itemB->status);
         $this->assertEquals(120, $serviceRecord->received_portions);
         $this->assertEquals(SchoolReceiptStatus::RECEIVED_WITH_DISCREPANCY, $serviceRecord->status);
     }
