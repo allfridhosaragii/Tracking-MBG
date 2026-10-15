@@ -30,3 +30,6 @@ Thumbs.db
 /MBG-Track-Documentation-v3/
 
 
+ 
+/database/*.sqlite
+/database/*.sqlite-journal

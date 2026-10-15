@@ -117,7 +117,7 @@
 
                     <div class="flex items-center justify-between text-[11px] text-[#708177]">
                         <span>Dapur Asal: {{ $trip->sppg->name }}</span>
-                        <span>{{ $trip->stops->count() }} Sekolah Tujuan</span>
+                        <span>Pengantaran MBG Terverifikasi</span>
                     </div>
                 </div>
 
@@ -125,26 +125,26 @@
                 <div class="p-4 rounded-xl bg-[#FAFBF9] border border-[#DCE5DD] text-xs text-[#53645B]">
                     <span class="font-bold text-[#172923] block mb-1">Perlindungan Privasi &amp; Keamanan Distribusi:</span>
                     <p class="text-[11px] leading-relaxed">
-                        Data publik disanitasi secara ketat. Informasi pengemudi, nomor kontak pribadi, nomor polisi kendaraan, dan foto QC internal dilindungi dari penayangan umum.
+                        Data publik disanitasi secara ketat sesuai prinsip *data minimization*. Informasi pengemudi, kontak pribadi, nomor polisi armada, rute privat, dan daftar perhentian sekolah lain dilindungi dari penayangan umum.
                     </p>
                 </div>
             </div>
 
-            <!-- Kolom Kanan (5 Kolom): Urutan Sekolah Tujuan -->
+            <!-- Kolom Kanan (5 Kolom): Status Sekolah Penerima (Minimal Projection) -->
             <div class="lg:col-span-5 space-y-4">
                 <div class="p-4 sm:p-5 rounded-2xl bg-white border border-[#DCE5DD]">
                     <div class="flex items-center justify-between pb-3 border-b border-[#DCE5DD] mb-4">
-                        <h2 class="text-sm sm:text-base font-bold text-[#172923]">Daftar Sekolah Penerima</h2>
+                        <h2 class="text-sm sm:text-base font-bold text-[#172923]">Status Pengantaran Sekolah</h2>
                         <span class="text-xs font-bold text-[#1C6654] bg-[#EDF7F2] px-2 py-0.5 rounded border border-[#BCE2D0]">
-                            {{ $trip->stops->count() }} Perhentian
+                            {{ $matchedStop ? 'Terverifikasi' : 'Pencarian' }}
                         </span>
                     </div>
 
-                    <div class="space-y-3">
-                        @foreach ($trip->stops->sortBy('sequence_number') as $stop)
+                    @if (!empty($hasFilter))
+                        @if ($matchedStop)
                             @php
-                                $publicStopLabel = match ($stop->status) {
-                                    \App\Enums\TripStopStatus::PENDING => 'Menunggu Giliran',
+                                $publicStopLabel = match ($matchedStop->status) {
+                                    \App\Enums\TripStopStatus::PENDING => 'Menunggu Giliran Pengantaran',
                                     \App\Enums\TripStopStatus::EN_ROUTE => 'Armada Sedang Menuju Sekolah Ini',
                                     \App\Enums\TripStopStatus::ARRIVED => 'Armada Telah Tiba di Sekolah',
                                     \App\Enums\TripStopStatus::ARRIVED_AWAITING_CONFIRMATION => 'Tiba, Menunggu Konfirmasi Sekolah',
@@ -155,28 +155,72 @@
                                     default => 'Status Belum Diketahui',
                                 };
                             @endphp
-                            <div class="p-3.5 rounded-xl bg-[#FAFBF9] border border-[#DCE5DD]">
+                            <div class="p-4 rounded-xl bg-[#FAFBF9] border border-[#DCE5DD]">
                                 <div class="flex items-start justify-between gap-2">
-                                    <div class="flex items-center gap-2.5">
-                                        <span class="w-6 h-6 rounded-full bg-[#1C6654] text-white text-xs font-bold flex items-center justify-center shrink-0">
-                                            {{ $stop->sequence_number }}
-                                        </span>
-                                        <div>
-                                            <span class="text-xs font-bold text-[#172923] block">{{ $stop->school->name }}</span>
-                                            <span class="text-[10px] text-[#53645B]">{{ $stop->school->education_level }}</span>
-                                        </div>
+                                    <div>
+                                        <span class="text-sm font-bold text-[#172923] block">{{ $matchedStop->school->name }}</span>
+                                        <span class="text-xs text-[#53645B]">{{ $matchedStop->school->education_level }}</span>
                                     </div>
-                                    <span id="stop-badge-{{ $stop->sequence_number }}" class="text-[10px] px-2 py-0.5 rounded border {{ $stop->status->badgeClass() }}">
-                                        {{ $stop->status->label() }}
+                                    <span class="text-[10px] px-2 py-0.5 rounded border font-semibold {{ $matchedStop->status->badgeClass() }}">
+                                        {{ $matchedStop->status->label() }}
                                     </span>
                                 </div>
-                                <div class="mt-2 pt-2 border-t border-[#E8EEE9] flex justify-between text-[11px]">
-                                    <span class="text-[#708177]">Status:</span>
-                                    <span id="stop-stage-text-{{ $stop->sequence_number }}" class="font-medium text-[#172923]">{{ $publicStopLabel }}</span>
+                                <div class="mt-3 pt-3 border-t border-[#E8EEE9] flex justify-between text-xs">
+                                    <span class="text-[#708177]">Status Pengantaran:</span>
+                                    <span class="font-bold text-[#172923]">{{ $publicStopLabel }}</span>
                                 </div>
                             </div>
-                        @endforeach
-                    </div>
+                        @else
+                            <div class="p-4 rounded-xl bg-[#FAFBF9] border border-[#DCE5DD] text-center">
+                                <div class="w-10 h-10 rounded-full bg-[#EDF7F2] text-[#1C6654] mx-auto flex items-center justify-center mb-2">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                                    </svg>
+                                </div>
+                                <p class="text-xs font-medium text-[#53645B] leading-relaxed">
+                                    Sekolah tidak ditemukan pada jadwal pengantaran rute ini.
+                                </p>
+                            </div>
+                        @endif
+                    @else
+                        <div class="space-y-3">
+                            @foreach ($trip->stops->sortBy('sequence_number') as $stop)
+                                @php
+                                    $publicStopLabel = match ($stop->status) {
+                                        \App\Enums\TripStopStatus::PENDING => 'Menunggu Giliran',
+                                        \App\Enums\TripStopStatus::EN_ROUTE => 'Armada Sedang Menuju Sekolah Ini',
+                                        \App\Enums\TripStopStatus::ARRIVED => 'Armada Telah Tiba di Sekolah',
+                                        \App\Enums\TripStopStatus::ARRIVED_AWAITING_CONFIRMATION => 'Tiba, Menunggu Konfirmasi Sekolah',
+                                        \App\Enums\TripStopStatus::HANDED_OVER => 'Makanan Telah Diserahkan',
+                                        \App\Enums\TripStopStatus::COMPLETED => 'Pengantaran Selesai',
+                                        \App\Enums\TripStopStatus::SKIPPED => 'Dilewati',
+                                        \App\Enums\TripStopStatus::EXCEPTION => 'Terdapat Kendala Pengantaran',
+                                        default => 'Status Belum Diketahui',
+                                    };
+                                @endphp
+                                <div class="p-3.5 rounded-xl bg-[#FAFBF9] border border-[#DCE5DD]">
+                                    <div class="flex items-start justify-between gap-2">
+                                        <div class="flex items-center gap-2.5">
+                                            <span class="w-6 h-6 rounded-full bg-[#1C6654] text-white text-xs font-bold flex items-center justify-center shrink-0">
+                                                {{ $stop->sequence_number }}
+                                            </span>
+                                            <div>
+                                                <span class="text-xs font-bold text-[#172923] block">{{ $stop->school->name }}</span>
+                                                <span class="text-[10px] text-[#53645B]">{{ $stop->school->education_level }}</span>
+                                            </div>
+                                        </div>
+                                        <span id="stop-badge-{{ $stop->sequence_number }}" class="text-[10px] px-2 py-0.5 rounded border {{ $stop->status->badgeClass() }}">
+                                            {{ $stop->status->label() }}
+                                        </span>
+                                    </div>
+                                    <div class="mt-2 pt-2 border-t border-[#E8EEE9] flex justify-between text-[11px]">
+                                        <span class="text-[#708177]">Status:</span>
+                                        <span id="stop-stage-text-{{ $stop->sequence_number }}" class="font-medium text-[#172923]">{{ $publicStopLabel }}</span>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                    @endif
                 </div>
             </div>
         </div>
@@ -194,7 +238,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             if (window.initDispatchMap) {
                 window.initDispatchMap('public-delivery-map', {
-                    dataUrl: '{{ route('public.trips.map-data', $trip->trip_code) }}',
+                    dataUrl: '{{ route('public.trips.map-data', array_merge(['tripCode' => $trip->trip_code], request()->only(['school', 'school_slug', 'school_id']))) }}',
                     pollInterval: 15000,
                     onTelemetryUpdate: function(data) {
                         if (!data) return;

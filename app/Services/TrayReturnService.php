@@ -139,26 +139,21 @@ class TrayReturnService
                     );
                 }
 
-                // GATE B & STATUS-WORKFLOWS: Trays can only be marked READY_FOR_PICKUP after MEAL_COMPLETED,
-                // or via authorized food safety exception protocol if meal was HELD/REJECTED.
+                // GATE B & STATUS-WORKFLOWS / TRAYS-READY: Trays can strictly ONLY be marked READY_FOR_PICKUP
+                // after the meal service has officially reached MEAL_COMPLETED.
+                // An arbitrary checkbox by the PIC without authorized officer approval is prohibited.
+                // When food is HELD or REJECTED due to food safety, trays are safely blocked until official incident closure.
                 $serviceRecord = $lockedReturn->schoolServiceRecord;
-                if ($serviceRecord) {
-                    if ($serviceRecord->status !== \App\Enums\SchoolReceiptStatus::MEAL_COMPLETED) {
-                        if (in_array($serviceRecord->status, [\App\Enums\SchoolReceiptStatus::HELD, \App\Enums\SchoolReceiptStatus::REJECTED], true)) {
-                            $isException = filter_var($data['is_safety_exception'] ?? false, FILTER_VALIDATE_BOOLEAN);
-                            $exceptionReason = trim((string) ($data['exception_reason'] ?? $data['notes'] ?? ''));
-
-                            if (!$isException || empty($exceptionReason)) {
-                                throw new ConflictHttpException(
-                                    'Layanan makanan berstatus DITAHAN (HELD/REJECTED) karena kendala keamanan pangan. Penandaan wadah siap jemput untuk makanan yang ditahan memerlukan prosedur penanganan khusus dan alasan resmi.'
-                                );
-                            }
-                        } else {
-                            throw new ConflictHttpException(
-                                "Ompreng belum dapat ditandai siap jemput karena kegiatan makan belum selesai (MEAL_COMPLETED). Status layanan saat ini: {$serviceRecord->status->label()}."
-                            );
-                        }
+                if ($serviceRecord && $serviceRecord->status !== \App\Enums\SchoolReceiptStatus::MEAL_COMPLETED) {
+                    if (in_array($serviceRecord->status, [\App\Enums\SchoolReceiptStatus::HELD, \App\Enums\SchoolReceiptStatus::REJECTED], true)) {
+                        throw new ConflictHttpException(
+                            "Layanan makanan berstatus {$serviceRecord->status->label()} karena kendala keamanan pangan. Wadah ompreng tidak dapat ditandai siap jemput sebelum insiden diselesaikan secara resmi oleh pihak berwenang."
+                        );
                     }
+
+                    throw new ConflictHttpException(
+                        "Ompreng belum dapat ditandai siap jemput karena kegiatan makan belum selesai (MEAL_COMPLETED). Status layanan saat ini: {$serviceRecord->status->label()}."
+                    );
                 }
 
                 $notes = isset($data['notes']) ? trim((string) $data['notes']) : (isset($data['discrepancy_reason']) ? trim((string) $data['discrepancy_reason']) : null);

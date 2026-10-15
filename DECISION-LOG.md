@@ -861,3 +861,16 @@ File ini mencatat seluruh keputusan arsitektur, database, dan implementasi yang 
   - Sesuai instruksi STOP after Phase 1, agen berhenti dan menyerahkan laporan lengkap kepada pengguna sebelum melangkah ke Phase 2.
 
 
+
+---
+
+## DEC-027: Phase 1 Deep Audit Hardening — Strict State Invariants, Multi-Batch Attribution, and Public Privacy Defense
+- **Tanggal:** 15 Oktober 2026
+- **Status:** APPROVED & IMPLEMENTED
+- **Konteks:** Menindaklanjuti temuan audit independen pada Phase 1 Recovery:
+  1. **Strict Tray Return Gate B:** Menghapus celah bypass `is_safety_exception` pada `TrayReturnService::markReady()`. Ompreng HANYA boleh bertransisi ke `READY_FOR_PICKUP` setelah layanan mencapai status `MEAL_COMPLETED`. Makanan berstatus `HELD` atau `REJECTED` tertahan secara aman hingga insiden ditangani secara resmi oleh otoritas yang berwenang.
+  2. **Multi-Batch Traceability QC Attribution:** Pada skenario multi-batch yang dikonsolidasi pada satu sekolah, pemeriksaan organoleptik kedua (`BEFORE_CONSUMPTION`) mencatat porsi diterima dan ditolak per batch sebagai `null` (unknown attribution) disertai catatan transparansi, mencegah atribusi porsi spekulatif antar batch tanpa data timbangan per wadah.
+  3. **Strict State Lifecycle Invariant:** Menolak `MEAL_COMPLETED` jika status layanan belum `DISTRIBUTED`, serta melarang penetapan `distribution_started_at` secara retroaktif (wajib dicatat melalui endpoint resmi `startDistribution`).
+  4. **Gate C Public Privacy Defense:** Menegakkan proteksi fallback pada seluruh endpoint publik (`/public/trips/{tripCode}/map` dan `/map-data`). Filter kosong atau tidak valid dilarang keras mengembalikan seluruh daftar sekolah sebagai fallback. Respons per-sekolah memfilter sekolah lain, koordinat GPS mentah, nomor urutan perhentian internal, dan identitas kurir.
+  5. **Verifikasi Komprehensif:** Ditambahkan rangkaian uji `tests/Feature/Phase1AuditRecoveryTest.php` (12 test, 101 assertions). Seluruh pengujian sistem mencapai **386 passed, 2.239 assertions, 0 failures, npm test 9/9 passed, npm run build exit code 0**.
+- **Konsekuensi:** Seluruh temuan audit terselesaikan dengan bukti pengujian nyata dan kode bersih sesuai arsitektur Laravel v4 dan anti-slop guidelines.

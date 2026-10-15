@@ -282,12 +282,10 @@ class SchoolHandoverService
                 $tasteSkippedReason = isset($data['taste_skipped_reason']) ? trim((string) $data['taste_skipped_reason']) : null;
 
                 // Food Safety: Do NOT force tasting if food is suspected spoiled or damaged!
-                if (!$appearanceOk || !$aromaOk) {
-                    if ($tasteTested && $tasteOk === true) {
-                        throw ValidationException::withMessages([
-                            'taste_tested' => ['Makanan dengan rupa atau aroma tidak wajar dilarang dicicipi demi keamanan petugas/siswa.'],
-                        ]);
-                    }
+                if ((!$appearanceOk || !$aromaOk) && $tasteTested) {
+                    throw ValidationException::withMessages([
+                        'taste_tested' => ['Makanan dengan rupa atau aroma tidak wajar dilarang dicicipi demi keamanan petugas/siswa.'],
+                    ]);
                 }
 
                 $tempC = null;
@@ -856,13 +854,11 @@ class SchoolHandoverService
                 $tasteOk = isset($data['taste_ok']) ? filter_var($data['taste_ok'], FILTER_VALIDATE_BOOLEAN) : null;
                 $tasteSkippedReason = isset($data['taste_skipped_reason']) ? trim((string) $data['taste_skipped_reason']) : null;
 
-                // Food safety rule: Do NOT force tasting if appearance or aroma is not OK!
-                if (!$appearanceOk || !$aromaOk) {
-                    if ($tasteTested && $tasteOk === true) {
-                        throw ValidationException::withMessages([
-                            'taste_tested' => ['Makanan dengan rupa atau aroma tidak wajar dilarang dicicipi demi keamanan petugas/siswa.'],
-                        ]);
-                    }
+                // Food safety rule: Do NOT force tasting if appearance or aroma is not OK! (F03)
+                if ((!$appearanceOk || !$aromaOk) && $tasteTested) {
+                    throw ValidationException::withMessages([
+                        'taste_tested' => ['Makanan dengan rupa atau aroma tidak wajar dilarang dicicipi demi keamanan petugas/siswa.'],
+                    ]);
                 }
 
                 $tempC = null;
@@ -895,9 +891,51 @@ class SchoolHandoverService
                 $now = Carbon::now();
                 $notes = isset($data['notes']) ? trim((string) $data['notes']) : null;
 
-                // Record distinct QualityCheck with BEFORE_CONSUMPTION stage for each delivery item/batch
+                // F01: Record distinct QualityCheck with BEFORE_CONSUMPTION stage for each delivery item/batch
+                // Multi-batch aggregate receipt MUST NOT duplicate total school portions to each batch!
                 $distinctBatches = $stop->deliveryItems->pluck('food_batch_id')->filter()->unique();
+                $isSingleBatch = ($distinctBatches->count() === 1);
+                $hasVerifiedItems = !empty($data['items']) && is_array($data['items']);
+
                 foreach ($distinctBatches as $batchId) {
+                    if ($isSingleBatch) {
+                        // Single batch: 100% of received portions belong to this batch
+                        if ($conclusion === QualityCheckConclusion::SAFE) {
+                            $batchAccepted = max(0, (int) $lockedRecord->received_portions - (int) $lockedRecord->damaged_portions);
+                            $batchRejected = (int) $lockedRecord->damaged_portions;
+                        } else {
+                            $batchAccepted = 0;
+                            $batchRejected = (int) $lockedRecord->received_portions;
+                        }
+                        $reasonNote = "Pemeriksaan organoleptik kedua sebelum konsumsi (BEFORE_CONSUMPTION) single batch di {$school->name}.";
+                    } elseif ($hasVerifiedItems) {
+                        // Multi-batch with verified physical breakdown provided
+                        $batchItem = $stop->deliveryItems->firstWhere('food_batch_id', $batchId);
+                        $itemInput = $batchItem && isset($data['items'][$batchItem->id]) ? $data['items'][$batchItem->id] : null;
+
+                        if ($itemInput && isset($itemInput['received_portions'])) {
+                            $itemRec = (int) $itemInput['received_portions'];
+                            $itemDmg = (int) ($itemInput['damaged_portions'] ?? 0);
+                            if ($conclusion === QualityCheckConclusion::SAFE) {
+                                $batchAccepted = max(0, $itemRec - $itemDmg);
+                                $batchRejected = $itemDmg;
+                            } else {
+                                $batchAccepted = 0;
+                                $batchRejected = $itemRec;
+                            }
+                            $reasonNote = "Pemeriksaan organoleptik kedua sebelum konsumsi (BEFORE_CONSUMPTION) dengan verifikasi fisik per batch di {$school->name}.";
+                        } else {
+                            $batchAccepted = null;
+                            $batchRejected = null;
+                            $reasonNote = "Pemeriksaan organoleptik kedua sebelum konsumsi (BEFORE_CONSUMPTION) multi-batch. Atribusi fisik batch #{$batchId} tidak terverifikasi.";
+                        }
+                    } else {
+                        // Multi-batch aggregate receipt: Per-batch attribution unknown / null per traceability rules
+                        $batchAccepted = null;
+                        $batchRejected = null;
+                        $reasonNote = "Pemeriksaan organoleptik kedua sebelum konsumsi (BEFORE_CONSUMPTION) multi-batch ({$distinctBatches->count()} batch) di {$school->name}. Atribusi porsi per batch berstatus unknown (null) karena pemeriksaan dilakukan secara agregat tingkat sekolah sesuai aturan traceability pangan.";
+                    }
+
                     QualityCheck::create([
                         'food_batch_id' => $batchId,
                         'trip_stop_id' => $stop->id,
@@ -910,11 +948,11 @@ class SchoolHandoverService
                         'taste_ok' => $tasteOk,
                         'taste_skipped_reason' => $tasteSkippedReason,
                         'temperature_c' => $tempC,
-                        'accepted_portions' => $conclusion === QualityCheckConclusion::SAFE ? max(0, (int) $lockedRecord->received_portions - (int) $lockedRecord->damaged_portions) : 0,
-                        'rejected_portions' => $conclusion === QualityCheckConclusion::SAFE ? 0 : (int) $lockedRecord->received_portions,
+                        'accepted_portions' => $batchAccepted,
+                        'rejected_portions' => $batchRejected,
                         'conclusion' => $conclusion,
                         'notes' => $notes,
-                        'decision_reason' => "Pemeriksaan organoleptik kedua sebelum konsumsi (BEFORE_CONSUMPTION) di {$school->name}.",
+                        'decision_reason' => $reasonNote,
                         'checked_at' => $now,
                     ]);
                 }
@@ -1072,6 +1110,11 @@ class SchoolHandoverService
                     throw new HttpException(403, 'Akses ditolak. Anda tidak memiliki otorisasi untuk sekolah ini.');
                 }
 
+                // Idempotency: If already MEAL_COMPLETED
+                if ($lockedRecord->status === SchoolReceiptStatus::MEAL_COMPLETED) {
+                    return $lockedRecord;
+                }
+
                 // Invariant: Cannot complete meal if in WAITING, HELD, or REJECTED
                 if ($lockedRecord->status === SchoolReceiptStatus::WAITING) {
                     throw new ConflictHttpException('Penerimaan makanan belum selesai.');
@@ -1080,6 +1123,13 @@ class SchoolHandoverService
                 if (in_array($lockedRecord->status, [SchoolReceiptStatus::HELD, SchoolReceiptStatus::REJECTED], true)) {
                     throw new ConflictHttpException(
                         "Layanan makanan berstatus {$lockedRecord->status->label()}. Kegiatan makan tidak dapat diselesaikan secara normal."
+                    );
+                }
+
+                // F02: Wajib menolak MEAL_COMPLETED apabila status sebelumnya bukan DISTRIBUTED
+                if ($lockedRecord->status !== SchoolReceiptStatus::DISTRIBUTED) {
+                    throw new ConflictHttpException(
+                        "Kegiatan makan hanya dapat diselesaikan setelah pembagian makanan dimulai (DISTRIBUTED). Status layanan saat ini: {$lockedRecord->status->label()}."
                     );
                 }
 
@@ -1093,11 +1143,6 @@ class SchoolHandoverService
                     throw new ConflictHttpException(
                         'Pemeriksaan kualitas sebelum makan (BEFORE_CONSUMPTION) belum dilaksanakan atau belum lolos uji aman. Kegiatan makan tidak dapat diselesaikan tanpa verifikasi keselamatan pangan.'
                     );
-                }
-
-                // Idempotency: If already MEAL_COMPLETED
-                if ($lockedRecord->status === SchoolReceiptStatus::MEAL_COMPLETED) {
-                    return $lockedRecord;
                 }
 
                 // Usable portions calculation
@@ -1133,10 +1178,10 @@ class SchoolHandoverService
                 $now = Carbon::now();
                 $notes = isset($data['notes']) ? trim((string) $data['notes']) : null;
 
+                // F02: Do NOT set distribution_started_at retroactively. It must already exist from startDistribution.
                 $lockedRecord->update([
                     'served_portions' => $servedPortions,
                     'leftover_portions' => $leftoverPortions,
-                    'distribution_started_at' => $lockedRecord->distribution_started_at ?: $now,
                     'meal_completed_at' => $now,
                     'status' => SchoolReceiptStatus::MEAL_COMPLETED,
                     'notes' => $notes ? ($lockedRecord->notes ? $lockedRecord->notes . ' | Selesai makan: ' . $notes : $notes) : $lockedRecord->notes,

@@ -382,14 +382,18 @@ class Pbi10MealDistributionComplianceTest extends TestCase
             ]);
         $responseTray->assertStatus(409);
 
-        // Mark ready on HELD meal WITH safety exception succeeds
-        $trayService = app(TrayReturnService::class);
-        $updatedTray = $trayService->markReady($trayReturn, $this->picSchoolA, [
-            'ready_count' => 15,
-            'is_safety_exception' => true,
-            'exception_reason' => 'Makanan rusak telah dibuang sesuai SOP pemusnahan pangan dan wadah telah disterilkan.',
-        ]);
-        $this->assertEquals(TrayReturnStatus::READY_FOR_PICKUP, $updatedTray->status);
+        // Mark ready on HELD meal is strictly blocked per Gate B, even if is_safety_exception is passed
+        try {
+            $trayService = app(TrayReturnService::class);
+            $trayService->markReady($trayReturn, $this->picSchoolA, [
+                'ready_count' => 15,
+                'is_safety_exception' => true,
+                'exception_reason' => 'Makanan rusak telah dibuang sesuai SOP pemusnahan pangan dan wadah telah disterilkan.',
+            ]);
+            $this->fail('Expected ConflictHttpException when marking ready on HELD meal service record.');
+        } catch (\Symfony\Component\HttpKernel\Exception\ConflictHttpException $e) {
+            $this->assertStringContainsString('Ditahan (Kendala Keamanan Pangan)', $e->getMessage());
+        }
     }
 
     /**
