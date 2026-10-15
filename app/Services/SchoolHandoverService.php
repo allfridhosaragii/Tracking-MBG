@@ -895,7 +895,67 @@ class SchoolHandoverService
                 // Multi-batch aggregate receipt MUST NOT duplicate total school portions to each batch!
                 $distinctBatches = $stop->deliveryItems->pluck('food_batch_id')->filter()->unique();
                 $isSingleBatch = ($distinctBatches->count() === 1);
-                $hasVerifiedItems = !empty($data['items']) && is_array($data['items']);
+
+                // Audit QC multi-batch: Rigorous physical breakdown verification
+                $isBreakdownVerified = false;
+                $verifiedBatchMap = [];
+
+                if (! $isSingleBatch && ! empty($data['items']) && is_array($data['items'])) {
+                    $stopItems = $stop->deliveryItems;
+                    $validItemIds = $stopItems->pluck('id')->all();
+                    $submittedItemIds = array_map('intval', array_keys($data['items']));
+
+                    // 1. Ownership & completeness check: All stop delivery items must be present, and no foreign items
+                    $missingItemIds = array_diff($validItemIds, $submittedItemIds);
+                    $foreignItemIds = array_diff($submittedItemIds, $validItemIds);
+
+                    if (empty($missingItemIds) && empty($foreignItemIds)) {
+                        $sumRec = 0;
+                        $sumDmg = 0;
+                        $allValid = true;
+                        $batchAggregates = [];
+
+                        foreach ($stopItems as $item) {
+                            $itemRow = $data['items'][$item->id] ?? null;
+                            if (! is_array($itemRow) || ! isset($itemRow['received_portions'])) {
+                                $allValid = false;
+                                break;
+                            }
+
+                            $rec = filter_var($itemRow['received_portions'], FILTER_VALIDATE_INT);
+                            $dmg = filter_var($itemRow['damaged_portions'] ?? 0, FILTER_VALIDATE_INT);
+
+                            if ($rec === false || $dmg === false || $rec < 0 || $dmg < 0 || $dmg > $rec) {
+                                $allValid = false;
+                                break;
+                            }
+
+                            // Quantity bound: received cannot exceed loaded portions for that item (with tolerance)
+                            if ($item->loaded_portions !== null && $rec > ($item->loaded_portions * 1.5)) {
+                                $allValid = false;
+                                break;
+                            }
+
+                            $sumRec += $rec;
+                            $sumDmg += $dmg;
+
+                            $bId = $item->food_batch_id;
+                            if (! isset($batchAggregates[$bId])) {
+                                $batchAggregates[$bId] = ['received' => 0, 'damaged' => 0];
+                            }
+                            $batchAggregates[$bId]['received'] += $rec;
+                            $batchAggregates[$bId]['damaged'] += $dmg;
+                        }
+
+                        // Aggregate consistency: Sums must strictly equal school record portions
+                        if ($allValid
+                            && $sumRec === (int) $lockedRecord->received_portions
+                            && $sumDmg === (int) $lockedRecord->damaged_portions) {
+                            $isBreakdownVerified = true;
+                            $verifiedBatchMap = $batchAggregates;
+                        }
+                    }
+                }
 
                 foreach ($distinctBatches as $batchId) {
                     if ($isSingleBatch) {
@@ -908,27 +968,18 @@ class SchoolHandoverService
                             $batchRejected = (int) $lockedRecord->received_portions;
                         }
                         $reasonNote = "Pemeriksaan organoleptik kedua sebelum konsumsi (BEFORE_CONSUMPTION) single batch di {$school->name}.";
-                    } elseif ($hasVerifiedItems) {
-                        // Multi-batch with verified physical breakdown provided
-                        $batchItem = $stop->deliveryItems->firstWhere('food_batch_id', $batchId);
-                        $itemInput = $batchItem && isset($data['items'][$batchItem->id]) ? $data['items'][$batchItem->id] : null;
-
-                        if ($itemInput && isset($itemInput['received_portions'])) {
-                            $itemRec = (int) $itemInput['received_portions'];
-                            $itemDmg = (int) ($itemInput['damaged_portions'] ?? 0);
-                            if ($conclusion === QualityCheckConclusion::SAFE) {
-                                $batchAccepted = max(0, $itemRec - $itemDmg);
-                                $batchRejected = $itemDmg;
-                            } else {
-                                $batchAccepted = 0;
-                                $batchRejected = $itemRec;
-                            }
-                            $reasonNote = "Pemeriksaan organoleptik kedua sebelum konsumsi (BEFORE_CONSUMPTION) dengan verifikasi fisik per batch di {$school->name}.";
+                    } elseif ($isBreakdownVerified && isset($verifiedBatchMap[$batchId])) {
+                        // Multi-batch with strictly verified physical breakdown
+                        $bRec = $verifiedBatchMap[$batchId]['received'];
+                        $bDmg = $verifiedBatchMap[$batchId]['damaged'];
+                        if ($conclusion === QualityCheckConclusion::SAFE) {
+                            $batchAccepted = max(0, $bRec - $bDmg);
+                            $batchRejected = $bDmg;
                         } else {
-                            $batchAccepted = null;
-                            $batchRejected = null;
-                            $reasonNote = "Pemeriksaan organoleptik kedua sebelum konsumsi (BEFORE_CONSUMPTION) multi-batch. Atribusi fisik batch #{$batchId} tidak terverifikasi.";
+                            $batchAccepted = 0;
+                            $batchRejected = $bRec;
                         }
+                        $reasonNote = "Pemeriksaan organoleptik kedua sebelum konsumsi (BEFORE_CONSUMPTION) dengan verifikasi fisik per batch di {$school->name}.";
                     } else {
                         // Multi-batch aggregate receipt: Per-batch attribution unknown / null per traceability rules
                         $batchAccepted = null;

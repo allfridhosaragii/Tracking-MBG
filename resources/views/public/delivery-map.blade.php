@@ -178,47 +178,21 @@
                                     </svg>
                                 </div>
                                 <p class="text-xs font-medium text-[#53645B] leading-relaxed">
-                                    Sekolah tidak ditemukan pada jadwal pengantaran rute ini.
+                                    Sekolah tidak ditemukan pada jadwal pengantaran rute ini. Pastikan kode atau tautan sekolah sesuai.
                                 </p>
                             </div>
                         @endif
                     @else
-                        <div class="space-y-3">
-                            @foreach ($trip->stops->sortBy('sequence_number') as $stop)
-                                @php
-                                    $publicStopLabel = match ($stop->status) {
-                                        \App\Enums\TripStopStatus::PENDING => 'Menunggu Giliran',
-                                        \App\Enums\TripStopStatus::EN_ROUTE => 'Armada Sedang Menuju Sekolah Ini',
-                                        \App\Enums\TripStopStatus::ARRIVED => 'Armada Telah Tiba di Sekolah',
-                                        \App\Enums\TripStopStatus::ARRIVED_AWAITING_CONFIRMATION => 'Tiba, Menunggu Konfirmasi Sekolah',
-                                        \App\Enums\TripStopStatus::HANDED_OVER => 'Makanan Telah Diserahkan',
-                                        \App\Enums\TripStopStatus::COMPLETED => 'Pengantaran Selesai',
-                                        \App\Enums\TripStopStatus::SKIPPED => 'Dilewati',
-                                        \App\Enums\TripStopStatus::EXCEPTION => 'Terdapat Kendala Pengantaran',
-                                        default => 'Status Belum Diketahui',
-                                    };
-                                @endphp
-                                <div class="p-3.5 rounded-xl bg-[#FAFBF9] border border-[#DCE5DD]">
-                                    <div class="flex items-start justify-between gap-2">
-                                        <div class="flex items-center gap-2.5">
-                                            <span class="w-6 h-6 rounded-full bg-[#1C6654] text-white text-xs font-bold flex items-center justify-center shrink-0">
-                                                {{ $stop->sequence_number }}
-                                            </span>
-                                            <div>
-                                                <span class="text-xs font-bold text-[#172923] block">{{ $stop->school->name }}</span>
-                                                <span class="text-[10px] text-[#53645B]">{{ $stop->school->education_level }}</span>
-                                            </div>
-                                        </div>
-                                        <span id="stop-badge-{{ $stop->sequence_number }}" class="text-[10px] px-2 py-0.5 rounded border {{ $stop->status->badgeClass() }}">
-                                            {{ $stop->status->label() }}
-                                        </span>
-                                    </div>
-                                    <div class="mt-2 pt-2 border-t border-[#E8EEE9] flex justify-between text-[11px]">
-                                        <span class="text-[#708177]">Status:</span>
-                                        <span id="stop-stage-text-{{ $stop->sequence_number }}" class="font-medium text-[#172923]">{{ $publicStopLabel }}</span>
-                                    </div>
-                                </div>
-                            @endforeach
+                        <div class="p-4 rounded-xl bg-[#FAFBF9] border border-[#DCE5DD] text-center">
+                            <div class="w-10 h-10 rounded-full bg-[#EDF7F2] text-[#1C6654] mx-auto flex items-center justify-center mb-2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                                </svg>
+                            </div>
+                            <h3 class="text-xs font-bold text-[#172923] mb-1">Informasi Perhentian Dilindungi</h3>
+                            <p class="text-xs font-medium text-[#53645B] leading-relaxed">
+                                Demi perlindungan privasi dan keamanan distribusi, daftar perhentian tidak dipublikasikan secara terbuka. Silakan akses pemantauan status melalui portal resmi sekolah penerima manfaat Anda.
+                            </p>
                         </div>
                     @endif
                 </div>
@@ -238,7 +212,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             if (window.initDispatchMap) {
                 window.initDispatchMap('public-delivery-map', {
-                    dataUrl: '{{ route('public.trips.map-data', array_merge(['tripCode' => $trip->trip_code], request()->only(['school', 'school_slug', 'school_id']))) }}',
+                    dataUrl: '{{ route('public.trips.map-data', array_merge(['tripCode' => $trip->trip_code], request()->only(['school', 'school_slug', 'school_id', 'filter']))) }}',
                     pollInterval: 15000,
                     onTelemetryUpdate: function(data) {
                         if (!data) return;

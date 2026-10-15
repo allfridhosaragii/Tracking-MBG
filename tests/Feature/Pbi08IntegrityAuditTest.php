@@ -461,9 +461,16 @@ class Pbi08IntegrityAuditTest extends TestCase
         $service->startTrip($trip, $this->driverA);
 
         $trip->refresh();
-        $this->assertEquals(TripStatus::IN_PROGRESS, $trip->status);
+        // Unfiltered query has empty stops per privacy protection
+        $responseUnfiltered = $this->getJson(route('public.trips.map-data', $trip->trip_code));
+        $responseUnfiltered->assertStatus(200);
+        $this->assertEmpty($responseUnfiltered->json('stops'));
 
-        $response = $this->getJson(route('public.trips.map-data', $trip->trip_code));
+        // Filtered query by school provides sanitized stop projection
+        $response = $this->getJson(route('public.trips.map-data', [
+            'tripCode' => $trip->trip_code,
+            'school' => $this->schoolA1->public_slug,
+        ]));
         $response->assertStatus(200);
 
         $data = $response->json();
@@ -497,9 +504,13 @@ class Pbi08IntegrityAuditTest extends TestCase
         foreach ($allStatuses as $statusCase) {
             $stops->first()->update(['status' => $statusCase]);
 
-            $response = $this->getJson(route('public.trips.map-data', $trip->trip_code));
+            $response = $this->getJson(route('public.trips.map-data', [
+                'tripCode' => $trip->trip_code,
+                'school' => $stops->first()->school->public_slug,
+            ]));
             $response->assertStatus(200);
-            $stopData = collect($response->json('stops'))->firstWhere('sequence_number', 1);
+            $stopData = collect($response->json('stops'))->first();
+            $this->assertNotNull($stopData);
             $this->assertNotEmpty($stopData['stage']);
         }
     }

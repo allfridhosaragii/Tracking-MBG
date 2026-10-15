@@ -619,7 +619,7 @@ class Pbi10MealDistributionComplianceTest extends TestCase
      */
     public function test_gate_c_privacy_protections(): void
     {
-        // 1. PIC School A mapData projection
+        // 1. PIC School A mapData strict minimal projection
         $responsePic = $this->actingAs($this->picSchoolA)
             ->get(route('trips.map-data', $this->trip));
 
@@ -629,30 +629,49 @@ class Pbi10MealDistributionComplianceTest extends TestCase
         // Must nullify geometry and legs for PIC
         $this->assertNull($picData['geometry']);
         $this->assertEmpty($picData['legs']);
+        $this->assertNull($picData['vehicle']);
+        $this->assertNull($picData['driver']);
+        $this->assertNull($picData['driver_telemetry']);
+        $this->assertNull($picData['sppg']['lat']);
+        $this->assertNull($picData['sppg']['lng']);
+        $this->assertNull($picData['active_stop_sequence']);
 
-        // Stop 1 (School A) has coordinates
-        $stop1Data = collect($picData['stops'])->firstWhere('id', $this->stopA->id);
-        $this->assertNotNull($stop1Data['lat']);
-        $this->assertNotNull($stop1Data['lng']);
+        // PIC only receives coordinates for their own school; other schools have null lat/lng and masked names
+        $myStopData = collect($picData['stops'])->firstWhere('is_my_school', true);
+        $this->assertNotNull($myStopData);
+        $this->assertEquals($this->stopA->id, $myStopData['id']);
+        $this->assertEquals($this->schoolA->id, $myStopData['school_id']);
+        $this->assertNotNull($myStopData['lat']);
+        $this->assertNotNull($myStopData['lng']);
 
-        // Stop 2 (School B) coordinates MUST be null and name masked
-        $stop2Data = collect($picData['stops'])->firstWhere('id', $this->stopB->id);
-        $this->assertNull($stop2Data['lat']);
-        $this->assertNull($stop2Data['lng']);
-        $this->assertStringContainsString('Pemberhentian #2', $stop2Data['school_name']);
+        $otherStopData = collect($picData['stops'])->firstWhere('is_my_school', false);
+        $this->assertNotNull($otherStopData);
+        $this->assertNull($otherStopData['school_id']);
+        $this->assertNull($otherStopData['lat']);
+        $this->assertNull($otherStopData['lng']);
+        $this->assertStringContainsString('Pemberhentian', $otherStopData['school_name']);
 
-        // 2. Public delivery map data
-        $responsePublic = $this->get(route('public.trips.map-data', $this->trip->trip_code));
-        $responsePublic->assertOk();
-        $pubData = $responsePublic->json();
+        // 2. Public delivery map data - unfiltered request has empty stops
+        $responsePublicUnfiltered = $this->get(route('public.trips.map-data', $this->trip->trip_code));
+        $responsePublicUnfiltered->assertOk();
+        $pubDataUnfiltered = $responsePublicUnfiltered->json();
+        $this->assertEmpty($pubDataUnfiltered['stops']);
+        $this->assertNull($pubDataUnfiltered['geometry']);
+        $this->assertNull($pubDataUnfiltered['sppg']['lat']);
+        $this->assertNull($pubDataUnfiltered['sppg']['lng']);
 
-        $this->assertNull($pubData['geometry']);
-        $this->assertNull($pubData['sppg']['lat']);
-        $this->assertNull($pubData['sppg']['lng']);
-        foreach ($pubData['stops'] as $pStop) {
-            $this->assertNull($pStop['lat']);
-            $this->assertNull($pStop['lng']);
-        }
+        // Public delivery map data - filtered by school
+        $responsePublicFiltered = $this->get(route('public.trips.map-data', [
+            'tripCode' => $this->trip->trip_code,
+            'school' => $this->schoolA->public_slug,
+        ]));
+        $responsePublicFiltered->assertOk();
+        $pubDataFiltered = $responsePublicFiltered->json();
+        $this->assertCount(1, $pubDataFiltered['stops']);
+        $this->assertArrayNotHasKey('sequence_number', $pubDataFiltered['stops'][0]);
+        $this->assertNull($pubDataFiltered['stops'][0]['lat']);
+        $this->assertNull($pubDataFiltered['stops'][0]['lng']);
+        $this->assertNull($pubDataFiltered['geometry']);
 
         // 3. Public school delivery status (Page U04 minimal projection)
         $slug = $this->schoolA->public_slug ?: $this->schoolA->school_code;
@@ -672,6 +691,203 @@ class Pbi10MealDistributionComplianceTest extends TestCase
         $this->assertArrayNotHasKey('driver', $u04Data);
         $this->assertArrayNotHasKey('geometry', $u04Data);
         $this->assertArrayNotHasKey('telemetry', $u04Data);
+    }
+
+    /**
+     * Test Gate C Negative: Cross-school PIC cannot access map data of trips not serving their school.
+     */
+    public function test_gate_c_pic_cross_school_access_is_forbidden(): void
+    {
+        $otherSchool = School::create([
+            'sppg_id' => $this->sppg->id,
+            'name' => 'SD Negeri Unrelated',
+            'school_code' => 'SCH-UNRELATED',
+            'npsn' => '99887766',
+            'education_level' => 'SD',
+            'address' => 'Jl. Unrelated No. 1',
+            'latitude' => -7.300000,
+            'longitude' => 112.750000,
+            'public_slug' => 'sdn-unrelated',
+        ]);
+        $otherPic = User::factory()->create([
+            'role' => UserRole::PIC_SEKOLAH,
+            'school_id' => $otherSchool->id,
+            'sppg_id' => $this->sppg->id,
+        ]);
+
+        $response = $this->actingAs($otherPic)
+            ->get(route('trips.map-data', $this->trip));
+
+        $response->assertStatus(403);
+    }
+
+    /**
+     * Test Gate A Multi-Batch QC: Verified physical breakdown properly attributes portions per batch.
+     */
+    public function test_gate_a_multi_batch_qc_verified_breakdown_attribution(): void
+    {
+        // Create second batch
+        $batch2 = FoodBatch::create([
+            'production_plan_id' => $this->plan->id,
+            'menu_id' => $this->menu->id,
+            'batch_code' => 'BATCH-TEST-002',
+            'planned_portions' => 200,
+            'status' => FoodBatchStatus::RELEASED,
+            'prepared_portions' => 200,
+            'created_by' => $this->batch->created_by,
+        ]);
+
+        // Add second delivery item to stopA
+        $item1 = $this->stopA->deliveryItems()->first();
+        $item1->update(['planned_portions' => 200, 'loaded_portions' => 200]);
+        $item2 = DeliveryItem::create([
+            'trip_stop_id' => $this->stopA->id,
+            'food_batch_id' => $batch2->id,
+            'production_allocation_id' => $item1->production_allocation_id,
+            'planned_portions' => 140,
+            'loaded_portions' => 140,
+        ]);
+
+        $handoverService = app(SchoolHandoverService::class);
+        $recordA = $handoverService->confirmReceipt(
+            $this->stopA,
+            $this->picSchoolA,
+            [
+                'received_portions' => 340,
+                'damaged_portions' => 0,
+                'notes' => 'Penerimaan multi-batch porsi lengkap.',
+                'appearance_ok' => true,
+                'aroma_ok' => true,
+                'texture_ok' => true,
+                'taste_tested' => true,
+                'taste_ok' => true,
+                'temperature_c' => 65.0,
+                'conclusion' => 'SAFE',
+            ]
+        );
+
+        // Submit verified physical breakdown
+        $qcData = [
+            'appearance_ok' => true,
+            'aroma_ok' => true,
+            'texture_ok' => true,
+            'taste_tested' => true,
+            'taste_ok' => true,
+            'conclusion' => QualityCheckConclusion::SAFE->value,
+            'notes' => 'Pemeriksaan multi-batch lengkap dan terverifikasi.',
+            'items' => [
+                $item1->id => [
+                    'received_portions' => 200,
+                    'damaged_portions' => 0,
+                ],
+                $item2->id => [
+                    'received_portions' => 140,
+                    'damaged_portions' => 0,
+                ],
+            ],
+        ];
+
+        $handoverService->recordPreConsumptionCheck($recordA, $this->picSchoolA, $qcData);
+
+        $recordA->refresh();
+        $this->assertEquals(SchoolReceiptStatus::CLEARED_TO_SERVE, $recordA->status);
+
+        // Verify quality checks created for both batches with accurate portions
+        $qcBatch1 = QualityCheck::where('food_batch_id', $this->batch->id)
+            ->where('check_stage', QualityCheckStage::BEFORE_CONSUMPTION)
+            ->latest('id')
+            ->first();
+        $this->assertNotNull($qcBatch1);
+        $this->assertEquals(200, $qcBatch1->accepted_portions);
+        $this->assertEquals(0, $qcBatch1->rejected_portions);
+
+        $qcBatch2 = QualityCheck::where('food_batch_id', $batch2->id)
+            ->where('check_stage', QualityCheckStage::BEFORE_CONSUMPTION)
+            ->latest('id')
+            ->first();
+        $this->assertNotNull($qcBatch2);
+        $this->assertEquals(140, $qcBatch2->accepted_portions);
+        $this->assertEquals(0, $qcBatch2->rejected_portions);
+    }
+
+    /**
+     * Test Gate A Multi-Batch QC: Inconsistent breakdown safely falls back to unknown/null attribution.
+     */
+    public function test_gate_a_multi_batch_qc_unverified_breakdown_falls_back_to_null(): void
+    {
+        $batch2 = FoodBatch::create([
+            'production_plan_id' => $this->plan->id,
+            'menu_id' => $this->menu->id,
+            'batch_code' => 'BATCH-TEST-003',
+            'planned_portions' => 200,
+            'status' => FoodBatchStatus::RELEASED,
+            'prepared_portions' => 200,
+            'created_by' => $this->batch->created_by,
+        ]);
+
+        $item1 = $this->stopA->deliveryItems()->first();
+        $item1->update(['planned_portions' => 200, 'loaded_portions' => 200]);
+        $item2 = DeliveryItem::create([
+            'trip_stop_id' => $this->stopA->id,
+            'food_batch_id' => $batch2->id,
+            'production_allocation_id' => $item1->production_allocation_id,
+            'planned_portions' => 140,
+            'loaded_portions' => 140,
+        ]);
+
+        $handoverService = app(SchoolHandoverService::class);
+        $recordA = $handoverService->confirmReceipt(
+            $this->stopA,
+            $this->picSchoolA,
+            [
+                'received_portions' => 340,
+                'damaged_portions' => 0,
+                'notes' => 'Penerimaan multi-batch porsi lengkap.',
+                'appearance_ok' => true,
+                'aroma_ok' => true,
+                'texture_ok' => true,
+                'taste_tested' => true,
+                'taste_ok' => true,
+                'temperature_c' => 65.0,
+                'conclusion' => 'SAFE',
+            ]
+        );
+
+        // Submit INCONSISTENT breakdown (sum = 300, but record has 340)
+        $qcData = [
+            'appearance_ok' => true,
+            'aroma_ok' => true,
+            'texture_ok' => true,
+            'taste_tested' => true,
+            'taste_ok' => true,
+            'conclusion' => QualityCheckConclusion::SAFE->value,
+            'notes' => 'Pemeriksaan multi-batch agregat.',
+            'items' => [
+                $item1->id => [
+                    'received_portions' => 200,
+                    'damaged_portions' => 0,
+                ],
+                $item2->id => [
+                    'received_portions' => 100, // Inconsistent: 200 + 100 = 300 != 340
+                    'damaged_portions' => 0,
+                ],
+            ],
+        ];
+
+        $handoverService->recordPreConsumptionCheck($recordA, $this->picSchoolA, $qcData);
+
+        $recordA->refresh();
+        $this->assertEquals(SchoolReceiptStatus::CLEARED_TO_SERVE, $recordA->status);
+
+        // Verify quality checks created with NULL attribution per food traceability rules
+        $qcBatch1 = QualityCheck::where('food_batch_id', $this->batch->id)
+            ->where('check_stage', QualityCheckStage::BEFORE_CONSUMPTION)
+            ->latest('id')
+            ->first();
+        $this->assertNotNull($qcBatch1);
+        $this->assertNull($qcBatch1->accepted_portions);
+        $this->assertNull($qcBatch1->rejected_portions);
+        $this->assertStringContainsString('unknown (null)', $qcBatch1->decision_reason);
     }
 
     /**

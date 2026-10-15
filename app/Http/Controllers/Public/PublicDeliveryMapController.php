@@ -26,11 +26,12 @@ class PublicDeliveryMapController extends Controller
             abort(404, 'Informasi rute pengantaran belum dipublikasikan atau sudah tidak aktif.');
         }
 
-        $hasFilter = $request->has('school') || $request->has('school_slug') || $request->has('school_id') || $request->has('filter');
-        $schoolQuery = $request->query('school') ?: $request->query('school_slug') ?: $request->query('school_id') ?: $request->query('filter');
+        $rawQuery = $request->query('school') ?? $request->query('school_slug') ?? $request->query('school_id') ?? $request->query('filter');
+        $schoolQuery = is_string($rawQuery) ? trim($rawQuery) : null;
+        $hasFilter = ! empty($schoolQuery);
         $matchedStop = null;
 
-        if ($schoolQuery) {
+        if ($hasFilter) {
             $matchedStop = $trip->stops->first(function ($s) use ($schoolQuery) {
                 return (string) $s->school_id === (string) $schoolQuery
                     || $s->school->public_slug === (string) $schoolQuery
@@ -45,7 +46,7 @@ class PublicDeliveryMapController extends Controller
      * Provide sanitized JSON map data for public map view.
      * Rate-limited and read-only.
      * GATE C: Strictly protects privacy - no raw GPS coordinates, no private route geometry,
-     * no driver identity, no other schools, and empty/invalid filter NEVER falls back to all stops.
+     * no driver identity, no other schools, no sequence numbers, and empty/invalid filter NEVER falls back to all stops.
      */
     public function mapData(Request $request, string $tripCode): JsonResponse
     {
@@ -61,11 +62,12 @@ class PublicDeliveryMapController extends Controller
         $sppg = $trip->sppg;
         $allStops = $trip->stops->sortBy('sequence_number')->values();
 
-        $hasFilter = $request->has('school') || $request->has('school_slug') || $request->has('school_id') || $request->has('filter');
-        $schoolQuery = $request->query('school') ?: $request->query('school_slug') ?: $request->query('school_id') ?: $request->query('filter');
+        $rawQuery = $request->query('school') ?? $request->query('school_slug') ?? $request->query('school_id') ?? $request->query('filter');
+        $schoolQuery = is_string($rawQuery) ? trim($rawQuery) : null;
+        $hasFilter = ! empty($schoolQuery);
         $matchedStop = null;
 
-        if ($schoolQuery) {
+        if ($hasFilter) {
             $matchedStop = $allStops->first(function ($s) use ($schoolQuery) {
                 return (string) $s->school_id === (string) $schoolQuery
                     || $s->school->public_slug === (string) $schoolQuery
@@ -73,18 +75,11 @@ class PublicDeliveryMapController extends Controller
             });
         }
 
-        // GATE C: If filtered, only project matched school; if filter empty/invalid, project empty (no fallback leaks).
-        // If not filtered (generic trip overview), project all stops with sanitized data.
-        if ($hasFilter) {
-            $stops = $matchedStop ? collect([$matchedStop]) : collect([]);
-            $activeStop = $matchedStop;
-        } else {
-            $stops = $allStops;
-            $activeStop = $allStops->firstWhere('status', \App\Enums\TripStopStatus::EN_ROUTE)
-                ?? $allStops->firstWhere('status', \App\Enums\TripStopStatus::ARRIVED)
-                ?? $allStops->firstWhere('status', \App\Enums\TripStopStatus::PENDING)
-                ?? $allStops->last();
-        }
+        // GATE C & P1 PRIVACY DEFENSE:
+        // Only return stop if a valid school is matched.
+        // Without a school parameter, or with empty/invalid filter, public response NEVER returns internal stops.
+        $stops = $matchedStop ? collect([$matchedStop]) : collect([]);
+        $activeStop = $matchedStop;
 
         // HIGH GATE G: Complete match expression for TripStatus with safe fallback
         $publicStage = match ($trip->status) {
@@ -110,8 +105,8 @@ class PublicDeliveryMapController extends Controller
             $trip->updated_at,
             $trip->created_at,
             $trip->last_location_at,
-            $stops->max('updated_at'),
-            $stops->max('arrived_at'),
+            $allStops->max('updated_at'),
+            $allStops->max('arrived_at'),
         ])->filter()->max();
 
         $lastUpdatedIso = ($latestTimestamp instanceof \Carbon\CarbonInterface)
@@ -134,7 +129,7 @@ class PublicDeliveryMapController extends Controller
                 'lat' => null, // Privacy: masked from public JSON
                 'lng' => null, // Privacy: masked from public JSON
             ],
-            'stops' => $stops->map(function ($stop) use ($activeStop, $hasFilter) {
+            'stops' => $stops->map(function ($stop) use ($activeStop) {
                 $stopStage = match ($stop->status) {
                     \App\Enums\TripStopStatus::PENDING => 'Menunggu Giliran Pengantaran',
                     \App\Enums\TripStopStatus::EN_ROUTE => 'Armada Sedang Menuju Sekolah Ini',
@@ -147,7 +142,7 @@ class PublicDeliveryMapController extends Controller
                     default => 'Status Pengantaran Belum Diketahui',
                 };
 
-                $stopItem = [
+                return [
                     'school_name' => $stop->school->name,
                     'education_level' => $stop->school->education_level,
                     'lat' => null, // Privacy: masked from public JSON
@@ -157,12 +152,6 @@ class PublicDeliveryMapController extends Controller
                     'stage' => $stopStage,
                     'is_current_target' => $activeStop && (int) $activeStop->id === (int) $stop->id,
                 ];
-
-                if (! $hasFilter) {
-                    $stopItem['sequence_number'] = $stop->sequence_number;
-                }
-
-                return $stopItem;
             }),
             'geometry' => null, // Privacy: raw route geometry never exposed publicly
             'total_distance_m' => null,

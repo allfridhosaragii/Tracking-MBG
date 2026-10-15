@@ -125,32 +125,73 @@ class TripDetailController extends Controller
         ];
 
         if ($isPic) {
-            // GATE C: Sanitize for PIC Sekolah (their school only; mask other schools & internal vehicle/driver details)
-            // Never expose other schools' lat/lng or full route geometry to PIC.
+            // GATE C: Strict Minimal Projection for PIC Sekolah (their school only)
+            // Evaluated: ID stop, sequence number, other schools' statuses, active_stop_id,
+            // SPPG coordinates, and global multi-stop logistics info are NOT needed by PIC.
             $userSchoolId = (int) $user->school_id;
+            $myStop = $stops->firstWhere('school_id', $userSchoolId);
 
+            if (! $myStop) {
+                abort(403, 'Akses ditolak. Sekolah Anda tidak terdaftar pada rute pengantaran ini.');
+            }
+
+            $response['sppg'] = [
+                'id' => $sppg->id,
+                'name' => $sppg->name,
+                'lat' => null, // Privacy: masked from PIC
+                'lng' => null, // Privacy: masked from PIC
+            ];
+            $response['active_stop_sequence'] = null; // Internal driver itinerary order hidden
+            $response['active_stop_id'] = ($activeStop && (int) $activeStop->id === (int) $myStop->id) ? $myStop->id : null;
+            $response['total_distance_m'] = null;
+            $response['estimated_duration_s'] = null;
+            $response['return_started_at'] = null;
+            $response['arrived_at_sppg_at'] = null;
+            $response['completed_at'] = null;
+            $response['is_returning'] = null;
+            $response['has_arrived_depot'] = null;
             $response['vehicle'] = null;
             $response['driver'] = null;
             $response['driver_telemetry'] = null;
             $response['geometry'] = null;
             $response['legs'] = [];
+
+            // Project stops: PIC sees their own school stop with full info, but other stops are masked
             $response['stops'] = $stops->map(function ($stop) use ($userSchoolId, $activeStop) {
-                $isOwnSchool = (int) $stop->school_id === $userSchoolId;
+                $isMySchool = (int) $stop->school_id === $userSchoolId;
+
+                if ($isMySchool) {
+                    return [
+                        'id' => $stop->id,
+                        'sequence_number' => $stop->sequence_number,
+                        'school_id' => $stop->school_id,
+                        'school_name' => $stop->school->name,
+                        'school_address' => $stop->school->address,
+                        'lat' => (float) $stop->school->latitude,
+                        'lng' => (float) $stop->school->longitude,
+                        'planned_portions' => $stop->planned_portions ?: $stop->total_loaded_portions,
+                        'loaded_portions' => $stop->loaded_portions,
+                        'status' => $stop->status->value,
+                        'status_label' => $stop->status->label(),
+                        'is_active' => $activeStop && (int) $activeStop->id === (int) $stop->id,
+                        'is_my_school' => true,
+                    ];
+                }
 
                 return [
                     'id' => $stop->id,
                     'sequence_number' => $stop->sequence_number,
-                    'school_id' => $isOwnSchool ? $stop->school_id : null,
-                    'school_name' => $isOwnSchool ? $stop->school->name : "Pemberhentian #{$stop->sequence_number}",
-                    'school_address' => $isOwnSchool ? $stop->school->address : null,
-                    'lat' => $isOwnSchool ? (float) $stop->school->latitude : null,
-                    'lng' => $isOwnSchool ? (float) $stop->school->longitude : null,
-                    'planned_portions' => $isOwnSchool ? ($stop->planned_portions ?: $stop->total_loaded_portions) : null,
-                    'loaded_portions' => $isOwnSchool ? $stop->loaded_portions : null,
+                    'school_id' => null,
+                    'school_name' => "Pemberhentian #{$stop->sequence_number}",
+                    'school_address' => null,
+                    'lat' => null,
+                    'lng' => null,
+                    'planned_portions' => null,
+                    'loaded_portions' => null,
                     'status' => $stop->status->value,
                     'status_label' => $stop->status->label(),
                     'is_active' => $activeStop && (int) $activeStop->id === (int) $stop->id,
-                    'is_my_school' => $isOwnSchool,
+                    'is_my_school' => false,
                 ];
             });
         } elseif ($isDriver) {

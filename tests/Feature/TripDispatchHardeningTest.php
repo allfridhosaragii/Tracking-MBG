@@ -825,16 +825,32 @@ class TripDispatchHardeningTest extends TestCase
         $trip->update(['status' => TripStatus::IN_PROGRESS]);
 
         // Guest user can view public map without authentication
-        $response = $this->get(route('public.trips.map', $trip->trip_code));
-        $response->assertStatus(200);
-        $response->assertSee($trip->trip_code);
-        $response->assertSee($this->schoolA1->name);
-        // Sensitive data must NOT appear in HTML
-        $response->assertDontSee($this->driverA->phone);
-        $response->assertDontSee($this->vehicleA->plate_number);
+        $responseUnfiltered = $this->get(route('public.trips.map', $trip->trip_code));
+        $responseUnfiltered->assertStatus(200);
+        $responseUnfiltered->assertSee($trip->trip_code);
+        // Privacy: Unfiltered public page must NOT expose school stops
+        $responseUnfiltered->assertDontSee($this->schoolA1->name);
+        $responseUnfiltered->assertSee('Informasi Perhentian Dilindungi');
+        $responseUnfiltered->assertDontSee($this->driverA->phone);
+        $responseUnfiltered->assertDontSee($this->vehicleA->plate_number);
 
-        // JSON Map Data endpoint is sanitized
-        $jsonResponse = $this->get(route('public.trips.map-data', $trip->trip_code));
+        // Filtered public map view for specific school
+        $responseFiltered = $this->get(route('public.trips.map', ['tripCode' => $trip->trip_code, 'school' => $this->schoolA1->public_slug]));
+        $responseFiltered->assertStatus(200);
+        $responseFiltered->assertSee($this->schoolA1->name);
+        $responseFiltered->assertDontSee($this->driverA->phone);
+        $responseFiltered->assertDontSee($this->vehicleA->plate_number);
+
+        // JSON Map Data endpoint without filter: stops must be empty (data minimization)
+        $jsonUnfiltered = $this->get(route('public.trips.map-data', $trip->trip_code));
+        $jsonUnfiltered->assertStatus(200);
+        $jsonUnfiltered->assertJson([
+            'stops' => [],
+            'geometry' => null,
+        ]);
+
+        // JSON Map Data endpoint with school filter: returns sanitized stop
+        $jsonResponse = $this->get(route('public.trips.map-data', ['tripCode' => $trip->trip_code, 'school' => $this->schoolA1->public_slug]));
         $jsonResponse->assertStatus(200);
         $jsonResponse->assertJsonStructure([
             'trip_code',
@@ -843,11 +859,16 @@ class TripDispatchHardeningTest extends TestCase
             'status',
             'sppg' => ['name', 'lat', 'lng'],
             'stops' => [
-                '*' => ['sequence_number', 'school_name', 'education_level', 'lat', 'lng', 'stage', 'is_current_target'],
+                '*' => ['school_name', 'education_level', 'lat', 'lng', 'stage', 'is_current_target'],
             ],
         ]);
 
         $data = $jsonResponse->json();
+        $this->assertCount(1, $data['stops']);
+        $this->assertArrayNotHasKey('sequence_number', $data['stops'][0]);
+        $this->assertNull($data['stops'][0]['lat']);
+        $this->assertNull($data['stops'][0]['lng']);
+        $this->assertNull($data['geometry']);
         // Ensure no driver phone or vehicle plate in JSON
         $this->assertArrayNotHasKey('driver', $data);
         $this->assertArrayNotHasKey('vehicle', $data);
