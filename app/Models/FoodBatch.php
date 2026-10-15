@@ -95,6 +95,11 @@ class FoodBatch extends Model
         return $this->belongsTo(User::class, 'evidence_exception_requested_by');
     }
 
+    public function getSppgIdAttribute(): ?int
+    {
+        return $this->productionPlan?->sppg_id;
+    }
+
     public function scopeForSppg(Builder $query, int $sppgId): Builder
     {
         return $query->whereHas('productionPlan', function ($q) use ($sppgId) {

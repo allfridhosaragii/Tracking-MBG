@@ -14,12 +14,16 @@
                 <p class="text-xs text-[#53645B] mt-0.5">{{ $school->name }} &mdash; {{ $school->address }}</p>
             </div>
             <div class="flex items-center gap-2">
-                <a href="{{ route('school.receipts.index') }}" 
+                <a href="{{ route('school.meal-distribution.index') }}" 
                    class="inline-flex items-center gap-1.5 text-xs font-semibold text-[#53645B] hover:text-[#172923] px-3 py-2 rounded-lg border border-[#DCE5DD] bg-white hover:bg-[#F5F7F3] touch-target">
                     <svg class="w-4 h-4 text-[#1C6654]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v13m0-13V4a2 2 0 114 0v4M12 8H8a2 2 0 00-2 2v10a1 1 0 001 1h10a1 1 0 001-1V10a2 2 0 00-2-2h-4z"/>
                     </svg>
-                    <span>Penerimaan Makanan (P04)</span>
+                    <span>Pembagian (P05)</span>
+                </a>
+                <a href="{{ route('school.receipts.index') }}" 
+                   class="inline-flex items-center gap-1.5 text-xs font-semibold text-[#53645B] hover:text-[#172923] px-3 py-2 rounded-lg border border-[#DCE5DD] bg-white hover:bg-[#F5F7F3] touch-target">
+                    <span>Penerimaan (P04)</span>
                 </a>
             </div>
         </div>

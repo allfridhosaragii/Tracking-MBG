@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Enums\IncidentCategory;
+use App\Enums\IncidentSeverity;
+use App\Enums\IncidentStatus;
 use App\Enums\QualityCheckConclusion;
 use App\Enums\QualityCheckStage;
 use App\Enums\SchoolReceiptStatus;
@@ -10,6 +13,7 @@ use App\Enums\TripStopStatus;
 use App\Enums\UserRole;
 use App\Models\ActivityLog;
 use App\Models\EvidencePhoto;
+use App\Models\Incident;
 use App\Models\QualityCheck;
 use App\Models\SchoolServiceRecord;
 use App\Models\Trip;
@@ -787,6 +791,383 @@ class SchoolHandoverService
             'captured_at' => Carbon::now(),
             'notes' => $notes,
         ]);
+    }
+
+    /**
+     * PIC Sekolah performs pre-consumption inspection (BEFORE_CONSUMPTION / second QC checkpoint).
+     * Enforces that receipt was legally completed, sensory checks are independently verified,
+     * food suspected unsafe is not tasted, and transitions status to CLEARED_TO_SERVE (if SAFE)
+     * or HELD (if UNSAFE/HOLD) with an automatic food safety incident.
+     */
+    public function recordPreConsumptionCheck(SchoolServiceRecord $record, User $pic, array $data, ?UploadedFile $photo = null): SchoolServiceRecord
+    {
+        $uploadedPaths = [];
+
+        try {
+            return DB::transaction(function () use ($record, $pic, $data, $photo, &$uploadedPaths) {
+                $lockedRecord = SchoolServiceRecord::where('id', $record->id)
+                    ->with(['tripStop.trip', 'tripStop.school', 'tripStop.deliveryItems.foodBatch'])
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                $stop = $lockedRecord->tripStop;
+                $school = $stop->school;
+
+                // 1. Role & Tenant Authorization
+                if ($pic->role !== UserRole::PIC_SEKOLAH) {
+                    throw ValidationException::withMessages([
+                        'role' => ['Hanya petugas PIC Sekolah resmi yang berwenang melakukan pemeriksaan sebelum konsumsi.'],
+                    ]);
+                }
+
+                if ((int) $pic->school_id !== (int) $stop->school_id) {
+                    throw new HttpException(403, 'Akses ditolak. Anda tidak memiliki otorisasi untuk sekolah ini.');
+                }
+
+                // 2. Precondition: Receipt must be officially completed (RECEIVED or RECEIVED_WITH_DISCREPANCY)
+                if ($lockedRecord->status === SchoolReceiptStatus::WAITING) {
+                    throw new ConflictHttpException(
+                        'Penerimaan makanan belum selesai (WAITING). Pemeriksaan sebelum makan hanya dapat dilakukan setelah serah terima makanan sah.'
+                    );
+                }
+
+                if (in_array($lockedRecord->status, [SchoolReceiptStatus::HELD, SchoolReceiptStatus::REJECTED], true)) {
+                    throw new ConflictHttpException(
+                        "Layanan makanan berstatus {$lockedRecord->status->label()} karena kendala keamanan pangan. Pemeriksaan tidak dapat dilanjutkan."
+                    );
+                }
+
+                if (in_array($lockedRecord->status, [SchoolReceiptStatus::DISTRIBUTED, SchoolReceiptStatus::MEAL_COMPLETED], true)) {
+                    throw new ConflictHttpException(
+                        "Pemeriksaan sebelum konsumsi tidak dapat diulang karena kegiatan pembagian makanan telah berlangsung atau selesai ({$lockedRecord->status->label()})."
+                    );
+                }
+
+                // If already CLEARED_TO_SERVE, check idempotency
+                if ($lockedRecord->status === SchoolReceiptStatus::CLEARED_TO_SERVE) {
+                    return $lockedRecord;
+                }
+
+                // 3. Sensory checks
+                $appearanceOk = filter_var($data['appearance_ok'] ?? false, FILTER_VALIDATE_BOOLEAN);
+                $aromaOk = filter_var($data['aroma_ok'] ?? false, FILTER_VALIDATE_BOOLEAN);
+                $textureOk = filter_var($data['texture_ok'] ?? false, FILTER_VALIDATE_BOOLEAN);
+                $tasteTested = filter_var($data['taste_tested'] ?? false, FILTER_VALIDATE_BOOLEAN);
+                $tasteOk = isset($data['taste_ok']) ? filter_var($data['taste_ok'], FILTER_VALIDATE_BOOLEAN) : null;
+                $tasteSkippedReason = isset($data['taste_skipped_reason']) ? trim((string) $data['taste_skipped_reason']) : null;
+
+                // Food safety rule: Do NOT force tasting if appearance or aroma is not OK!
+                if (!$appearanceOk || !$aromaOk) {
+                    if ($tasteTested && $tasteOk === true) {
+                        throw ValidationException::withMessages([
+                            'taste_tested' => ['Makanan dengan rupa atau aroma tidak wajar dilarang dicicipi demi keamanan petugas/siswa.'],
+                        ]);
+                    }
+                }
+
+                $tempC = null;
+                if (isset($data['temperature_c']) && $data['temperature_c'] !== '') {
+                    $val = filter_var($data['temperature_c'], FILTER_VALIDATE_FLOAT);
+                    if ($val !== false) {
+                        $tempC = $val;
+                    }
+                }
+
+                $rawConclusion = $data['conclusion'] ?? null;
+                if ($rawConclusion instanceof QualityCheckConclusion) {
+                    $conclusion = $rawConclusion;
+                } elseif (is_string($rawConclusion) && in_array(strtoupper($rawConclusion), ['SAFE', 'UNSAFE', 'HOLD'], true)) {
+                    $conclusion = QualityCheckConclusion::from(strtoupper($rawConclusion));
+                } else {
+                    if (!$appearanceOk || !$aromaOk || !$textureOk || ($tasteTested && $tasteOk === false)) {
+                        $conclusion = QualityCheckConclusion::UNSAFE;
+                    } else {
+                        $conclusion = QualityCheckConclusion::SAFE;
+                    }
+                }
+
+                if ((!$appearanceOk || !$aromaOk || !$textureOk || ($tasteTested && $tasteOk === false)) && $conclusion === QualityCheckConclusion::SAFE) {
+                    throw ValidationException::withMessages([
+                        'conclusion' => ['Hasil pemeriksaan organoleptik yang tidak normal tidak dapat dinyatakan Lolos Uji (SAFE).'],
+                    ]);
+                }
+
+                $now = Carbon::now();
+                $notes = isset($data['notes']) ? trim((string) $data['notes']) : null;
+
+                // Record distinct QualityCheck with BEFORE_CONSUMPTION stage for each delivery item/batch
+                $distinctBatches = $stop->deliveryItems->pluck('food_batch_id')->filter()->unique();
+                foreach ($distinctBatches as $batchId) {
+                    QualityCheck::create([
+                        'food_batch_id' => $batchId,
+                        'trip_stop_id' => $stop->id,
+                        'check_stage' => QualityCheckStage::BEFORE_CONSUMPTION,
+                        'checked_by' => $pic->id,
+                        'appearance_ok' => $appearanceOk,
+                        'aroma_ok' => $aromaOk,
+                        'texture_ok' => $textureOk,
+                        'taste_tested' => $tasteTested,
+                        'taste_ok' => $tasteOk,
+                        'taste_skipped_reason' => $tasteSkippedReason,
+                        'temperature_c' => $tempC,
+                        'accepted_portions' => $conclusion === QualityCheckConclusion::SAFE ? max(0, (int) $lockedRecord->received_portions - (int) $lockedRecord->damaged_portions) : 0,
+                        'rejected_portions' => $conclusion === QualityCheckConclusion::SAFE ? 0 : (int) $lockedRecord->received_portions,
+                        'conclusion' => $conclusion,
+                        'notes' => $notes,
+                        'decision_reason' => "Pemeriksaan organoleptik kedua sebelum konsumsi (BEFORE_CONSUMPTION) di {$school->name}.",
+                        'checked_at' => $now,
+                    ]);
+                }
+
+                if ($photo) {
+                    $this->storeRecordEvidence($lockedRecord, $pic, $photo, 'PRE_CONSUMPTION_CHECK', $notes, $uploadedPaths);
+                }
+
+                // 4. Decision and state transition
+                if ($conclusion === QualityCheckConclusion::SAFE) {
+                    $lockedRecord->update([
+                        'status' => SchoolReceiptStatus::CLEARED_TO_SERVE,
+                    ]);
+
+                    ActivityLog::record(
+                        event: 'school_service.cleared_to_serve',
+                        auditable: $lockedRecord,
+                        actor: $pic,
+                        newValues: [
+                            'status' => SchoolReceiptStatus::CLEARED_TO_SERVE->value,
+                            'conclusion' => $conclusion->value,
+                        ]
+                    );
+                } else {
+                    $lockedRecord->update([
+                        'status' => SchoolReceiptStatus::HELD,
+                    ]);
+
+                    // Automatically file Incident for food safety escalation
+                    Incident::create([
+                        'sppg_id' => $stop->trip->sppg_id,
+                        'school_id' => $school->id,
+                        'subject_type' => SchoolServiceRecord::class,
+                        'subject_id' => $lockedRecord->id,
+                        'reported_by' => $pic->id,
+                        'category' => IncidentCategory::FOOD_SAFETY,
+                        'severity' => IncidentSeverity::CRITICAL,
+                        'status' => IncidentStatus::OPEN,
+                        'description' => "Pemeriksaan kedua sebelum konsumsi (BEFORE_CONSUMPTION) di {$school->name} menghasilkan kesimpulan {$conclusion->value}. Makanan ditahan dari pembagian siswa. Catatan: " . ($notes ?: 'Kondisi organoleptik tidak memenuhi standar kelayakan konsumsi.'),
+                    ]);
+
+                    ActivityLog::record(
+                        event: 'school_service.held_unsafe',
+                        auditable: $lockedRecord,
+                        actor: $pic,
+                        newValues: [
+                            'status' => SchoolReceiptStatus::HELD->value,
+                            'conclusion' => $conclusion->value,
+                        ]
+                    );
+                }
+
+                return $lockedRecord;
+            });
+        } catch (\Throwable $e) {
+            foreach ($uploadedPaths as $path) {
+                if ($path && Storage::disk('local')->exists($path)) {
+                    Storage::disk('local')->delete($path);
+                }
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * PIC marks start of meal distribution to students (Page P05).
+     * Server timestamps distribution_started_at and transitions status to DISTRIBUTED.
+     */
+    public function startDistribution(SchoolServiceRecord $record, User $pic): SchoolServiceRecord
+    {
+        return DB::transaction(function () use ($record, $pic) {
+            $lockedRecord = SchoolServiceRecord::where('id', $record->id)
+                ->with(['tripStop.school'])
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($pic->role !== UserRole::PIC_SEKOLAH) {
+                throw ValidationException::withMessages([
+                    'role' => ['Hanya petugas PIC Sekolah resmi yang berwenang mencatat mulai pembagian makanan.'],
+                ]);
+            }
+
+            if ((int) $pic->school_id !== (int) $lockedRecord->tripStop->school_id) {
+                throw new HttpException(403, 'Akses ditolak. Anda tidak memiliki otorisasi untuk sekolah ini.');
+            }
+
+            // Precondition
+            if ($lockedRecord->status === SchoolReceiptStatus::DISTRIBUTED) {
+                return $lockedRecord; // Idempotent
+            }
+
+            if ($lockedRecord->status === SchoolReceiptStatus::MEAL_COMPLETED) {
+                throw new ConflictHttpException('Kegiatan makan di sekolah ini telah selesai (MEAL_COMPLETED).');
+            }
+
+            if (in_array($lockedRecord->status, [SchoolReceiptStatus::HELD, SchoolReceiptStatus::REJECTED], true)) {
+                throw new ConflictHttpException(
+                    "Layanan makanan berstatus {$lockedRecord->status->label()}. Makanan dilarang dibagikan kepada siswa."
+                );
+            }
+
+            if ($lockedRecord->status !== SchoolReceiptStatus::CLEARED_TO_SERVE) {
+                throw new ConflictHttpException(
+                    "Makanan belum dinyatakan lolos uji sebelum makan (CLEARED_TO_SERVE). Status saat ini: {$lockedRecord->status->label()}."
+                );
+            }
+
+            $now = Carbon::now();
+            $lockedRecord->update([
+                'status' => SchoolReceiptStatus::DISTRIBUTED,
+                'distribution_started_at' => $lockedRecord->distribution_started_at ?: $now,
+            ]);
+
+            ActivityLog::record(
+                event: 'school_service.distribution_started',
+                auditable: $lockedRecord,
+                actor: $pic,
+                newValues: [
+                    'status' => SchoolReceiptStatus::DISTRIBUTED->value,
+                    'distribution_started_at' => $now->toIso8601String(),
+                ]
+            );
+
+            return $lockedRecord;
+        });
+    }
+
+    /**
+     * PIC records actual served portions, leftovers, and officially completes the meal service (Page P05).
+     * Enforces:
+     * - Only authorized school PIC.
+     * - MEAL_COMPLETED cannot bypass BEFORE_CONSUMPTION check.
+     * - Usable portions upper bound: served + leftover <= usable (received - damaged).
+     * - Server timestamped meal_completed_at.
+     * - Status transitions to MEAL_COMPLETED, unlocking P06 tray return readiness.
+     */
+    public function completeMeal(SchoolServiceRecord $record, User $pic, array $data, ?UploadedFile $photo = null): SchoolServiceRecord
+    {
+        $uploadedPaths = [];
+
+        try {
+            return DB::transaction(function () use ($record, $pic, $data, $photo, &$uploadedPaths) {
+                $lockedRecord = SchoolServiceRecord::where('id', $record->id)
+                    ->with(['tripStop.school', 'tripStop.qualityChecks'])
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if ($pic->role !== UserRole::PIC_SEKOLAH) {
+                    throw ValidationException::withMessages([
+                        'role' => ['Hanya petugas PIC Sekolah resmi yang berwenang menutup kegiatan makan.'],
+                    ]);
+                }
+
+                if ((int) $pic->school_id !== (int) $lockedRecord->tripStop->school_id) {
+                    throw new HttpException(403, 'Akses ditolak. Anda tidak memiliki otorisasi untuk sekolah ini.');
+                }
+
+                // Invariant: Cannot complete meal if in WAITING, HELD, or REJECTED
+                if ($lockedRecord->status === SchoolReceiptStatus::WAITING) {
+                    throw new ConflictHttpException('Penerimaan makanan belum selesai.');
+                }
+
+                if (in_array($lockedRecord->status, [SchoolReceiptStatus::HELD, SchoolReceiptStatus::REJECTED], true)) {
+                    throw new ConflictHttpException(
+                        "Layanan makanan berstatus {$lockedRecord->status->label()}. Kegiatan makan tidak dapat diselesaikan secara normal."
+                    );
+                }
+
+                // Invariant: MEAL_COMPLETED cannot be achieved by skipping BEFORE_CONSUMPTION check
+                $hasPassedPreConsumption = $lockedRecord->tripStop->qualityChecks()
+                    ->whereIn('check_stage', [QualityCheckStage::BEFORE_CONSUMPTION, QualityCheckStage::PRE_CONSUMPTION])
+                    ->where('conclusion', QualityCheckConclusion::SAFE)
+                    ->exists();
+
+                if (!$hasPassedPreConsumption) {
+                    throw new ConflictHttpException(
+                        'Pemeriksaan kualitas sebelum makan (BEFORE_CONSUMPTION) belum dilaksanakan atau belum lolos uji aman. Kegiatan makan tidak dapat diselesaikan tanpa verifikasi keselamatan pangan.'
+                    );
+                }
+
+                // Idempotency: If already MEAL_COMPLETED
+                if ($lockedRecord->status === SchoolReceiptStatus::MEAL_COMPLETED) {
+                    return $lockedRecord;
+                }
+
+                // Usable portions calculation
+                $usablePortions = max(0, (int) $lockedRecord->received_portions - (int) $lockedRecord->damaged_portions);
+
+                $servedPortions = filter_var($data['served_portions'] ?? null, FILTER_VALIDATE_INT);
+                if ($servedPortions === false || $servedPortions < 0) {
+                    throw ValidationException::withMessages([
+                        'served_portions' => ['Jumlah porsi dibagikan wajib diisi dengan bilangan bulat >= 0.'],
+                    ]);
+                }
+
+                $leftoverPortions = 0;
+                if (isset($data['leftover_portions']) && $data['leftover_portions'] !== '') {
+                    $val = filter_var($data['leftover_portions'], FILTER_VALIDATE_INT);
+                    if ($val === false || $val < 0) {
+                        throw ValidationException::withMessages([
+                            'leftover_portions' => ['Jumlah porsi sisa tidak boleh bernilai negatif.'],
+                        ]);
+                    }
+                    $leftoverPortions = $val;
+                }
+
+                // Invariant: served + leftover must not exceed usable portions
+                if (($servedPortions + $leftoverPortions) > $usablePortions) {
+                    throw ValidationException::withMessages([
+                        'served_portions' => [
+                            "Total porsi terbagi ({$servedPortions}) dan sisa ({$leftoverPortions}) tidak boleh melampaui kuantitas porsi layak konsumsi ({$usablePortions} porsi)."
+                        ],
+                    ]);
+                }
+
+                $now = Carbon::now();
+                $notes = isset($data['notes']) ? trim((string) $data['notes']) : null;
+
+                $lockedRecord->update([
+                    'served_portions' => $servedPortions,
+                    'leftover_portions' => $leftoverPortions,
+                    'distribution_started_at' => $lockedRecord->distribution_started_at ?: $now,
+                    'meal_completed_at' => $now,
+                    'status' => SchoolReceiptStatus::MEAL_COMPLETED,
+                    'notes' => $notes ? ($lockedRecord->notes ? $lockedRecord->notes . ' | Selesai makan: ' . $notes : $notes) : $lockedRecord->notes,
+                ]);
+
+                if ($photo) {
+                    $this->storeRecordEvidence($lockedRecord, $pic, $photo, 'MEAL_COMPLETION', $notes, $uploadedPaths);
+                }
+
+                ActivityLog::record(
+                    event: 'school_service.meal_completed',
+                    auditable: $lockedRecord,
+                    actor: $pic,
+                    newValues: [
+                        'status' => SchoolReceiptStatus::MEAL_COMPLETED->value,
+                        'served_portions' => $servedPortions,
+                        'leftover_portions' => $leftoverPortions,
+                        'meal_completed_at' => $now->toIso8601String(),
+                    ]
+                );
+
+                return $lockedRecord;
+            });
+        } catch (\Throwable $e) {
+            foreach ($uploadedPaths as $path) {
+                if ($path && Storage::disk('local')->exists($path)) {
+                    Storage::disk('local')->delete($path);
+                }
+            }
+            throw $e;
+        }
     }
 }
 

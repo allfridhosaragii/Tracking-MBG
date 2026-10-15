@@ -263,14 +263,16 @@ class IncidentService
             if ($reporter->role === UserRole::PIC_SEKOLAH) {
                 throw new HttpException(403, 'Akses ditolak. PIC Sekolah tidak memiliki akses langsung terhadap batch produksi dapur.');
             }
-            if ((int) $subjectModel->sppg_id !== $sppgId) {
+            $batchSppgId = (int) ($subjectModel->productionPlan?->sppg_id ?? $subjectModel->sppg_id);
+            if ($batchSppgId !== $sppgId) {
                 throw new HttpException(403, 'Akses ditolak. Batch makanan berada di luar lingkup unit SPPG Anda.');
             }
         } elseif ($subjectModel instanceof \App\Models\QualityCheck) {
             if ($reporter->role === UserRole::PIC_SEKOLAH) {
                 throw new HttpException(403, 'Akses ditolak. PIC Sekolah tidak memiliki akses langsung terhadap pemeriksaan mutu internal.');
             }
-            if ((int) $subjectModel->foodBatch?->sppg_id !== $sppgId) {
+            $qcSppgId = (int) ($subjectModel->foodBatch?->productionPlan?->sppg_id ?? $subjectModel->foodBatch?->sppg_id);
+            if ($qcSppgId !== $sppgId) {
                 throw new HttpException(403, 'Akses ditolak. Pemeriksaan mutu berada di luar lingkup unit SPPG Anda.');
             }
         } elseif ($subjectModel instanceof \App\Models\School) {

@@ -125,12 +125,15 @@ class TripDetailController extends Controller
         ];
 
         if ($isPic) {
-            // HIGH GATE D: Sanitize for PIC Sekolah (their school only; mask other schools & internal vehicle/driver details)
+            // GATE C: Sanitize for PIC Sekolah (their school only; mask other schools & internal vehicle/driver details)
+            // Never expose other schools' lat/lng or full route geometry to PIC.
             $userSchoolId = (int) $user->school_id;
 
             $response['vehicle'] = null;
             $response['driver'] = null;
             $response['driver_telemetry'] = null;
+            $response['geometry'] = null;
+            $response['legs'] = [];
             $response['stops'] = $stops->map(function ($stop) use ($userSchoolId, $activeStop) {
                 $isOwnSchool = (int) $stop->school_id === $userSchoolId;
 
@@ -140,8 +143,8 @@ class TripDetailController extends Controller
                     'school_id' => $isOwnSchool ? $stop->school_id : null,
                     'school_name' => $isOwnSchool ? $stop->school->name : "Pemberhentian #{$stop->sequence_number}",
                     'school_address' => $isOwnSchool ? $stop->school->address : null,
-                    'lat' => (float) $stop->school->latitude,
-                    'lng' => (float) $stop->school->longitude,
+                    'lat' => $isOwnSchool ? (float) $stop->school->latitude : null,
+                    'lng' => $isOwnSchool ? (float) $stop->school->longitude : null,
                     'planned_portions' => $isOwnSchool ? ($stop->planned_portions ?: $stop->total_loaded_portions) : null,
                     'loaded_portions' => $isOwnSchool ? $stop->loaded_portions : null,
                     'status' => $stop->status->value,

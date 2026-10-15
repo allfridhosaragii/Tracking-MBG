@@ -681,3 +681,39 @@ Log ini mencatat ringkasan status implementasi, pengujian yang telah dieksekusi,
   - Dokumentasi `MBG-Track-Documentation-v4-RepoFirst` tetap 100% READ-ONLY.
   - Selesai mutlak setelah enam gerbang ini. Tidak ada PBI baru dibuka.
 
+---
+
+## Handoff 15 Oktober 2026 — Phase 1: Food Safety, School Meal Workflow (P05/P06) & Privacy Projections
+- **Pelaksana:** Principal Laravel Architect, Food Safety Workflow Engineer, Application Security Auditor, Data Integrity Engineer, Independent QA Auditor, Senior UI/UX Engineer.
+- **Tujuan:** Menuntaskan pemulihan kepatuhan dokumentasi v4 Phase 1 (Food Safety, School Meal Workflow & Privacy) sesuai spesifikasi normatif `PBI-BACKLOG.md`, `STATUS-WORKFLOWS.md`, `ROLE-PERMISSION-MATRIX.md`, `DATA-DICTIONARY.md`, `TEST-SCENARIOS.md`, dan spec halaman P04, P05, P06, U04:
+  1. **Gate A — Complete PBI-10 Page P05 Meal Distribution Workflow:**
+     - Endpoint pemeriksaan organoleptik kedua (`POST /school/meal-distribution/{record}/pre-consumption-check`) terpisah dari pemeriksaan kedatangan, mencatat entri `QualityCheck` bertahap `BEFORE_CONSUMPTION`.
+     - Validasi organoleptik: jika rupa atau aroma tidak wajar (`appearance_ok == false` atau `aroma_ok == false`), pencicipan rasa (`taste_tested`) dilarang keras (422).
+     - State machine transition: `RECEIVED / RECEIVED_WITH_DISCREPANCY` -> `CLEARED_TO_SERVE` bila lolos, atau `HELD` bila gagal (disertai otomatisasi tiket `Incident` `FOOD_SAFETY` `CRITICAL`).
+     - Pencatatan mulai pembagian: `POST /school/meal-distribution/{record}/start` menetapkan `distribution_started_at = now()` dan status `DISTRIBUTED`.
+     - Penutupan kegiatan makan: `POST /school/meal-distribution/{record}/complete` memvalidasi batas fisik `served_portions + leftover_portions <= usable_portions` (`usable_portions = max(0, received - damaged)`), menetapkan `meal_completed_at = now()` dan transisi status ke `MEAL_COMPLETED`.
+     - UI Halaman P05: `resources/views/school/meal-distribution/index.blade.php` dan `show.blade.php` mematuhi Calm Utility, anti-slop guidelines, touch target $\ge 44$px, serta responsif 390px mobile & 1440px desktop.
+  2. **Gate B — Tray Ready Precondition & Food Safety Exception:**
+     - Di `TrayReturnService::markReady()`: ompreng hanya dapat ditandai `READY_FOR_PICKUP` jika `SchoolServiceRecord` berstatus `MEAL_COMPLETED`.
+     - Mendukung formal food safety exception (`is_safety_exception = true` dengan catatan alasan) jika makanan berstatus `HELD` atau `REJECTED`.
+  3. **Gate C — Privacy Minimal-Data Projection:**
+     - `TripDetailController::mapData()`: Bagi role `PIC_SEKOLAH`, hanya koordinat sekolah sendiri yang disajikan (`lat/lng = null` untuk sekolah lain, nama sekolah lain disamarkan `Pemberhentian #X`, `geometry = null`, `legs = []`).
+     - `PublicDeliveryMapController::mapData()`: `geometry = null`, koordinat lat/lng halte dan SPPG dinullkan pada output publik JSON; indikator `is_live`, `is_stale`, dan `eta_status` dihitung otoritatif.
+     - `PublicDeliveryMapController::schoolDeliveryStatus()` & View `resources/views/public/school-delivery-status.blade.php` (Page U04): Proyeksi minimal status pengantaran publik tanpa identitas kurir, tanpa nomor telepon kurir, tanpa geometri rute privat, dan tanpa jejak GPS mentah.
+  4. **Gate D — Incident Subject Ownership Resolution:**
+     - Accessor `getSppgIdAttribute()` ditambahkan pada model `FoodBatch`.
+     - Resolusi kepemilikan tenant SPPG pada `IncidentService::validateSubjectOwnership()` untuk subjek `FoodBatch` (`productionPlan->sppg_id`) dan `QualityCheck` (`foodBatch->productionPlan->sppg_id`) berfungsi sempurna.
+  5. **Gate E — Automated Integration & Security Tests:**
+     - Test Suite Baru: `tests/Feature/Pbi10MealDistributionComplianceTest.php` (10 tests, 88 assertions, 100% pass).
+     - Full PHPUnit: **374 tests passed, 2.138 assertions, 0 failures (100% pass rate)**.
+     - Frontend Build: `npm run build` sukses (1.02s).
+  6. **Gate F — Real Browser Chromium E2E Verification:**
+     - Sesi rekaman video WebP dan tangkapan layar tersimpan di artefak direktori:
+       - Video Mobile 390px: `p04_p05_p06_mobile_1792073006870.webp` (Alur Login -> P05 Index -> 2nd QC -> Cleared to Serve -> Start Distribution -> Distributed -> Realisasi Sajian 338+2 -> Meal Completed -> Lanjut ke P06 Trays).
+       - Video Desktop 1440px & U04: `p05_desktop_and_u04_1792073201224.webp` (P05 Desktop detail & Page U04 status publik desktop dan mobile).
+- **Status Git & Commit:**
+  - Branch: `main`
+  - Push standar (tanpa force push).
+  - STOP setelah Phase 1 selesai sesuai mandat pengguna.
+
+

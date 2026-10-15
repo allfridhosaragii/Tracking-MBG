@@ -235,6 +235,21 @@
                         Konfirmasi Penerimaan Elektronik tercatat resmi berdasarkan autentikasi akun PIC Sekolah, stempel waktu server (UTC/WIB), dan riwayat log audit transaksi.
                     </div>
                 </div>
+
+                @if ($serviceRecord->isConfirmed())
+                    <div class="mt-4 p-4 rounded-xl bg-[#EDF2ED] border border-[#1C6654]/20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div class="text-xs text-[#172923]">
+                            <strong>Langkah Selanjutnya:</strong> Serah terima makanan selesai. Lakukan pemeriksaan kualitas sesaat sebelum makan dan realisasi pembagian di halaman P05.
+                        </div>
+                        <a href="{{ route('school.meal-distribution.show', $serviceRecord) }}" 
+                           class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold text-white bg-[#1C6654] hover:bg-[#172923] touch-target smooth-transition shrink-0 shadow-xs">
+                            <span>Lanjut ke Pembagian Makanan (P05)</span>
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+                            </svg>
+                        </a>
+                    </div>
+                @endif
             </div>
 
 

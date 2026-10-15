@@ -137,8 +137,9 @@ class Pbi12ActualOperatorWorkflowTest extends TestCase
             'expected_portions' => 300,
             'damaged_portions' => 0,
             'shortage_portions' => 0,
-            'status' => SchoolReceiptStatus::RECEIVED,
+            'status' => SchoolReceiptStatus::MEAL_COMPLETED,
             'received_at' => Carbon::yesterday()->setTime(11, 30),
+            'meal_completed_at' => Carbon::yesterday()->setTime(12, 30),
         ]);
 
         $trayService = app(TrayReturnService::class);

@@ -828,3 +828,36 @@ File ini mencatat seluruh keputusan arsitektur, database, dan implementasi yang 
   - Rantai custody logistik balik, baseline fisik, dan otorisasi multi-tenant terlindungi penuh.
   - Nol (0) file `.md` di-stage atau di-commit ke Git remote.
 
+---
+
+## DEC-026: Phase 1 Compliance Recovery — Food Safety, School Meal Workflow (P05/P06) & Privacy Projections
+- **Tanggal:** 15 Oktober 2026
+- **Status:** APPROVED & IMPLEMENTED
+- **Konteks:** Menuntaskan pemulihan kepatuhan v4 Phase 1 mencakup alur keselamatan pangan (Food Safety), pembagian makanan sekolah (P05), kesiapan ompreng (P06), resolusi kepemilikan insiden (Gate D), dan proyeksi data minimal perlindungan privasi (Gate C):
+  1. **Gate A — PBI-10 Page P05 Meal Distribution Workflow:**
+     - Implementasi pemeriksaan organoleptik kedua (`BEFORE_CONSUMPTION`) independen dari QC kedatangan di `SchoolHandoverService::recordPreConsumptionCheck()`.
+     - Transisi state machine formal: `RECEIVED / RECEIVED_WITH_DISCREPANCY` -> `CLEARED_TO_SERVE` (jika SAFE) atau `HELD` (jika UNSAFE/HOLD disertai pembuatan insiden otomatis `FOOD_SAFETY` berkategori `CRITICAL`).
+     - Larangan pencicipan rasa (`taste_tested`) jika rupa atau aroma tidak wajar (`appearance_ok == false` atau `aroma_ok == false`).
+     - Stempel waktu server otoritatif pada pencatatan mulai pembagian: `distribution_started_at = now()`, transisi status ke `DISTRIBUTED`.
+     - Validasi batas porsi: `served_portions + leftover_portions` dibatasi secara mutlak oleh porsi layak konsumsi (`usable_portions = max(0, received - damaged)`).
+     - Transisi final ke `MEAL_COMPLETED` dengan stempel waktu `meal_completed_at = now()`.
+  2. **Gate B — Tray Ready Precondition & Food Safety Exception:**
+     - Enforce di `TrayReturnService::markReady()` bahwa ompreng hanya dapat beralih ke `READY_FOR_PICKUP` jika `SchoolServiceRecord` berstatus `MEAL_COMPLETED`.
+     - Mendukung pengecualian formal keselamatan pangan (`$is_safety_exception = true` dengan catatan alasan pemusnahan/dekontaminasi) bila makanan sebelumnya berstatus `HELD` atau `REJECTED`.
+  3. **Gate C — Privacy Minimal-Data Projection:**
+     - Di `TripDetailController::mapData()`: PIC Sekolah hanya menerima koordinat sekolahnya sendiri; koordinat sekolah lain dinullkan, nama sekolah lain disamarkan (`Pemberhentian #X`), serta `geometry = null` dan `legs = []`.
+     - Di `PublicDeliveryMapController::mapData()`: `geometry = null`, koordinat lat/lng pada halte dan SPPG dinullkan dari proyeksi JSON publik; indikator keaktifan telemetri (`is_live`, `is_stale`) dan ketersediaan ETA (`AVAILABLE` vs `UNAVAILABLE`) dihitung secara dinamis.
+     - Di `PublicDeliveryMapController::schoolDeliveryStatus()` (Halaman U04): endpoint minimal projection menyajikan status pengantaran tanpa identitas kurir, tanpa nomor telepon, tanpa geometri rute privat, dan tanpa jejak GPS mentah.
+  4. **Gate D — Incident Ownership Resolution:**
+     - Menambahkan accessor `getSppgIdAttribute()` pada model `FoodBatch` (`productionPlan->sppg_id`).
+     - Memperbaiki `IncidentService::validateSubjectOwnership()` untuk meresolusi kepemilikan tenant SPPG pada subjek `FoodBatch` dan `QualityCheck` tanpa membutuhkan kolom langsung `sppg_id`.
+  5. **Gate E & Gate F — Hasil Verifikasi:**
+     - 10 pengujian integrasi baru pada `Pbi10MealDistributionComplianceTest` lulus 100%.
+     - Seluruh test suite sistem: **374 tests passed, 2.138 assertions, 0 failures (100% pass rate)**.
+     - Frontend asset build `npm run build` sukses dalam 1.02 detik.
+     - Verifikasi peramban Chromium E2E (Mobile 390px & Desktop 1440px) berhasil merekam transisi lengkap P04 -> P05 -> P06 dan halaman publik U04.
+- **Konsekuensi:**
+  - Kepatuhan v4 Phase 1 tuntas secara menyeluruh dan terverifikasi penuh.
+  - Sesuai instruksi STOP after Phase 1, agen berhenti dan menyerahkan laporan lengkap kepada pengguna sebelum melangkah ke Phase 2.
+
+

@@ -195,8 +195,9 @@ class Pbi12FinalIntegrityAndSecurityExitGateTest extends TestCase
             'expected_portions' => $portions,
             'damaged_portions' => 0,
             'shortage_portions' => 0,
-            'status' => SchoolReceiptStatus::RECEIVED,
+            'status' => SchoolReceiptStatus::MEAL_COMPLETED,
             'received_at' => Carbon::now()->subMinutes(45),
+            'meal_completed_at' => Carbon::now()->subMinutes(15),
         ]);
 
         return [$trip, $stop, $serviceRecord];

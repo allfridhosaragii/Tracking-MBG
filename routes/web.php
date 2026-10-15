@@ -24,6 +24,7 @@ use App\Http\Controllers\School\SchoolOverviewController;
 use App\Http\Controllers\CrossRole\IncidentController;
 use App\Http\Controllers\Driver\DriverPickupController;
 use App\Http\Controllers\Production\LogisticsController;
+use App\Http\Controllers\School\MealDistributionController;
 use App\Http\Controllers\School\SchoolReceiptController;
 use App\Http\Controllers\School\TrayReturnController;
 use Illuminate\Support\Facades\Route;
@@ -48,6 +49,8 @@ Route::match(['get', 'post'], '/logout', [LoginController::class, 'logout'])->na
 
 // Public School Transparency portal (No Auth required, sanitized whitelist)
 Route::get('/public/schools/{slug}', [SchoolPublicController::class, 'show'])->name('public.schools.show');
+Route::get('/mbg/{slug}/delivery', [\App\Http\Controllers\Public\PublicDeliveryMapController::class, 'schoolDeliveryStatus'])->name('public.schools.delivery-status');
+Route::get('/public/schools/{slug}/delivery', [\App\Http\Controllers\Public\PublicDeliveryMapController::class, 'schoolDeliveryStatus']);
 
 // Protected Routes by Role and Active status
 Route::middleware(['auth', 'active'])->group(function () {
@@ -201,6 +204,13 @@ Route::middleware(['auth', 'active'])->group(function () {
             Route::get('/receipts', [SchoolReceiptController::class, 'index'])->name('receipts.index');
             Route::get('/trip-stops/{stop}/receipt', [SchoolReceiptController::class, 'show'])->name('receipts.show');
             Route::post('/trip-stops/{stop}/receipt', [SchoolReceiptController::class, 'confirm'])->name('receipts.confirm');
+
+            // PBI-10: Meal Distribution & Verification (Page P05)
+            Route::get('/meal-distribution', [MealDistributionController::class, 'index'])->name('meal-distribution.index');
+            Route::get('/meal-distribution/{record}', [MealDistributionController::class, 'show'])->name('meal-distribution.show');
+            Route::post('/meal-distribution/{record}/pre-consumption-check', [MealDistributionController::class, 'recordPreConsumptionCheck'])->name('meal-distribution.pre-consumption-check');
+            Route::post('/meal-distribution/{record}/start', [MealDistributionController::class, 'startDistribution'])->name('meal-distribution.start');
+            Route::post('/meal-distribution/{record}/complete', [MealDistributionController::class, 'completeMeal'])->name('meal-distribution.complete');
 
             // PBI-12: Container Ready & Reverse Logistics (Page P06)
             Route::get('/trays', [TrayReturnController::class, 'index'])->name('trays.index');

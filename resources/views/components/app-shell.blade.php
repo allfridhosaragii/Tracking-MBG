@@ -136,6 +136,10 @@
                                    class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('school.receipts.*') ? 'bg-[#EDF2ED] text-[#21684B]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
                                     Penerimaan Makanan
                                 </a>
+                                <a href="{{ route('school.meal-distribution.index') }}" 
+                                   class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('school.meal-distribution.*') ? 'bg-[#EDF2ED] text-[#21684B]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
+                                    Pembagian Makanan (P05)
+                                </a>
                                 <a href="{{ route('school.portions.index') }}" 
                                    class="px-3 py-2 text-xs font-semibold rounded-lg smooth-transition touch-target flex items-center {{ request()->routeIs('school.portions.*') ? 'bg-[#EDF2ED] text-[#21684B]' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
                                     Konfirmasi Porsi
@@ -380,6 +384,18 @@
                         </svg>
                         <span class="text-[10px] leading-tight">Penerimaan</span>
                         @if(request()->routeIs('school.receipts.*'))
+                            <span class="w-1.5 h-1.5 rounded-full bg-[#21684B] mt-0.5" aria-hidden="true"></span>
+                        @endif
+                    </a>
+
+                    <a href="{{ route('school.meal-distribution.index') }}" 
+                       @if(request()->routeIs('school.meal-distribution.*')) aria-current="page" @endif
+                       class="flex flex-col items-center justify-center flex-1 h-full py-1 text-center touch-target smooth-transition {{ request()->routeIs('school.meal-distribution.*') ? 'text-[#21684B] font-bold' : 'text-[#53645B] hover:text-[#172923]' }}">
+                        <svg class="w-5 h-5 mb-0.5 {{ request()->routeIs('school.meal-distribution.*') ? 'text-[#21684B]' : 'text-[#708177]' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v13m0-13V4a2 2 0 114 0v4M12 8H8a2 2 0 00-2 2v10a1 1 0 001 1h10a1 1 0 001-1V10a2 2 0 00-2-2h-4z"/>
+                        </svg>
+                        <span class="text-[10px] leading-tight">Pembagian</span>
+                        @if(request()->routeIs('school.meal-distribution.*'))
                             <span class="w-1.5 h-1.5 rounded-full bg-[#21684B] mt-0.5" aria-hidden="true"></span>
                         @endif
                     </a>
