@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\FoodBatchStatus;
+use App\Enums\TrayReturnStatus;
 use App\Enums\TripStatus;
 use App\Enums\TripStopStatus;
 use App\Enums\TripType;
@@ -11,6 +12,7 @@ use App\Models\ActivityLog;
 use App\Models\DeliveryItem;
 use App\Models\FoodBatch;
 use App\Models\School;
+use App\Models\TrayReturn;
 use App\Models\Trip;
 use App\Models\TripStop;
 use App\Models\User;
@@ -116,6 +118,23 @@ class TripDispatchService
             ->where('is_active', true)
             ->get();
 
+        // 7. Ready Tray Returns waiting for pickup assignment (PBI-12)
+        $readyTrayReturns = TrayReturn::whereHas('schoolServiceRecord.tripStop', function ($query) use ($sppgId) {
+            $query->whereHas('school', function ($q2) use ($sppgId) {
+                $q2->where('sppg_id', $sppgId);
+            });
+        })
+        ->whereIn('status', [TrayReturnStatus::READY_FOR_PICKUP, TrayReturnStatus::PICKUP_ASSIGNED])
+        ->with([
+            'schoolServiceRecord.tripStop.school',
+            'schoolServiceRecord.tripStop.trip',
+            'pickupTripStop.trip.driver',
+            'pickupTripStop.trip.vehicle',
+            'evidencePhotos',
+        ])
+        ->orderBy('ready_at')
+        ->get();
+
         return [
             'service_date' => $date,
             'released_batches' => $releasedBatches,
@@ -124,6 +143,7 @@ class TripDispatchService
             'drivers' => $drivers,
             'trips' => $trips,
             'schools' => $schools,
+            'ready_tray_returns' => $readyTrayReturns,
         ];
     }
 
@@ -250,6 +270,10 @@ class TripDispatchService
             $totalPlannedTrip = 0;
             $validatedStops = [];
 
+            $tripType = $data['trip_type'] ?? TripType::DELIVERY->value;
+            $isPickupTrip = in_array($tripType, [TripType::PICKUP->value, 'PICKUP'], true);
+            $isMixedTrip = in_array($tripType, [TripType::MIXED->value, 'MIXED'], true);
+
             foreach ($stopsData as $index => $stopInput) {
                 $schoolId = (int) ($stopInput['school_id'] ?? 0);
                 $sequence = (int) $stopInput['sequence_number'];
@@ -273,7 +297,46 @@ class TripDispatchService
                 }
                 $schoolIdsSeen[] = $schoolId;
 
-                // Validate Delivery Items for this stop
+                $stopType = $stopInput['stop_type'] ?? ($isPickupTrip ? 'PICKUP' : 'DELIVERY');
+
+                if ($isPickupTrip && $stopType === 'DELIVERY') {
+                    throw ValidationException::withMessages([
+                        "stops.{$index}.stop_type" => ['Perjalanan penjemputan (PICKUP) tidak boleh memiliki perhentian pengantaran makanan (DELIVERY).'],
+                    ]);
+                }
+
+                if (! $isPickupTrip && ! $isMixedTrip && $stopType === 'PICKUP') {
+                    throw ValidationException::withMessages([
+                        "stops.{$index}.stop_type" => ['Perjalanan pengantaran (DELIVERY) tidak boleh memiliki perhentian penjemputan (PICKUP). Gunakan tipe MIXED atau PICKUP.'],
+                    ]);
+                }
+
+                if ($stopType === 'PICKUP') {
+                    // GATE A: Valid reverse logistics task required for school
+                    $hasContainers = TrayReturn::whereHas('schoolServiceRecord.tripStop', function ($q) use ($schoolId) {
+                        $q->where('school_id', $schoolId);
+                    })
+                    ->whereIn('status', [TrayReturnStatus::READY_FOR_PICKUP, TrayReturnStatus::IN_USE, TrayReturnStatus::PICKUP_ASSIGNED])
+                    ->exists();
+
+                    if (! $hasContainers) {
+                        throw ValidationException::withMessages([
+                            "stops.{$index}.school_id" => ["Sekolah {$school->name} tidak memiliki catatan wadah ompreng yang siap dijemput."],
+                        ]);
+                    }
+
+                    $validatedStops[] = [
+                        'school_id' => $schoolId,
+                        'sequence_number' => $sequence,
+                        'stop_type' => 'PICKUP',
+                        'planned_arrival_at' => $stopInput['planned_arrival_at'] ?? null,
+                        'planned_portions' => 0,
+                        'items' => [],
+                    ];
+                    continue;
+                }
+
+                // Validate Delivery Items for this DELIVERY stop
                 $itemsInput = $stopInput['items'] ?? [];
                 if (empty($itemsInput) || ! is_array($itemsInput)) {
                     throw ValidationException::withMessages([
@@ -396,7 +459,7 @@ class TripDispatchService
                 $validatedStops[] = [
                     'school_id' => $schoolId,
                     'sequence_number' => $sequence,
-                    'stop_type' => $stopInput['stop_type'] ?? 'DELIVERY',
+                    'stop_type' => 'DELIVERY',
                     'planned_arrival_at' => $stopInput['planned_arrival_at'] ?? null,
                     'planned_portions' => $stopPlannedPortions,
                     'items' => $validatedItems,
@@ -421,18 +484,21 @@ class TripDispatchService
             $seqPad = str_pad($tripCountToday + 1, 2, '0', STR_PAD_LEFT);
             $tripCode = "TRIP-{$datePrefix}-{$sppgCode}-{$seqPad}";
 
-            // 6. Create Trip Record (Initialized with ASSIGNED, loading_verified = false)
+            // 6. Create Trip Record (Initialized with ASSIGNED, loading_verified = false unless PICKUP-only)
             $trip = Trip::create([
                 'sppg_id' => $sppgId,
                 'driver_id' => $driver->id,
                 'vehicle_id' => $vehicle->id,
                 'trip_code' => $tripCode,
-                'trip_type' => $data['trip_type'] ?? TripType::DELIVERY->value,
+                'trip_type' => $tripType,
                 'service_date' => $serviceDate,
                 'planned_departure_at' => $data['planned_departure_at'] ?? null,
                 'status' => TripStatus::ASSIGNED,
                 'vehicle_check_passed' => false,
-                'loading_verified' => false,
+                'loading_verified' => $isPickupTrip ? true : false,
+                'loading_verified_at' => $isPickupTrip ? Carbon::now() : null,
+                'loading_verified_by' => $isPickupTrip ? $actor->id : null,
+                'loading_notes' => $isPickupTrip ? 'Penjemputan ompreng (kendaraan berangkat tanpa muatan makanan).' : null,
                 'dispatch_approved' => false,
                 'tracking_status' => 'OFF',
                 'created_by' => $actor->id,
@@ -446,7 +512,7 @@ class TripDispatchService
                     'stop_type' => $stopData['stop_type'],
                     'sequence_number' => $stopData['sequence_number'],
                     'planned_portions' => $stopData['planned_portions'],
-                    'loaded_portions' => null,
+                    'loaded_portions' => $stopData['stop_type'] === 'PICKUP' ? 0 : null,
                     'planned_arrival_at' => $stopData['planned_arrival_at'],
                     'status' => TripStopStatus::PENDING,
                 ]);
@@ -516,6 +582,12 @@ class TripDispatchService
             if ((int) $lockedTrip->sppg_id !== (int) $actor->sppg_id) {
                 throw ValidationException::withMessages([
                     'authorization' => ['Anda tidak berwenang memverifikasi muatan SPPG lain.'],
+                ]);
+            }
+
+            if ($lockedTrip->trip_type === TripType::PICKUP || $lockedTrip->trip_type === 'PICKUP') {
+                throw ValidationException::withMessages([
+                    'trip' => ['Perjalanan penjemputan (PICKUP) tidak memiliki muatan makanan untuk diverifikasi.'],
                 ]);
             }
 
@@ -767,40 +839,44 @@ class TripDispatchService
                 ]);
             }
 
-            // Gate 1: Check all batches are RELEASED
-            $batchIds = DeliveryItem::whereHas('tripStop', function ($q) use ($lockedTrip) {
-                $q->where('trip_id', $lockedTrip->id);
-            })->pluck('food_batch_id')->unique();
+            $isPickupTrip = ($lockedTrip->trip_type === TripType::PICKUP || $lockedTrip->trip_type === 'PICKUP');
 
-            $unreleasedCount = FoodBatch::whereIn('id', $batchIds)
-                ->where('status', '!=', FoodBatchStatus::RELEASED)
-                ->count();
+            if (! $isPickupTrip) {
+                // Gate 1: Check all batches are RELEASED
+                $batchIds = DeliveryItem::whereHas('tripStop', function ($q) use ($lockedTrip) {
+                    $q->where('trip_id', $lockedTrip->id);
+                })->pluck('food_batch_id')->unique();
 
-            if ($unreleasedCount > 0) {
-                throw ValidationException::withMessages([
-                    'dispatch' => ['Terdapat batch makanan pada manifest perjalanan ini yang belum berstatus lolos QC (RELEASED).'],
-                ]);
-            }
+                $unreleasedCount = FoodBatch::whereIn('id', $batchIds)
+                    ->where('status', '!=', FoodBatchStatus::RELEASED)
+                    ->count();
 
-            // Gate 2: Check physical loading is verified and ALL items are LOADED
-            if (! $lockedTrip->loading_verified) {
-                throw ValidationException::withMessages([
-                    'dispatch' => ['Kuantitas muatan fisik belum diverifikasi oleh petugas muat (loading verification).'],
-                ]);
-            }
+                if ($unreleasedCount > 0) {
+                    throw ValidationException::withMessages([
+                        'dispatch' => ['Terdapat batch makanan pada manifest perjalanan ini yang belum berstatus lolos QC (RELEASED).'],
+                    ]);
+                }
 
-            $unloadedItemsCount = DeliveryItem::whereHas('tripStop', function ($q) use ($lockedTrip) {
-                $q->where('trip_id', $lockedTrip->id);
-            })->where(function ($q) {
-                $q->where('status', '!=', 'LOADED')
-                  ->orWhereNull('loaded_portions')
-                  ->orWhere('loaded_portions', '<=', 0);
-            })->count();
+                // Gate 2: Check physical loading is verified and ALL items are LOADED
+                if (! $lockedTrip->loading_verified) {
+                    throw ValidationException::withMessages([
+                        'dispatch' => ['Kuantitas muatan fisik belum diverifikasi oleh petugas muat (loading verification).'],
+                    ]);
+                }
 
-            if ($unloadedItemsCount > 0) {
-                throw ValidationException::withMessages([
-                    'dispatch' => ['Masih terdapat item alokasi muatan yang belum selesai diverifikasi secara fisik.'],
-                ]);
+                $unloadedItemsCount = DeliveryItem::whereHas('tripStop', function ($q) use ($lockedTrip) {
+                    $q->where('trip_id', $lockedTrip->id);
+                })->where(function ($q) {
+                    $q->where('status', '!=', 'LOADED')
+                      ->orWhereNull('loaded_portions')
+                      ->orWhere('loaded_portions', '<=', 0);
+                })->count();
+
+                if ($unloadedItemsCount > 0) {
+                    throw ValidationException::withMessages([
+                        'dispatch' => ['Masih terdapat item alokasi muatan yang belum selesai diverifikasi secara fisik.'],
+                    ]);
+                }
             }
 
             // Gate 3: Check vehicle condition check passed & vehicle is active
@@ -901,25 +977,29 @@ class TripDispatchService
                 ]);
             }
 
-            // Re-verify Dispatch Gates atomically
-            if (! $lockedTrip->loading_verified) {
-                throw ValidationException::withMessages([
-                    'loading_verified' => ['Kuantitas muatan belum diverifikasi secara resmi.'],
-                ]);
-            }
+            $isPickupTrip = ($lockedTrip->trip_type === TripType::PICKUP || $lockedTrip->trip_type === 'PICKUP');
 
-            $unloadedItemsCount = DeliveryItem::whereHas('tripStop', function ($q) use ($lockedTrip) {
-                $q->where('trip_id', $lockedTrip->id);
-            })->where(function ($q) {
-                $q->where('status', '!=', 'LOADED')
-                  ->orWhereNull('loaded_portions')
-                  ->orWhere('loaded_portions', '<=', 0);
-            })->count();
+            if (! $isPickupTrip) {
+                // Re-verify Dispatch Gates atomically
+                if (! $lockedTrip->loading_verified) {
+                    throw ValidationException::withMessages([
+                        'loading_verified' => ['Kuantitas muatan belum diverifikasi secara resmi.'],
+                    ]);
+                }
 
-            if ($unloadedItemsCount > 0) {
-                throw ValidationException::withMessages([
-                    'loading_verified' => ['Terdapat item manifest muatan yang belum selesai diverifikasi.'],
-                ]);
+                $unloadedItemsCount = DeliveryItem::whereHas('tripStop', function ($q) use ($lockedTrip) {
+                    $q->where('trip_id', $lockedTrip->id);
+                })->where(function ($q) {
+                    $q->where('status', '!=', 'LOADED')
+                      ->orWhereNull('loaded_portions')
+                      ->orWhere('loaded_portions', '<=', 0);
+                })->count();
+
+                if ($unloadedItemsCount > 0) {
+                    throw ValidationException::withMessages([
+                        'loading_verified' => ['Terdapat item manifest muatan yang belum selesai diverifikasi.'],
+                    ]);
+                }
             }
 
             if (! $lockedTrip->vehicle_check_passed) {
@@ -951,19 +1031,21 @@ class TripDispatchService
                 ]);
             }
 
-            // Re-verify batches are still RELEASED
-            $batchIds = DeliveryItem::whereHas('tripStop', function ($q) use ($lockedTrip) {
-                $q->where('trip_id', $lockedTrip->id);
-            })->pluck('food_batch_id')->unique();
+            if (! $isPickupTrip) {
+                // Re-verify batches are still RELEASED
+                $batchIds = DeliveryItem::whereHas('tripStop', function ($q) use ($lockedTrip) {
+                    $q->where('trip_id', $lockedTrip->id);
+                })->pluck('food_batch_id')->unique();
 
-            $unreleasedBatches = FoodBatch::whereIn('id', $batchIds)
-                ->where('status', '!=', FoodBatchStatus::RELEASED)
-                ->count();
+                $unreleasedBatches = FoodBatch::whereIn('id', $batchIds)
+                    ->where('status', '!=', FoodBatchStatus::RELEASED)
+                    ->count();
 
-            if ($unreleasedBatches > 0) {
-                throw ValidationException::withMessages([
-                    'batch_status' => ['Terdapat batch makanan yang status rilisnya dibatalkan atau ditahan (HOLD).'],
-                ]);
+                if ($unreleasedBatches > 0) {
+                    throw ValidationException::withMessages([
+                        'batch_status' => ['Terdapat batch makanan yang status rilisnya dibatalkan atau ditahan (HOLD).'],
+                    ]);
+                }
             }
 
             if (! $lockedTrip->dispatch_approved) {

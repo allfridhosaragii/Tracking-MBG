@@ -130,7 +130,11 @@ class DistributionController extends Controller
         if (!$stopId && $request->filled('trip_id')) {
             $stop = \App\Models\TripStop::where('trip_id', $request->input('trip_id'))
                 ->where('school_id', $trayReturn->school_id)
-                ->first();
+                ->whereIn('stop_type', ['PICKUP', 'DELIVERY_AND_PICKUP'])
+                ->first()
+                ?? \App\Models\TripStop::where('trip_id', $request->input('trip_id'))
+                    ->where('school_id', $trayReturn->school_id)
+                    ->first();
 
             if (!$stop) {
                 throw \Illuminate\Validation\ValidationException::withMessages([

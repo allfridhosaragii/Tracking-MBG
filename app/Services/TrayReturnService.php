@@ -8,12 +8,14 @@ use App\Enums\IncidentStatus;
 use App\Enums\TrayReturnStatus;
 use App\Enums\TripStatus;
 use App\Enums\TripStopStatus;
+use App\Enums\TripType;
 use App\Enums\UserRole;
 use App\Models\ActivityLog;
 use App\Models\EvidencePhoto;
 use App\Models\Incident;
 use App\Models\SchoolServiceRecord;
 use App\Models\TrayReturn;
+use App\Models\Trip;
 use App\Models\TripStop;
 use App\Models\User;
 use Carbon\Carbon;
@@ -257,41 +259,64 @@ class TrayReturnService
                 );
             }
 
+            // Lock stop and trip for custody validation & concurrency safety (GATE C)
+            $lockedStop = TripStop::where('id', $pickupStop->id)->lockForUpdate()->firstOrFail();
+            $lockedTrip = Trip::where('id', $lockedStop->trip_id)->with('driver')->lockForUpdate()->firstOrFail();
+
             // 3. Stop school verification: Stop must match the exact school of the trays
-            if ((int) $pickupStop->school_id !== (int) $lockedReturn->school_id) {
+            if ((int) $lockedStop->school_id !== (int) $lockedReturn->school_id) {
                 throw ValidationException::withMessages([
                     'stop' => ['Pemberhentian penjemputan tidak sesuai dengan sekolah wadah ini.'],
                 ]);
             }
 
             // 4. Trip tenant verification: Stop's trip must belong to the same SPPG
-            $trip = $pickupStop->trip;
-            if (!$trip || (int) $trip->sppg_id !== (int) $sppg?->id) {
+            if ((int) $lockedTrip->sppg_id !== (int) $sppg?->id) {
                 throw new HttpException(403, 'Akses ditolak. Rute perjalanan penjemputan berasal dari unit SPPG lain.');
             }
 
-            // 5. Trip status check: Must NOT be completed or cancelled
-            if (in_array($trip->status, [TripStatus::COMPLETED, TripStatus::CANCELLED], true)) {
+            // 5. Trip status check: Must NOT be completed or cancelled (GATE C)
+            if (in_array($lockedTrip->status, [TripStatus::COMPLETED, TripStatus::CANCELLED], true)) {
                 throw ValidationException::withMessages([
-                    'trip' => ['Tidak dapat menugaskan penjemputan pada perjalanan pengiriman yang telah selesai atau dibatalkan.'],
+                    'trip' => ['Tidak dapat menugaskan penjemputan pada perjalanan yang telah selesai atau dibatalkan.'],
                 ]);
             }
 
-            // 6. Stop status check: Stop must not be skipped or completed
-            if (in_array($pickupStop->status, [TripStopStatus::SKIPPED, TripStopStatus::COMPLETED], true)) {
+            // 6. Stop status check: Stop must not be skipped or completed (GATE C)
+            if (in_array($lockedStop->status, [TripStopStatus::SKIPPED, TripStopStatus::COMPLETED], true)) {
                 throw ValidationException::withMessages([
                     'stop' => ['Pemberhentian penjemputan berada dalam status yang tidak sah untuk penugasan penjemputan aktif.'],
                 ]);
             }
 
-            // 7. Driver assigned check
-            if (empty($trip->driver_id)) {
+            // 7. Trip & Stop type verification: Must be a valid operational trip type
+            $tripType = $lockedTrip->trip_type instanceof TripType ? $lockedTrip->trip_type->value : (string) $lockedTrip->trip_type;
+            $validTripTypes = [TripType::PICKUP->value, TripType::MIXED->value, TripType::DELIVERY->value, 'PICKUP', 'MIXED', 'DELIVERY'];
+            if (!in_array($tripType, $validTripTypes, true)) {
                 throw ValidationException::withMessages([
-                    'driver' => ['Perjalanan penjemputan belum memiliki kurir yang ditugaskan.'],
+                    'trip' => ['Perjalanan harus bertipe Penjemputan (PICKUP), Pengantaran (DELIVERY), atau Gabungan (MIXED).'],
                 ]);
             }
 
-            $lockedReturn->pickup_trip_stop_id = $pickupStop->id;
+            // If stop is part of a purely PICKUP trip, align stop_type to PICKUP
+            if (in_array($tripType, [TripType::PICKUP->value, 'PICKUP'], true) && $lockedStop->stop_type !== 'PICKUP') {
+                $lockedStop->update(['stop_type' => 'PICKUP']);
+            }
+
+            // 8. Driver check: Driver must be active and registered
+            $driver = $lockedTrip->driver;
+            if (! $driver || ! $driver->is_active || $driver->role !== UserRole::KURIR) {
+                throw ValidationException::withMessages([
+                    'driver' => ['Perjalanan penjemputan belum memiliki kurir aktif yang sah.'],
+                ]);
+            }
+
+            // Idempotent assignment check
+            if ((int) $lockedReturn->pickup_trip_stop_id === (int) $lockedStop->id && $lockedReturn->status === TrayReturnStatus::PICKUP_ASSIGNED) {
+                return $lockedReturn;
+            }
+
+            $lockedReturn->pickup_trip_stop_id = $lockedStop->id;
             $lockedReturn->status = TrayReturnStatus::PICKUP_ASSIGNED;
             $lockedReturn->save();
 
@@ -300,10 +325,11 @@ class TrayReturnService
                 auditable: $lockedReturn,
                 actor: $actor,
                 newValues: [
-                    'pickup_trip_stop_id' => $pickupStop->id,
-                    'trip_id' => $trip->id,
-                    'driver_id' => $trip->driver_id,
+                    'pickup_trip_stop_id' => $lockedStop->id,
+                    'trip_id' => $lockedTrip->id,
+                    'driver_id' => $driver->id,
                     'status' => TrayReturnStatus::PICKUP_ASSIGNED->value,
+                    'assigned_at' => Carbon::now()->toIso8601String(),
                 ]
             );
 
@@ -529,7 +555,7 @@ class TrayReturnService
                     ]);
                 }
 
-                // 4. Precondition & Idempotency Check (GATE E)
+                // 4. Precondition & Idempotency Check (GATE E & GATE D IMMUTABILITY)
                 if ($lockedReturn->returned_at !== null) {
                     if ((int) $lockedReturn->returned_count === $returnedCount &&
                         (int) ($lockedReturn->damaged_count ?? 0) === $damagedCount &&
@@ -537,6 +563,11 @@ class TrayReturnService
                         // Identical retry: return existing record safely without modifying timestamp, activity logs or incidents
                         return $lockedReturn;
                     }
+
+                    // GATE D: Reject differing payload after finalization!
+                    throw new ConflictHttpException(
+                        'Penerimaan retur wadah di depot SPPG telah disahkan dan bersifat final. Perubahan angka fisik melalui jalur penerimaan biasa tidak diizinkan.'
+                    );
                 }
 
                 $notes = isset($data['notes']) ? trim((string) $data['notes']) : (isset($data['discrepancy_reason']) ? trim((string) $data['discrepancy_reason']) : null);
@@ -656,5 +687,83 @@ class TrayReturnService
             'captured_at' => Carbon::now(),
             'notes' => $notes,
         ]);
+    }
+
+    /**
+     * Formal administrative correction for finalized depot receipt (Kepala SPPG only).
+     * GATE D: Requires separate audit trail, reason, and preserves historical returned_at.
+     */
+    public function correctDepotReceipt(TrayReturn $trayReturn, User $actor, array $data): TrayReturn
+    {
+        return DB::transaction(function () use ($trayReturn, $actor, $data) {
+            $lockedReturn = TrayReturn::where('id', $trayReturn->id)
+                ->with(['schoolServiceRecord.tripStop.school'])
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $sppg = $lockedReturn->sppg;
+
+            // Authorization: Strictly Kepala SPPG of same SPPG
+            if ($actor->role !== UserRole::KEPALA_SPPG || (int) $actor->sppg_id !== (int) $sppg?->id) {
+                throw new HttpException(403, 'Akses ditolak. Koreksi administratif penerimaan depot hanya berhak dilakukan oleh Kepala SPPG unit terkait.');
+            }
+
+            if ($lockedReturn->returned_at === null) {
+                throw new ConflictHttpException('Penerimaan depot belum pernah dicatat sebelumnya.');
+            }
+
+            $reason = trim((string) ($data['reason'] ?? $data['notes'] ?? ''));
+            if (empty($reason)) {
+                throw ValidationException::withMessages([
+                    'reason' => ['Alasan koreksi administratif resmi wajib disertakan.'],
+                ]);
+            }
+
+            $newReturnedCount = isset($data['returned_count']) ? (int) $data['returned_count'] : $lockedReturn->returned_count;
+            $newDamagedCount = isset($data['damaged_count']) ? (int) $data['damaged_count'] : ($lockedReturn->damaged_count ?? 0);
+            $newMissingCount = isset($data['missing_count']) ? (int) $data['missing_count'] : ($lockedReturn->missing_count ?? 0);
+
+            if ($newReturnedCount < 0 || $newDamagedCount < 0 || $newMissingCount < 0) {
+                throw ValidationException::withMessages([
+                    'counts' => ['Kuantitas koreksi wadah tidak boleh bernilai negatif.'],
+                ]);
+            }
+
+            $oldValues = [
+                'returned_count' => $lockedReturn->returned_count,
+                'damaged_count' => $lockedReturn->damaged_count,
+                'missing_count' => $lockedReturn->missing_count,
+                'status' => $lockedReturn->status->value,
+            ];
+
+            $expectedAtDepot = (int) ($lockedReturn->picked_up_count ?? $lockedReturn->ready_count ?? $lockedReturn->expected_trays);
+            $hasDiscrepancy = (($newReturnedCount + $newDamagedCount) !== $expectedAtDepot) || ($newMissingCount > 0);
+
+            $lockedReturn->returned_count = $newReturnedCount;
+            $lockedReturn->damaged_count = $newDamagedCount;
+            $lockedReturn->missing_count = $newMissingCount;
+            $lockedReturn->status = $hasDiscrepancy ? TrayReturnStatus::DISCREPANCY : TrayReturnStatus::RETURNED_TO_SPPG;
+            $lockedReturn->discrepancy_reason = $lockedReturn->discrepancy_reason
+                ? $lockedReturn->discrepancy_reason . " | Koreksi Kepala SPPG ({$actor->name}): {$reason}"
+                : "Koreksi Kepala SPPG ({$actor->name}): {$reason}";
+            $lockedReturn->save();
+
+            ActivityLog::record(
+                event: 'tray_return.depot_corrected',
+                auditable: $lockedReturn,
+                actor: $actor,
+                oldValues: $oldValues,
+                newValues: [
+                    'returned_count' => $newReturnedCount,
+                    'damaged_count' => $newDamagedCount,
+                    'missing_count' => $newMissingCount,
+                    'status' => $lockedReturn->status->value,
+                    'correction_reason' => $reason,
+                    'corrected_at' => Carbon::now()->toIso8601String(),
+                ]
+            );
+
+            return $lockedReturn;
+        });
     }
 }

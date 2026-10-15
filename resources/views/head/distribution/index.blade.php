@@ -60,7 +60,7 @@
     @endif
 
     <!-- Ringkasan Kesiapan Logistik Operasional -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
         <div class="p-4 rounded-2xl bg-white border border-[#DCE5DD]">
             <span class="text-[11px] font-semibold text-[#53645B] block uppercase tracking-wider">Armada Tersedia</span>
             <div class="mt-2 flex items-baseline gap-2">
@@ -85,7 +85,7 @@
                 <span class="text-2xl font-bold text-[#1B573E]">{{ $unassigned_delivery_items->sum('released_portions') }}</span>
                 <span class="text-xs text-[#53645B]">porsi</span>
             </div>
-            <span class="text-[11px] text-[#708177] mt-1 block">{{ $unassigned_delivery_items->count() }} paket alokasi sekolah</span>
+            <span class="text-[11px] text-[#708177] mt-1 block">{{ $unassigned_delivery_items->count() }} paket alokasi</span>
         </div>
 
         <div class="p-4 rounded-2xl bg-white border border-[#DCE5DD]">
@@ -94,111 +94,260 @@
                 <span class="text-2xl font-bold text-[#285F80]">{{ $trips->count() }}</span>
                 <span class="text-xs text-[#53645B]">perjalanan</span>
             </div>
-            <span class="text-[11px] text-[#708177] mt-1 block">{{ $trips->where('status.value', 'IN_PROGRESS')->count() }} sedang berjalan</span>
+            <span class="text-[11px] text-[#708177] mt-1 block">{{ $trips->where('status.value', 'IN_PROGRESS')->count() }} berjalan</span>
+        </div>
+
+        <div class="p-4 rounded-2xl bg-white border border-[#DCE5DD] col-span-2 sm:col-span-1">
+            <span class="text-[11px] font-semibold text-[#55327A] block uppercase tracking-wider">Ompreng Siap Jemput</span>
+            <div class="mt-2 flex items-baseline gap-2">
+                <span class="text-2xl font-bold text-[#55327A]">{{ $ready_tray_returns->where('status.value', 'READY_FOR_PICKUP')->count() }}</span>
+                <span class="text-xs text-[#53645B]">sekolah ({{ $ready_tray_returns->where('status.value', 'READY_FOR_PICKUP')->sum('ready_count') }} wadah)</span>
+            </div>
+            <span class="text-[11px] text-[#708177] mt-1 block">{{ $ready_tray_returns->where('status.value', 'PICKUP_ASSIGNED')->count() }} telah ditugaskan</span>
         </div>
     </div>
 
     <!-- Layout Dua Kolom: Form Penugasan & Daftar Trip Berjalan -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <!-- Kolom Kiri (7 Kolom): Perencana Penugasan Perjalanan Baru -->
+        <!-- Kolom Kiri (7 Kolom): Logistik Balik Wadah & Form Penugasan Perjalanan -->
         <div class="lg:col-span-7 space-y-6">
-            <div class="p-5 rounded-2xl bg-white border border-[#DCE5DD]">
+            <!-- Modul PBI-12: Ompreng Siap Dijemput (Reverse Logistics) -->
+            <div class="p-5 rounded-2xl bg-white border border-[#DCE5DD]" id="section-tray-returns">
                 <div class="flex items-center justify-between pb-3 border-b border-[#DCE5DD] mb-4">
                     <div>
-                        <h2 class="text-base font-bold text-[#172923]">Form Penugasan Rute &amp; Muatan Baru</h2>
-                        <p class="text-xs text-[#53645B]">Pilih armada, kurir, dan susun sekolah tujuan dengan kuantitas sah.</p>
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="px-2 py-0.5 text-[10px] font-bold bg-[#F3EEF9] text-[#55327A] border border-[#DFCDEE] rounded">
+                                PBI-12 Reverse Logistics
+                            </span>
+                        </div>
+                        <h2 class="text-base font-bold text-[#172923]">Wadah Ompreng Siap Dijemput</h2>
+                        <p class="text-xs text-[#53645B]">Daftar ompreng makanan yang telah disahkan siap kembali oleh PIC Sekolah dan memerlukan penugasan kurir resmi.</p>
                     </div>
-                    <span class="px-2 py-0.5 text-[11px] font-bold bg-[#EDF2ED] text-[#172923] border border-[#DCE5DD] rounded">
-                        PBI-08
+                    <span class="text-xs font-mono font-bold text-[#55327A] px-2 py-1 bg-[#F3EEF9] rounded-lg">
+                        {{ $ready_tray_returns->count() }} Sekolah
                     </span>
                 </div>
 
-                @if ($unassigned_delivery_items->isEmpty())
+                @if ($ready_tray_returns->isEmpty())
                     <div class="p-6 rounded-xl bg-[#FAFBF9] border border-dashed border-[#DCE5DD] text-center">
                         <svg class="w-8 h-8 mx-auto text-[#708177] mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                         </svg>
-                        <h3 class="text-sm font-bold text-[#172923]">Tidak Ada Alokasi Siap Muat</h3>
+                        <h3 class="text-sm font-bold text-[#172923]">Belum Ada Ompreng Menunggu Penjemputan</h3>
                         <p class="text-xs text-[#53645B] max-w-md mx-auto mt-1">
-                            Semua alokasi makanan pada tanggal ini sudah dijadwalkan pada perjalanan aktif, atau belum ada batch makanan yang disetujui inspeksi mutu (RELEASED).
+                            Ketika PIC Sekolah mengonfirmasi wadah bersih dan siap diambil melalui Halaman Layanan Sekolah (P06), daftar penjemputan akan otomatis muncul di sini.
                         </p>
                     </div>
                 @else
-                    <form method="POST" action="{{ route('head.distribution.trips.store') }}" class="space-y-4">
-                        @csrf
-                        <input type="hidden" name="service_date" value="{{ $service_date }}">
+                    <div class="space-y-4">
+                        @foreach ($ready_tray_returns as $tray)
+                            @php
+                                $school = $tray->school;
+                                $availablePickupStops = \App\Models\TripStop::where('school_id', $tray->school_id)
+                                    ->where('stop_type', 'PICKUP')
+                                    ->whereNotIn('status', [\App\Enums\TripStopStatus::SKIPPED, \App\Enums\TripStopStatus::COMPLETED])
+                                    ->whereHas('trip', function ($q) use ($service_date) {
+                                        $q->where('sppg_id', auth()->user()->sppg_id)
+                                          ->whereDate('service_date', $service_date)
+                                          ->whereIn('status', [
+                                              \App\Enums\TripStatus::ASSIGNED,
+                                              \App\Enums\TripStatus::VEHICLE_CHECKED,
+                                              \App\Enums\TripStatus::READY,
+                                              \App\Enums\TripStatus::IN_PROGRESS,
+                                          ]);
+                                    })
+                                    ->with(['trip.driver', 'trip.vehicle'])
+                                    ->get();
+                            @endphp
 
-                        <!-- Baris Armada & Kurir -->
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                                <label for="vehicle_id" class="block text-xs font-bold text-[#172923] mb-1">
-                                    Armada Kendaraan <span class="text-red-500">*</span>
-                                </label>
-                                <select id="vehicle_id" 
-                                        name="vehicle_id" 
-                                        required 
-                                        class="w-full px-3 py-2 text-xs font-medium text-[#172923] bg-white border border-[#DCE5DD] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1C6654] touch-target">
-                                    <option value="">-- Pilih Kendaraan Tersedia --</option>
-                                    @foreach ($vehicles as $v)
-                                        <option value="{{ $v->id }}" {{ $v->is_busy ? 'disabled' : '' }}>
-                                            {{ $v->plate_number }} ({{ $v->vehicle_type }}) : Kapasitas {{ $v->capacity_portions ?? 'Tak terbatas' }} porsi {{ $v->is_busy ? '[Sedang Bertugas]' : '' }}
-                                        </option>
-                                    @endforeach
-                                </select>
-                            </div>
+                            <div class="p-4 rounded-xl border {{ $tray->status === \App\Enums\TrayReturnStatus::PICKUP_ASSIGNED ? 'bg-[#F9FCFA] border-[#BCE2D0]' : 'bg-[#FAFBF9] border-[#DCE5DD]' }} transition-colors">
+                                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#E8EEE9]">
+                                    <div>
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-sm font-bold text-[#172923]">{{ $school?->name ?? 'Sekolah #'.$tray->school_id }}</span>
+                                            <span class="text-[10px] font-bold px-2 py-0.5 rounded border {{ $tray->status->badgeClass() }}">
+                                                {{ $tray->status->label() }}
+                                            </span>
+                                        </div>
+                                        <span class="text-[11px] text-[#53645B] mt-0.5 block">
+                                            Dikonfirmasi PIC: {{ $tray->ready_at ? $tray->ready_at->translatedFormat('d M Y, H:i') : '-' }} WIB
+                                        </span>
+                                    </div>
+                                    <div class="flex items-center gap-3">
+                                        <div class="text-right">
+                                            <span class="text-lg font-bold text-[#1B573E]">{{ $tray->ready_count }}</span>
+                                            <span class="text-xs text-[#53645B]">wadah siap</span>
+                                        </div>
+                                        @if ($tray->damaged_count > 0)
+                                            <div class="text-right pl-3 border-l border-[#DCE5DD]">
+                                                <span class="text-sm font-bold text-[#9B3232]">{{ $tray->damaged_count }}</span>
+                                                <span class="text-[11px] text-[#9B3232] block">rusak</span>
+                                            </div>
+                                        @endif
+                                    </div>
+                                </div>
 
-                            <div>
-                                <label for="driver_id" class="block text-xs font-bold text-[#172923] mb-1">
-                                    Kurir yang Ditugaskan <span class="text-red-500">*</span>
-                                </label>
-                                <select id="driver_id" 
-                                        name="driver_id" 
-                                        required 
-                                        class="w-full px-3 py-2 text-xs font-medium text-[#172923] bg-white border border-[#DCE5DD] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1C6654] touch-target">
-                                    <option value="">-- Pilih Kurir Aktif --</option>
-                                    @foreach ($drivers as $d)
-                                        <option value="{{ $d->id }}" {{ $d->is_busy ? 'disabled' : '' }}>
-                                            {{ $d->name }} {{ $d->phone ? '('.$d->phone.')' : '' }} {{ $d->is_busy ? '[Sedang Bertugas]' : '' }}
-                                        </option>
-                                    @endforeach
-                                </select>
+                                @if ($tray->hasDiscrepancy() && $tray->discrepancy_reason)
+                                    <div class="mt-2 p-2 rounded-lg bg-[#FDF8EE] border border-[#F5E6BE] text-[11px] text-[#7A5B14]">
+                                        <span class="font-bold">Catatan PIC:</span> {{ $tray->discrepancy_reason }}
+                                    </div>
+                                @endif
+
+                                @if ($tray->status === \App\Enums\TrayReturnStatus::PICKUP_ASSIGNED && $tray->pickupTripStop)
+                                    <div class="mt-3 p-2.5 rounded-xl bg-[#EDF7F2] border border-[#BCE2D0] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                        <div>
+                                            <span class="text-xs font-bold text-[#1B573E] block">
+                                                Kurir Ditugaskan: {{ $tray->pickupTripStop->trip->driver?->name }}
+                                            </span>
+                                            <span class="text-[11px] text-[#53645B]">
+                                                Trip: {{ $tray->pickupTripStop->trip->trip_code }} : Armada: {{ $tray->pickupTripStop->trip->vehicle?->plate_number }} (Perhentian #{{ $tray->pickupTripStop->sequence_number }})
+                                            </span>
+                                        </div>
+                                        <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-[#1C6654] text-white shrink-0">
+                                            Aktif di D05
+                                        </span>
+                                    </div>
+                                @endif
+
+                                <!-- Form Penugasan / Pemindahan Penugasan -->
+                                <form method="POST" action="{{ route('head.distribution.trays.assign', $tray) }}" class="mt-3 pt-3 border-t border-[#E8EEE9] flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                                    @csrf
+                                    @if ($availablePickupStops->isNotEmpty())
+                                        <div class="flex-1">
+                                            <label for="pickup_stop_{{ $tray->id }}" class="sr-only">Pilih Perjalanan Penjemputan</label>
+                                            <select id="pickup_stop_{{ $tray->id }}" 
+                                                    name="pickup_trip_stop_id" 
+                                                    required 
+                                                    class="w-full px-3 py-2 text-xs font-medium text-[#172923] bg-white border border-[#DCE5DD] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1C6654] touch-target">
+                                                <option value="">-- Pilih Perjalanan &amp; Kurir Penjemput --</option>
+                                                @foreach ($availablePickupStops as $pStop)
+                                                    <option value="{{ $pStop->id }}" {{ $tray->pickup_trip_stop_id === $pStop->id ? 'selected' : '' }}>
+                                                        {{ $pStop->trip->trip_code }} : Kurir {{ $pStop->trip->driver?->name }} (Armada {{ $pStop->trip->vehicle?->plate_number }})
+                                                    </option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                        <button type="submit" 
+                                                class="px-4 py-2 rounded-xl bg-[#55327A] hover:bg-[#432662] text-white text-xs font-bold transition-colors touch-target cursor-pointer whitespace-nowrap">
+                                            {{ $tray->status === \App\Enums\TrayReturnStatus::PICKUP_ASSIGNED ? 'Ubah Penugasan' : 'Tugaskan Kurir' }}
+                                        </button>
+                                    @else
+                                        <div class="text-[11px] text-[#7A5B14] bg-[#FEF9ED] p-2.5 rounded-xl border border-[#F5E6BE] w-full flex items-center justify-between gap-2">
+                                            <span>Belum ada rute penjemputan (PICKUP) untuk sekolah ini hari ini. Buat perjalanan penjemputan pada form di bawah.</span>
+                                            <button type="button" 
+                                                    onclick="document.getElementById('trip_type_select').value='PICKUP'; document.getElementById('trip_type_select').dispatchEvent(new Event('change')); document.getElementById('form-trip-planning').scrollIntoView({behavior: 'smooth'});"
+                                                    class="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-[#55327A] text-white hover:bg-[#432662] transition-colors whitespace-nowrap touch-target cursor-pointer">
+                                                Buat Trip PICKUP
+                                            </button>
+                                        </div>
+                                    @endif
+                                </form>
                             </div>
+                        @endforeach
+                    </div>
+                @endif
+            </div>
+
+            <!-- Modul Form Pembuatan Perjalanan Baru (DELIVERY / PICKUP / MIXED) -->
+            <div class="p-5 rounded-2xl bg-white border border-[#DCE5DD]" id="form-trip-planning">
+                <div class="flex items-center justify-between pb-3 border-b border-[#DCE5DD] mb-4">
+                    <div>
+                        <h2 class="text-base font-bold text-[#172923]">Form Penugasan Rute &amp; Muatan Baru</h2>
+                        <p class="text-xs text-[#53645B]">Pilih armada, kurir, dan atur rute sekolah untuk pengantaran makanan atau penjemputan ompreng.</p>
+                    </div>
+                    <span class="px-2 py-0.5 text-[11px] font-bold bg-[#EDF2ED] text-[#172923] border border-[#DCE5DD] rounded">
+                        PBI-08 &amp; PBI-12
+                    </span>
+                </div>
+
+                <form method="POST" action="{{ route('head.distribution.trips.store') }}" id="create-trip-form" class="space-y-4">
+                    @csrf
+                    <input type="hidden" name="service_date" value="{{ $service_date }}">
+
+                    <!-- Pemilih Jenis Perjalanan (DELIVERY / PICKUP / MIXED) -->
+                    <div>
+                        <label for="trip_type_select" class="block text-xs font-bold text-[#172923] mb-1">
+                            Jenis Perjalanan <span class="text-red-500">*</span>
+                        </label>
+                        <select id="trip_type_select" 
+                                name="trip_type" 
+                                onchange="switchTripType(this.value)"
+                                class="w-full px-3 py-2 text-xs font-bold text-[#172923] bg-[#FAFBF9] border border-[#DCE5DD] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1C6654] touch-target">
+                            <option value="DELIVERY" {{ old('trip_type', $unassigned_delivery_items->isNotEmpty() ? 'DELIVERY' : 'PICKUP') === 'DELIVERY' ? 'selected' : '' }}>
+                                Pengantaran Makanan (DELIVERY) : Memerlukan alokasi makanan QC RELEASED
+                            </option>
+                            <option value="PICKUP" {{ old('trip_type', $unassigned_delivery_items->isEmpty() ? 'PICKUP' : 'DELIVERY') === 'PICKUP' ? 'selected' : '' }}>
+                                Penjemputan Ompreng (PICKUP) : Kendaraan berangkat kosong untuk ambil wadah
+                            </option>
+                            <option value="MIXED" {{ old('trip_type') === 'MIXED' ? 'selected' : '' }}>
+                                Gabungan (MIXED) : Pengantaran makanan &amp; penjemputan ompreng
+                            </option>
+                        </select>
+                    </div>
+
+                    <!-- Baris Armada & Kurir -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label for="vehicle_id" class="block text-xs font-bold text-[#172923] mb-1">
+                                Armada Kendaraan <span class="text-red-500">*</span>
+                            </label>
+                            <select id="vehicle_id" 
+                                    name="vehicle_id" 
+                                    required 
+                                    class="w-full px-3 py-2 text-xs font-medium text-[#172923] bg-white border border-[#DCE5DD] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1C6654] touch-target">
+                                <option value="">-- Pilih Kendaraan Tersedia --</option>
+                                @foreach ($vehicles as $v)
+                                    <option value="{{ $v->id }}" {{ $v->is_busy ? 'disabled' : '' }}>
+                                        {{ $v->plate_number }} ({{ $v->vehicle_type }}) : Kapasitas {{ $v->capacity_portions ?? 'Tak terbatas' }} porsi {{ $v->is_busy ? '[Sedang Bertugas]' : '' }}
+                                    </option>
+                                @endforeach
+                            </select>
                         </div>
 
-                        <!-- Rencana Waktu Keberangkatan -->
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                                <label for="planned_departure_at" class="block text-xs font-bold text-[#172923] mb-1">
-                                    Waktu Keberangkatan Rencana
-                                </label>
-                                <input type="datetime-local" 
-                                       id="planned_departure_at" 
-                                       name="planned_departure_at" 
-                                       value="{{ \Carbon\Carbon::parse($service_date)->setTime(9, 30)->format('Y-m-d\TH:i') }}"
-                                       class="w-full px-3 py-2 text-xs font-medium text-[#172923] bg-white border border-[#DCE5DD] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1C6654] touch-target">
-                            </div>
-                            <div>
-                                <label for="trip_type" class="block text-xs font-bold text-[#172923] mb-1">
-                                    Jenis Perjalanan
-                                </label>
-                                <select id="trip_type" 
-                                        name="trip_type" 
-                                        class="w-full px-3 py-2 text-xs font-medium text-[#172923] bg-white border border-[#DCE5DD] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1C6654] touch-target">
-                                    <option value="DELIVERY">Pengantaran Makanan (DELIVERY)</option>
-                                    <option value="PICKUP">Penjemputan Ompreng (PICKUP)</option>
-                                    <option value="MIXED">Gabungan Antar &amp; Jemput (MIXED)</option>
-                                </select>
-                            </div>
+                        <div>
+                            <label for="driver_id" class="block text-xs font-bold text-[#172923] mb-1">
+                                Kurir yang Ditugaskan <span class="text-red-500">*</span>
+                            </label>
+                            <select id="driver_id" 
+                                    name="driver_id" 
+                                    required 
+                                    class="w-full px-3 py-2 text-xs font-medium text-[#172923] bg-white border border-[#DCE5DD] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1C6654] touch-target">
+                                <option value="">-- Pilih Kurir Aktif --</option>
+                                @foreach ($drivers as $d)
+                                    <option value="{{ $d->id }}" {{ $d->is_busy ? 'disabled' : '' }}>
+                                        {{ $d->name }} {{ $d->phone ? '('.$d->phone.')' : '' }} {{ $d->is_busy ? '[Sedang Bertugas]' : '' }}
+                                    </option>
+                                @endforeach
+                            </select>
                         </div>
+                    </div>
 
-                        <!-- Rute Perhentian & Muatan Sekolah -->
-                        <div class="mt-4 pt-3 border-t border-[#DCE5DD]">
-                            <h3 class="text-xs font-bold text-[#172923] mb-2 uppercase tracking-wider">
-                                Daftar Alokasi Sekolah Siap Ditugaskan:
-                            </h3>
+                    <!-- Waktu Keberangkatan Rencana -->
+                    <div>
+                        <label for="planned_departure_at" class="block text-xs font-bold text-[#172923] mb-1">
+                            Waktu Keberangkatan Rencana
+                        </label>
+                        <input type="datetime-local" 
+                               id="planned_departure_at" 
+                               name="planned_departure_at" 
+                               value="{{ \Carbon\Carbon::parse($service_date)->setTime(9, 30)->format('Y-m-d\TH:i') }}"
+                               class="w-full px-3 py-2 text-xs font-medium text-[#172923] bg-white border border-[#DCE5DD] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1C6654] touch-target">
+                    </div>
+
+                    <!-- KONTEN STOP 1: PENGANTARAN MAKANAN (DELIVERY) -->
+                    <div id="section-delivery-stops" class="space-y-3 pt-3 border-t border-[#DCE5DD]">
+                        <h3 class="text-xs font-bold text-[#172923] uppercase tracking-wider flex items-center justify-between">
+                            <span>Daftar Alokasi Sekolah Siap Kirim (DELIVERY):</span>
+                            <span class="text-[11px] font-normal text-[#53645B]">{{ $unassigned_delivery_items->count() }} alokasi siap</span>
+                        </h3>
+
+                        @if ($unassigned_delivery_items->isEmpty())
+                            <div class="p-4 rounded-xl bg-[#FAFBF9] border border-dashed border-[#DCE5DD] text-center text-xs text-[#53645B]">
+                                Tidak ada alokasi makanan siap muat untuk pengantaran saat ini. Pilih jenis perjalanan <strong>Penjemputan Ompreng (PICKUP)</strong> di atas untuk menjalankan logistik balik wadah.
+                            </div>
+                        @else
                             <div class="space-y-3">
                                 @php
-                                    // Group unassigned items by school
                                     $groupedBySchool = $unassigned_delivery_items->groupBy(function($item) {
                                         return $item->productionAllocation->school_id;
                                     });
@@ -210,7 +359,7 @@
                                         $school = $items->first()->productionAllocation->school;
                                         $totalSchoolPortions = $items->sum('released_portions');
                                     @endphp
-                                    <div class="p-3 rounded-xl bg-[#FAFBF9] border border-[#DCE5DD]">
+                                    <div class="p-3 rounded-xl bg-[#FAFBF9] border border-[#DCE5DD] delivery-stop-item">
                                         <div class="flex items-center justify-between mb-2">
                                             <div class="flex items-center gap-2">
                                                 <span class="w-5 h-5 rounded-full bg-[#1C6654] text-white text-[10px] font-bold flex items-center justify-center">
@@ -223,11 +372,10 @@
                                             </span>
                                         </div>
 
-                                        <input type="hidden" name="stops[{{ $seq - 1 }}][school_id]" value="{{ $school->id }}">
-                                        <input type="hidden" name="stops[{{ $seq - 1 }}][sequence_number]" value="{{ $seq }}">
-                                        <input type="hidden" name="stops[{{ $seq - 1 }}][stop_type]" value="DELIVERY">
+                                        <input type="hidden" class="delivery-stop-input" name="stops[{{ $seq - 1 }}][school_id]" value="{{ $school->id }}">
+                                        <input type="hidden" class="delivery-stop-input" name="stops[{{ $seq - 1 }}][sequence_number]" value="{{ $seq }}">
+                                        <input type="hidden" class="delivery-stop-input" name="stops[{{ $seq - 1 }}][stop_type]" value="DELIVERY">
 
-                                        <!-- Rincian Batch per Item -->
                                         <div class="space-y-2 mt-2 pt-2 border-t border-[#E8EEE9]">
                                             @foreach ($items as $itemIdx => $item)
                                                 <div class="flex items-center justify-between text-[11px] text-[#53645B] pl-2">
@@ -237,14 +385,14 @@
                                                     </div>
                                                     <div class="flex items-center gap-2">
                                                         <span>Rencana Muat:</span>
-                                                        <input type="hidden" name="stops[{{ $seq - 1 }}][items][{{ $itemIdx }}][delivery_item_id]" value="{{ $item->id }}">
+                                                        <input type="hidden" class="delivery-stop-input" name="stops[{{ $seq - 1 }}][items][{{ $itemIdx }}][delivery_item_id]" value="{{ $item->id }}">
                                                         <input type="number" 
+                                                               class="delivery-stop-input w-20 px-2 py-1 text-xs font-bold text-right text-[#172923] bg-white border border-[#DCE5DD] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1C6654]"
                                                                name="stops[{{ $seq - 1 }}][items][{{ $itemIdx }}][planned_portions]" 
                                                                value="{{ $item->released_portions }}"
                                                                max="{{ $item->released_portions }}"
                                                                min="1"
-                                                               required
-                                                               class="w-20 px-2 py-1 text-xs font-bold text-right text-[#172923] bg-white border border-[#DCE5DD] rounded-lg focus:outline-none focus:ring-1 focus:ring-[#1C6654]">
+                                                               required>
                                                         <span class="text-[11px] text-[#708177]">/ {{ $item->released_portions }} porsi</span>
                                                     </div>
                                                 </div>
@@ -254,20 +402,72 @@
                                     @php $seq++; @endphp
                                 @endforeach
                             </div>
+                        @endif
+                    </div>
+
+                    <!-- KONTEN STOP 2: PENJEMPUTAN OMPRENG (PICKUP) -->
+                    <div id="section-pickup-stops" class="space-y-3 pt-3 border-t border-[#DCE5DD] hidden">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h3 class="text-xs font-bold text-[#172923] uppercase tracking-wider">
+                                    Pilih Sekolah Tujuan Penjemputan (PICKUP):
+                                </h3>
+                                <p class="text-[11px] text-[#53645B]">Kendaraan berangkat kosong. Kurir mengambil wadah ompreng di lokasi sekolah.</p>
+                            </div>
+                            <span class="text-[11px] font-bold text-[#55327A] bg-[#F3EEF9] px-2 py-0.5 rounded border border-[#DFCDEE]">
+                                Logistik Balik
+                            </span>
                         </div>
 
-                        <!-- Tombol Submit Terbitkan Trip -->
-                        <div class="pt-3 border-t border-[#DCE5DD] flex justify-end">
-                            <button type="submit" 
-                                    class="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#1C6654] hover:bg-[#164D42] text-white text-xs font-bold shadow-xs transition-colors touch-target cursor-pointer">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                </svg>
-                                <span>Rencanakan Penugasan Perjalanan</span>
-                            </button>
+                        <div class="space-y-2.5">
+                            @php
+                                $pickupSeq = 1;
+                            @endphp
+                            @foreach ($schools as $school)
+                                @php
+                                    $readyTray = $ready_tray_returns->firstWhere('school_id', $school->id);
+                                    $hasReady = ($readyTray !== null);
+                                    $readyCount = $readyTray?->ready_count ?? 0;
+                                @endphp
+                                <div class="p-3 rounded-xl border {{ $hasReady ? 'bg-[#F9FCFA] border-[#BCE2D0]' : 'bg-[#FAFBF9] border-[#DCE5DD]' }} flex items-center justify-between gap-3">
+                                    <label class="flex items-center gap-3 cursor-pointer flex-1">
+                                        <input type="checkbox" 
+                                               class="pickup-school-checkbox w-4 h-4 rounded text-[#1C6654] border-[#DCE5DD] focus:ring-[#1C6654]" 
+                                               data-school-id="{{ $school->id }}"
+                                               data-school-name="{{ $school->name }}"
+                                               {{ $hasReady ? 'checked' : '' }}
+                                               onchange="rebuildPickupStops()">
+                                        <div>
+                                            <span class="text-xs font-bold text-[#172923] block">{{ $school->name }}</span>
+                                            <span class="text-[11px] {{ $hasReady ? 'text-[#1B573E] font-semibold' : 'text-[#708177]' }}">
+                                                {{ $hasReady ? $readyCount . ' wadah siap dijemput (' . $readyTray->status->label() . ')' : 'Belum ada laporan wadah siap' }}
+                                            </span>
+                                        </div>
+                                    </label>
+                                    @if ($hasReady)
+                                        <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-[#EDF7F2] text-[#1B573E] border border-[#BCE2D0]">
+                                            Prioritas Retur
+                                        </span>
+                                    @endif
+                                </div>
+                            @endforeach
                         </div>
-                    </form>
-                @endif
+
+                        <!-- Container tersembunyi yang diisi otomatis oleh Vanilla JS untuk stops penjemputan -->
+                        <div id="dynamic-pickup-stops-container"></div>
+                    </div>
+
+                    <!-- Tombol Submit Terbitkan Trip -->
+                    <div class="pt-3 border-t border-[#DCE5DD] flex justify-end">
+                        <button type="submit" 
+                                class="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#1C6654] hover:bg-[#164D42] text-white text-xs font-bold shadow-xs transition-colors touch-target cursor-pointer">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <span id="submit-btn-text">Rencanakan Penugasan Perjalanan</span>
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
 
@@ -503,4 +703,85 @@
             </div>
         </div>
     </div>
+
+    <script>
+        function switchTripType(type) {
+            const deliverySection = document.getElementById('section-delivery-stops');
+            const pickupSection = document.getElementById('section-pickup-stops');
+            const submitBtnText = document.getElementById('submit-btn-text');
+            const deliveryInputs = document.querySelectorAll('.delivery-stop-input');
+
+            if (type === 'DELIVERY') {
+                if (deliverySection) deliverySection.classList.remove('hidden');
+                if (pickupSection) pickupSection.classList.add('hidden');
+                if (submitBtnText) submitBtnText.textContent = 'Rencanakan Pengantaran Makanan';
+                deliveryInputs.forEach(function(input) { input.disabled = false; });
+            } else if (type === 'PICKUP') {
+                if (deliverySection) deliverySection.classList.add('hidden');
+                if (pickupSection) pickupSection.classList.remove('hidden');
+                if (submitBtnText) submitBtnText.textContent = 'Rencanakan Penjemputan Ompreng';
+                deliveryInputs.forEach(function(input) { input.disabled = true; });
+                rebuildPickupStops();
+            } else if (type === 'MIXED') {
+                if (deliverySection) deliverySection.classList.remove('hidden');
+                if (pickupSection) pickupSection.classList.remove('hidden');
+                if (submitBtnText) submitBtnText.textContent = 'Rencanakan Perjalanan Campuran';
+                deliveryInputs.forEach(function(input) { input.disabled = false; });
+                rebuildPickupStops();
+            }
+        }
+
+        function rebuildPickupStops() {
+            const container = document.getElementById('dynamic-pickup-stops-container');
+            const typeSelect = document.getElementById('trip_type_select');
+            if (!container || !typeSelect) return;
+
+            const tripType = typeSelect.value;
+            container.innerHTML = '';
+
+            if (tripType === 'DELIVERY') {
+                return;
+            }
+
+            const checkedBoxes = Array.from(document.querySelectorAll('.pickup-school-checkbox:checked'));
+            let startSeq = 1;
+
+            if (tripType === 'MIXED') {
+                const deliveryStops = document.querySelectorAll('.delivery-stop-item');
+                startSeq = deliveryStops.length + 1;
+            }
+
+            checkedBoxes.forEach(function(checkbox, index) {
+                const schoolId = checkbox.dataset.schoolId;
+                const seq = startSeq + index;
+                const stopIdx = seq - 1;
+
+                const schoolInput = document.createElement('input');
+                schoolInput.type = 'hidden';
+                schoolInput.name = 'stops[' + stopIdx + '][school_id]';
+                schoolInput.value = schoolId;
+
+                const seqInput = document.createElement('input');
+                seqInput.type = 'hidden';
+                seqInput.name = 'stops[' + stopIdx + '][sequence_number]';
+                seqInput.value = seq;
+
+                const typeInput = document.createElement('input');
+                typeInput.type = 'hidden';
+                typeInput.name = 'stops[' + stopIdx + '][stop_type]';
+                typeInput.value = 'PICKUP';
+
+                container.appendChild(schoolInput);
+                container.appendChild(seqInput);
+                container.appendChild(typeInput);
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const typeSelect = document.getElementById('trip_type_select');
+            if (typeSelect) {
+                switchTripType(typeSelect.value);
+            }
+        });
+    </script>
 </x-app-shell>
