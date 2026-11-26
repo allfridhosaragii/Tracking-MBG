@@ -1,134 +1,102 @@
-<x-app-shell title="Racik Draft Menu Baru : MBG-Track">
-    <div class="max-w-3xl mx-auto space-y-6">
-        <!-- Breadcrumb & Header -->
-        <div class="pb-4 border-b border-[#DCE5DD]">
-            <div class="flex items-center gap-2 text-xs font-medium text-[#53645B] mb-1">
-                <a href="{{ route('nutrition.dashboard') }}" class="hover:text-[#172923] smooth-transition">Desk Pengawas Gizi</a>
-                <span aria-hidden="true">/</span>
-                <a href="{{ route('nutrition.menus.index') }}" class="hover:text-[#172923] smooth-transition">Katalog Menu</a>
-                <span aria-hidden="true">/</span>
-                <span class="text-[#285F80] font-semibold">Racik Draft Baru</span>
-            </div>
-            <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-[#172923]">
-                Inisiasi Draft Formulasi Menu Makanan
-            </h1>
-            <p class="text-xs sm:text-sm text-[#53645B] mt-1 leading-relaxed">
-                Tentukan kode identitas dan nama racikan menu. Setelah draft tersimpan, Anda dapat melengkapi rincian komponen bahan, gramasi porsi, dan kandungan gizi terverifikasi.
-            </p>
-        </div>
+<x-app-shell title="Racik Draft Menu Baru">
+    <div class="max-w-3xl mx-auto space-y-5">
+        <header class="pb-4 border-b border-[#DCE5DD]">
+            <a href="{{ route('nutrition.menus.index') }}" class="text-xs font-semibold text-[#285F80] hover:underline inline-flex items-center gap-1 mb-1.5">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                </svg>
+                <span>Kembali ke Katalog Menu</span>
+            </a>
+            <h1 class="page-title">Inisiasi Draft Formulasi Menu</h1>
+            <p class="text-xs sm:text-sm text-[#53645B] mt-1">Tentukan kode dan nama racikan menu. Komposisi bahan dan nilai gizi ditambahkan pada langkah berikutnya.</p>
+        </header>
 
-        <!-- Form Card -->
-        <div class="bg-white border border-[#DCE5DD] rounded-xl shadow-2xs p-5 sm:p-6">
+        <div class="luxury-surface p-5 sm:p-7">
             <form method="POST" action="{{ route('nutrition.menus.store') }}" class="space-y-5">
                 @csrf
 
-                <!-- Kode Menu & Versi Awal -->
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div class="sm:col-span-2 space-y-1.5">
-                        <label for="menu_code" class="block text-xs sm:text-sm font-semibold text-[#172923]">
+                    <div class="sm:col-span-2">
+                        <label for="menu_code" class="block text-xs font-semibold text-[#172923] mb-1.5">
                             Kode Menu <span class="text-[#9B3232]">*</span>
                         </label>
-                        <input type="text" 
-                               id="menu_code" 
-                               name="menu_code" 
-                               value="{{ old('menu_code') }}" 
-                               required 
-                               placeholder="Contoh: MN-AYAM-01" 
-                               class="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-white border @error('menu_code') border-[#9B3232] @else border-[#DCE5DD] @enderror rounded-xl text-[#172923] placeholder-[#708177] focus:outline-none focus:ring-2 focus:ring-[#285F80] font-mono smooth-transition touch-target">
-                        <p class="text-[11px] text-[#53645B]">
-                            Gunakan kode unik per menu. Jika menu yang sama pernah ada, sistem akan otomatis mengaitkannya sebagai versi lanjutan.
-                        </p>
+                        <input type="text"
+                               id="menu_code"
+                               name="menu_code"
+                               value="{{ old('menu_code') }}"
+                               required
+                               placeholder="Contoh: MN-AYAM-01"
+                               class="w-full min-h-[44px] px-3.5 py-2 text-xs sm:text-sm bg-[#FAFBF9] focus:bg-white border @error('menu_code') border-[#9B3232] @else border-[#DCE5DD] @enderror rounded-xl text-[#172923] font-mono">
                         @error('menu_code')
                             <p class="text-xs text-[#9B3232] mt-1">{{ $message }}</p>
                         @enderror
                     </div>
 
-                    <div class="space-y-1.5">
-                        <label class="block text-xs sm:text-sm font-semibold text-[#53645B]">
-                            Versi Inisial
-                        </label>
-                        <div class="px-3.5 py-2.5 text-xs sm:text-sm bg-[#F5F7F3] border border-[#DCE5DD] rounded-xl text-[#53645B] font-mono font-bold flex items-center justify-between">
-                            <span>Versi 1 (v1)</span>
-                            <span class="text-[10px] uppercase font-sans font-semibold px-2 py-0.5 rounded bg-[#FEF6EE] text-[#B54708] border border-[#F9DBAF]">Draft</span>
+                    <div>
+                        <span class="block text-xs font-semibold text-[#53645B] mb-1.5">Versi Awal</span>
+                        <div class="min-h-[44px] px-3.5 py-2 text-xs bg-[#FAFBF9] border border-[#DCE5DD] rounded-xl text-[#172923] font-mono font-bold flex items-center justify-between">
+                            <span>v1</span>
+                            <span class="text-[10px] font-sans font-semibold px-2 py-0.5 rounded-md bg-[#FEF7EC] text-[#885D1C] border border-[#F7D7A3]">Draft</span>
                         </div>
-                        <p class="text-[11px] text-[#53645B]">Otomatis diatur sistem</p>
                     </div>
                 </div>
 
-                <!-- Nama Racikan Menu -->
-                <div class="space-y-1.5">
-                    <label for="name" class="block text-xs sm:text-sm font-semibold text-[#172923]">
+                <div>
+                    <label for="name" class="block text-xs font-semibold text-[#172923] mb-1.5">
                         Nama Racikan Menu <span class="text-[#9B3232]">*</span>
                     </label>
-                    <input type="text" 
-                           id="name" 
-                           name="name" 
-                           value="{{ old('name') }}" 
-                           required 
-                           placeholder="Contoh: Paket Nasi Pulen Ayam Semur, Sup Sayur Bening & Pisang Barangan" 
-                           class="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-white border @error('name') border-[#9B3232] @else border-[#DCE5DD] @enderror rounded-xl text-[#172923] placeholder-[#708177] focus:outline-none focus:ring-2 focus:ring-[#285F80] smooth-transition touch-target">
+                    <input type="text"
+                           id="name"
+                           name="name"
+                           value="{{ old('name') }}"
+                           required
+                           placeholder="Contoh: Nasi Putih Pulen, Ayam Semur, Sayur Bening & Pisang"
+                           class="w-full min-h-[44px] px-3.5 py-2 text-xs sm:text-sm bg-[#FAFBF9] focus:bg-white border @error('name') border-[#9B3232] @else border-[#DCE5DD] @enderror rounded-xl text-[#172923]">
                     @error('name')
                         <p class="text-xs text-[#9B3232] mt-1">{{ $message }}</p>
                     @enderror
                 </div>
 
-                <!-- Tanggal Mulai Berlaku & Foto/Dokumentasi -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div class="space-y-1.5">
-                        <label for="effective_from" class="block text-xs sm:text-sm font-semibold text-[#172923]">
-                            Tanggal Rencana Mulai Berlaku
-                        </label>
-                        <input type="date" 
-                               id="effective_from" 
-                               name="effective_from" 
-                               value="{{ old('effective_from') }}" 
-                               class="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-white border @error('effective_from') border-[#9B3232] @else border-[#DCE5DD] @enderror rounded-xl text-[#172923] focus:outline-none focus:ring-2 focus:ring-[#285F80] smooth-transition touch-target">
-                        <p class="text-[11px] text-[#53645B]">Opsional: tanggal target menu ini mulai disajikan di sekolah.</p>
-                        @error('effective_from')
-                            <p class="text-xs text-[#9B3232] mt-1">{{ $message }}</p>
-                        @enderror
+                    <div>
+                        <label for="effective_from" class="block text-xs font-semibold text-[#172923] mb-1.5">Tanggal Mulai Berlaku (Opsional)</label>
+                        <input type="date"
+                               id="effective_from"
+                               name="effective_from"
+                               value="{{ old('effective_from') }}"
+                               class="w-full min-h-[44px] px-3.5 py-2 text-xs sm:text-sm bg-[#FAFBF9] focus:bg-white border border-[#DCE5DD] rounded-xl text-[#172923]">
                     </div>
 
-                    <div class="space-y-1.5">
-                        <label for="image_path" class="block text-xs sm:text-sm font-semibold text-[#172923]">
-                            Tautan Foto Sampel Menu (Opsional)
-                        </label>
-                        <input type="text" 
-                               id="image_path" 
-                               name="image_path" 
-                               value="{{ old('image_path') }}" 
-                               placeholder="Contoh: /storage/menus/sampel-ayam-semur.jpg" 
-                               class="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-white border @error('image_path') border-[#9B3232] @else border-[#DCE5DD] @enderror rounded-xl text-[#172923] placeholder-[#708177] focus:outline-none focus:ring-2 focus:ring-[#285F80] smooth-transition touch-target">
-                        <p class="text-[11px] text-[#53645B]">Dokumentasi visual porsi saji standar SPPG.</p>
-                        @error('image_path')
-                            <p class="text-xs text-[#9B3232] mt-1">{{ $message }}</p>
-                        @enderror
+                    <div>
+                        <label for="image_path" class="block text-xs font-semibold text-[#172923] mb-1.5">Tautan Foto Sampel (Opsional)</label>
+                        <input type="text"
+                               id="image_path"
+                               name="image_path"
+                               value="{{ old('image_path') }}"
+                               placeholder="/storage/menus/sampel.jpg"
+                               class="w-full min-h-[44px] px-3.5 py-2 text-xs sm:text-sm bg-[#FAFBF9] focus:bg-white border border-[#DCE5DD] rounded-xl text-[#172923]">
                     </div>
                 </div>
 
-                <!-- Guidance Box -->
-                <div class="p-4 rounded-xl bg-[#EDF7F2] border border-[#BCE2D0] text-xs text-[#1B573E] space-y-2">
-                    <div class="font-bold flex items-center gap-2 text-sm text-[#1B573E]">
-                        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                <details class="sop-disclosure">
+                    <summary>
+                        <span>Prinsip Kelengkapan Nutrisi Menu MBG</span>
+                        <svg class="w-4 h-4 text-[#53645B] disclosure-chevron shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                         </svg>
-                        <span>Prinsip Akurasi Nutrisi Program MBG</span>
+                    </summary>
+                    <div class="p-4 text-xs text-[#53645B] space-y-1.5 leading-relaxed">
+                        <p>Aktivasi menu hanya diizinkan apabila seluruh komponen makanan memiliki gramasi terukur, nilai makronutrien lengkap, dan rujukan sumber gizi resmi (misalnya TKPI).</p>
                     </div>
-                    <ul class="list-disc list-inside space-y-1 leading-relaxed text-[11px]">
-                        <li>Setiap menu yang sah harus memenuhi angka kecukupan gizi (AKG) makan siang siswa sekolah sasaran.</li>
-                        <li>Nilai nutrisi yang tidak diketahui <strong>tidak boleh direka atau diisi angka sembarang</strong>.</li>
-                        <li>Aktivasi menu hanya diizinkan apabila seluruh komponen makanan memiliki gramasi terukur dan sumber rujukan gizi resmi.</li>
-                    </ul>
-                </div>
+                </details>
 
-                <!-- Form Actions -->
-                <div class="flex items-center justify-end gap-3 pt-4 border-t border-[#DCE5DD]">
-                    <a href="{{ route('nutrition.menus.index') }}" 
-                       class="px-4 py-2.5 text-xs sm:text-sm font-semibold text-[#53645B] hover:text-[#172923] bg-[#F5F7F3] hover:bg-[#EDF2ED] rounded-xl smooth-transition touch-target">
+                <div class="pt-4 border-t border-[#E7ECE8] flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-3">
+                    <a href="{{ route('nutrition.menus.index') }}"
+                       class="min-h-[44px] px-4 py-2.5 text-xs sm:text-sm font-semibold text-[#53645B] bg-[#F5F7F3] hover:bg-[#EDF2ED] rounded-xl inline-flex items-center justify-center">
                         Batal
                     </a>
-                    <button type="submit" 
-                            class="px-5 py-2.5 text-xs sm:text-sm font-semibold text-white bg-[#285F80] hover:bg-[#1E4861] rounded-xl shadow-xs smooth-transition touch-target focus:outline-none focus:ring-2 focus:ring-[#285F80] focus:ring-offset-2">
+                    <button type="submit"
+                            class="min-h-[44px] px-5 py-2.5 text-xs sm:text-sm font-semibold text-white bg-[#285F80] hover:bg-[#1E4861] rounded-xl inline-flex items-center justify-center cursor-pointer smooth-transition">
                         Simpan Draft &amp; Lanjut Komposisi
                     </button>
                 </div>

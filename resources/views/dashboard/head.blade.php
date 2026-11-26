@@ -1,239 +1,237 @@
-<x-app-shell title="Operations Briefing : Kepala SPPG">
-    <!-- Header Briefing: Control Center Status Strip (Clean Luxury Calm Utility) -->
-    <header class="mb-6 pb-4 border-b border-[#DCE5DD]">
-        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+<x-app-shell title="Briefing Operasional">
+    <div class="space-y-6">
+        <!-- Minimalist First-Fold Header -->
+        <header class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 pb-4 border-b border-[#DCE5DD]">
             <div>
-                <div class="flex flex-wrap items-center gap-2 mb-1.5">
-                    <x-role-badge :role="$user->role" />
-                    <span class="text-xs font-mono text-[#53645B] bg-white border border-[#DCE5DD] px-2 py-0.5 rounded">
-                        SPPG: {{ $sppg->code }}
-                    </span>
-                    <span class="text-xs text-[#21684B] font-medium bg-[#EDF7F2] border border-[#BCE2D0] px-2 py-0.5 rounded flex items-center gap-1.5">
-                        <span class="w-1.5 h-1.5 rounded-full bg-[#21684B]" aria-hidden="true"></span>
-                        <span>Fasilitas Aktif</span>
-                    </span>
-                </div>
-                <h1 class="text-xl sm:text-2xl font-bold text-[#172923] tracking-tight">Operations Briefing : {{ $sppg->name }}</h1>
-                <p class="text-xs sm:text-sm text-[#53645B] mt-0.5">Pusat kendali operasional, kesiapan sekolah binaan, dan agregasi data pokok SPPG.</p>
+                <span class="eyebrow-label text-[#1C6654] block mb-1">Kepala SPPG • {{ $sppg->code }}</span>
+                <h1 class="page-title">{{ $sppg->name }}</h1>
+                <p class="text-xs sm:text-sm text-[#53645B] mt-1">Ringkasan kapasitas layanan, kesiapan produksi harian, dan cakupan sekolah binaan.</p>
             </div>
 
-            <!-- Primary Action & Capacity Context -->
-            <div class="flex flex-wrap items-center gap-2.5">
-                <div class="bg-white border border-[#DCE5DD] rounded-xl px-3.5 py-2 text-right subtle-shadow hidden sm:block">
-                    <span class="text-[10px] uppercase font-bold text-[#53645B] block">Kapasitas Maksimal</span>
-                    <span class="text-sm font-bold text-[#172923] tabular-nums">{{ number_format($sppg->max_daily_portions) }} <span class="text-xs font-normal text-[#53645B]">porsi/hari</span></span>
-                </div>
-
-                <a href="{{ route('head.schools.index') }}" 
-                   class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white bg-[#1C6654] hover:bg-[#164D42] rounded-xl shadow-xs smooth-transition touch-target focus:outline-none focus:ring-2 focus:ring-[#B78C56]">
+            <div class="flex flex-wrap items-center gap-2.5 shrink-0">
+                <a href="{{ route('head.production.index') }}"
+                   class="min-h-[44px] px-4 py-2.5 rounded-xl bg-[#1C6654] hover:bg-[#164D42] text-white text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-2 smooth-transition">
+                    <span>Rencana Produksi</span>
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
                     </svg>
-                    <span>Kelola Sekolah</span>
                 </a>
-
-                <a href="{{ route('head.employees.index') }}" 
-                   class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-semibold text-[#1C6654] bg-[#EDF2ED] hover:bg-[#E2EBE2] border border-[#DCE5DD] rounded-xl smooth-transition touch-target focus:outline-none focus:ring-2 focus:ring-[#1C6654]">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
-                    </svg>
-                    <span>Kelola Pegawai</span>
+                <a href="{{ route('head.distribution.index') }}"
+                   class="min-h-[44px] px-4 py-2.5 rounded-xl bg-white hover:bg-[#FAFBF9] text-[#172923] border border-[#DCE5DD] text-xs sm:text-sm font-semibold inline-flex items-center justify-center smooth-transition">
+                    Kontrol Distribusi
                 </a>
             </div>
-        </div>
-    </header>
+        </header>
 
-    <!-- First-Fold Focal Point: Operational Readiness & Exception Rail (FINDING-05) -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-        <!-- Panel 1: Aggregated Master Data vs SPPG Capacity -->
-        <div class="lg:col-span-2 bg-[#FAFBF9] rounded-2xl border border-[#DCE5DD] p-4 sm:p-5 subtle-shadow">
-            <div class="flex items-center justify-between pb-3 mb-3 border-b border-[#EDF2ED]">
-                <div>
-                    <h2 class="text-xs font-bold uppercase tracking-wider text-[#172923]">Agregasi Data Pokok Siswa Terdaftar</h2>
-                    <p class="text-[11px] text-[#53645B] mt-0.5">Master data siswa binaan SPPG (Bukan konfirmasi transaksi harian PIC)</p>
+        <!-- Operational Pulse Strip (2x2 on Mobile, 4 Columns on Desktop) -->
+        <section aria-label="Indikator Utama SPPG" class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <!-- 1. Master Beneficiaries vs Capacity -->
+            <div class="luxury-surface p-4 sm:p-5 col-span-2 sm:col-span-1">
+                <span class="eyebrow-label block">Data Siswa Pokok</span>
+                <div class="mt-2 flex items-baseline gap-1.5">
+                    <span class="text-2xl sm:text-3xl font-bold text-[#172923] tabular-nums">{{ number_format($totalPortions) }}</span>
+                    <span class="text-xs text-[#53645B]">/ {{ number_format($sppg->max_daily_portions) }}</span>
                 </div>
-                <span class="text-xs font-semibold px-2 py-0.5 rounded bg-white text-[#1C6654] border border-[#DCE5DD]">
-                    {{ $schools->count() }} Sekolah Aktif
-                </span>
+                <div class="w-full bg-[#EDF2ED] h-1.5 rounded-full overflow-hidden mt-2.5" role="progressbar" aria-valuenow="{{ $totalPortions }}" aria-valuemin="0" aria-valuemax="{{ $sppg->max_daily_portions }}">
+                    <div class="bg-[#1C6654] h-full rounded-full" style="width: {{ min(100, ($totalPortions / max($sppg->max_daily_portions, 1)) * 100) }}%"></div>
+                </div>
+                <span class="text-[11px] text-[#53645B] block mt-1.5">{{ $schools->count() }} sekolah aktif terdaftar</span>
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
-                <div>
-                    <span class="text-[11px] font-semibold text-[#53645B] uppercase block">Total Siswa Terdaftar</span>
-                    <div class="flex items-baseline gap-2 mt-0.5">
-                        <span class="text-3xl sm:text-4xl font-bold text-[#172923] tabular-nums">{{ number_format($totalPortions) }}</span>
-                        <span class="text-xs font-medium text-[#53645B]">anak</span>
+            <!-- 2. Today Production Plan -->
+            <a href="{{ route('head.production.index') }}" class="luxury-surface p-4 sm:p-5 hover:border-[#1C6654] smooth-transition block">
+                <span class="eyebrow-label block">Produksi Hari Ini</span>
+                @if (isset($todayPlan) && $todayPlan)
+                    <div class="mt-2 text-lg sm:text-xl font-bold text-[#1C6654] leading-snug">
+                        {{ $todayPlan->status->label() }}
                     </div>
-                    <span class="text-[11px] text-[#21684B] font-medium block mt-1">
-                        Memenuhi {{ number_format(($totalPortions / max($sppg->max_daily_portions, 1)) * 100, 1) }}% batas kapasitas SPPG
-                    </span>
-                </div>
-
-                <!-- Capacity Utilization Meter -->
-                <div class="bg-white rounded-xl border border-[#DCE5DD] p-3 text-xs space-y-2">
-                    <div class="flex justify-between text-[#53645B] text-[11px]">
-                        <span>Beban Master Data</span>
-                        <span class="font-bold text-[#172923] tabular-nums">{{ number_format($totalPortions) }} / {{ number_format($sppg->max_daily_portions) }}</span>
+                    <span class="text-[11px] text-[#53645B] block mt-1 truncate">{{ $todayPlan->menu?->name ?? 'Menu terjadwal' }}</span>
+                @else
+                    <div class="mt-2 text-base sm:text-lg font-bold text-[#885D1C] leading-snug">
+                        Belum Dibuat
                     </div>
-                    <div class="w-full bg-[#EDF2ED] h-2 rounded-full overflow-hidden" role="progressbar" aria-valuenow="{{ $totalPortions }}" aria-valuemin="0" aria-valuemax="{{ $sppg->max_daily_portions }}">
-                        <div class="bg-[#1C6654] h-full rounded-full smooth-transition" style="width: {{ min(100, ($totalPortions / max($sppg->max_daily_portions, 1)) * 100) }}%"></div>
-                    </div>
-                    <p class="text-[10px] text-[#53645B] leading-tight">
-                        Kebutuhan riil porsi dimutakhirkan setiap pagi oleh masing-masing PIC Sekolah sebelum batas cutoff dapur.
-                    </p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Panel 2: Operational Exception Rail & Staffing -->
-        <div class="bg-white rounded-2xl border border-[#DCE5DD] p-4 sm:p-5 subtle-shadow flex flex-col justify-between">
-            <div>
-                <div class="flex items-center justify-between pb-3 mb-3 border-b border-[#EDF2ED]">
-                    <h2 class="text-xs font-bold uppercase tracking-wider text-[#172923]">Kesiapan Staf SPPG</h2>
-                    <span class="w-2 h-2 rounded-full bg-[#21684B]" aria-hidden="true"></span>
-                </div>
-
-                <div class="space-y-3 text-xs">
-                    <div class="flex items-center justify-between">
-                        <span class="text-[#53645B]">Staf Bertugas Aktif:</span>
-                        <span class="font-bold text-[#172923] tabular-nums text-sm">{{ $staffCount }} orang</span>
-                    </div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-[#53645B]">Status Alur Kerja:</span>
-                        <span class="font-semibold text-[#1C6654]">Siap Distribusi</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="pt-3 mt-3 border-t border-[#EDF2ED]">
-                <p class="text-[11px] text-[#53645B] leading-relaxed">
-                    Sistem memantau seluruh akun pelaksana SPPG dan sekolah binaan berada dalam lingkup tenant yang terisolasi aman.
-                </p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Operational Ledger: Daftar Sekolah Binaan (FINDING-03: Empty state handling) -->
-    <x-card title="Ledger Sekolah Binaan & Data Pokok Penerima" subtitle="Distribusi sekolah dalam jangkauan pelayanan SPPG {{ $sppg->code }}">
-        <x-slot:headerAction>
-            <a href="{{ route('head.schools.index') }}" 
-               class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#1C6654] bg-[#EDF2ED] hover:bg-[#E2EBE2] border border-[#DCE5DD] rounded-xl smooth-transition touch-target">
-                <span>Buka Manajemen Sekolah</span>
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                </svg>
+                    <span class="text-[11px] text-[#53645B] block mt-1">Ketuk untuk susun rencana</span>
+                @endif
             </a>
-        </x-slot:headerAction>
 
-        @if ($schools->isEmpty())
-            <!-- Honest Empty State with Valid Recovery Action -->
-            <div class="py-12 px-4 text-center">
-                <div class="w-12 h-12 mx-auto mb-3 rounded-full bg-[#EDF2ED] text-[#1C6654] flex items-center justify-center">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
-                    </svg>
+            <!-- 3. Today Fleet Dispatch -->
+            <a href="{{ route('head.distribution.index') }}" class="luxury-surface p-4 sm:p-5 hover:border-[#1C6654] smooth-transition block">
+                <span class="eyebrow-label block">Rute Hari Ini</span>
+                <div class="mt-2 flex items-baseline gap-1.5">
+                    <span class="text-2xl sm:text-3xl font-bold text-[#172923] tabular-nums">{{ $todayTripsCount ?? 0 }}</span>
+                    <span class="text-xs text-[#53645B]">trip</span>
                 </div>
-                <h3 class="text-sm font-bold text-[#172923]">Belum Ada Sekolah Binaan Terdaftar</h3>
-                <p class="text-xs text-[#53645B] mt-1 max-w-sm mx-auto leading-relaxed">
-                    Unit SPPG {{ $sppg->code }} belum memiliki sekolah binaan yang terdaftar dalam sistem. Daftarkan sekolah binaan pertama untuk mengaktifkan distribusi.
-                </p>
-                <div class="mt-4">
-                    <a href="{{ route('head.schools.create') }}" 
-                       class="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-semibold text-white bg-[#1C6654] hover:bg-[#164D42] rounded-xl shadow-xs smooth-transition touch-target">
-                        + Daftarkan Sekolah Binaan Pertama
-                    </a>
+                <span class="text-[11px] text-[#53645B] block mt-1.5">Penjadwalan armada &amp; kurir</span>
+            </a>
+
+            <!-- 4. Staffing & Incidents -->
+            <div class="luxury-surface p-4 sm:p-5 col-span-2 sm:col-span-1 flex flex-col justify-between">
+                <div>
+                    <span class="eyebrow-label block">Staf &amp; Kendala</span>
+                    <div class="mt-2 flex items-baseline justify-between gap-2">
+                        <div>
+                            <span class="text-2xl sm:text-3xl font-bold text-[#172923] tabular-nums">{{ $staffCount }}</span>
+                            <span class="text-xs text-[#53645B]">staf</span>
+                        </div>
+                        @if (($openIncidentsCount ?? 0) > 0)
+                            <a href="{{ route('incidents.index') }}" class="px-2 py-1 rounded-lg bg-[#FDF2F2] text-[#9B3232] border border-[#F5C2C2] text-[11px] font-semibold">
+                                {{ $openIncidentsCount }} kendala
+                            </a>
+                        @else
+                            <span class="px-2 py-1 rounded-lg bg-[#EDF7F2] text-[#21684B] border border-[#BCE2D0] text-[11px] font-semibold">
+                                Normal
+                            </span>
+                        @endif
+                    </div>
                 </div>
+                <a href="{{ route('head.employees.index') }}" class="text-[11px] font-semibold text-[#1C6654] hover:underline mt-2 inline-block">
+                    Kelola direktori pegawai &rarr;
+                </a>
             </div>
-        @else
-            <!-- Desktop Ledger Table -->
-            <div class="hidden sm:block overflow-x-auto">
-                <table class="w-full text-left text-xs sm:text-sm">
-                    <thead>
-                        <tr class="border-b border-[#DCE5DD] bg-[#FAFBF9] text-[#53645B] text-xs uppercase tracking-wider">
-                            <th class="py-3 px-3">Kode / NPSN</th>
-                            <th class="py-3 px-3">Nama Sekolah &amp; Alamat</th>
-                            <th class="py-3 px-3">Jenjang</th>
-                            <th class="py-3 px-3 text-right">Data Siswa Pokok</th>
-                            <th class="py-3 px-3">Portal Transparansi</th>
-                            <th class="py-3 px-3 text-center">Akses Policy</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-[#EDF2ED]">
-                        @foreach ($schools as $school)
-                            <tr class="hover:bg-[#F5F7F3] smooth-transition">
-                                <td class="py-3 px-3 font-mono text-xs font-bold text-[#1C6654]">
-                                    {{ $school->school_code }}
-                                </td>
-                                <td class="py-3 px-3">
-                                    <a href="{{ route('schools.show', $school) }}" class="font-bold text-[#172923] hover:underline block leading-tight">
+        </section>
+
+        <!-- Quick Operational Shortcuts -->
+        <nav aria-label="Pintasan Modul Kepala SPPG" class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <a href="{{ route('head.portions.index') }}" class="min-h-[48px] px-3.5 py-2.5 rounded-xl bg-white hover:bg-[#EDF7F2] border border-[#DCE5DD] hover:border-[#BCE2D0] text-xs font-semibold text-[#172923] flex items-center justify-between gap-2 smooth-transition">
+                <span>Monitoring Porsi</span>
+                <span class="text-[#1C6654]" aria-hidden="true">&rarr;</span>
+            </a>
+            <a href="{{ route('head.schools.index') }}" class="min-h-[48px] px-3.5 py-2.5 rounded-xl bg-white hover:bg-[#EDF7F2] border border-[#DCE5DD] hover:border-[#BCE2D0] text-xs font-semibold text-[#172923] flex items-center justify-between gap-2 smooth-transition">
+                <span>Sekolah &amp; PIC</span>
+                <span class="text-[#1C6654]" aria-hidden="true">&rarr;</span>
+            </a>
+            <a href="{{ route('head.employees.index') }}" class="min-h-[48px] px-3.5 py-2.5 rounded-xl bg-white hover:bg-[#EDF7F2] border border-[#DCE5DD] hover:border-[#BCE2D0] text-xs font-semibold text-[#172923] flex items-center justify-between gap-2 smooth-transition">
+                <span>Pegawai &amp; Role</span>
+                <span class="text-[#1C6654]" aria-hidden="true">&rarr;</span>
+            </a>
+            <a href="{{ route('incidents.index') }}" class="min-h-[48px] px-3.5 py-2.5 rounded-xl bg-white hover:bg-[#EDF7F2] border border-[#DCE5DD] hover:border-[#BCE2D0] text-xs font-semibold text-[#172923] flex items-center justify-between gap-2 smooth-transition">
+                <span>Pusat Kendala</span>
+                <span class="text-[#1C6654]" aria-hidden="true">&rarr;</span>
+            </a>
+        </nav>
+
+        <!-- School Coverage Ledger -->
+        <x-card title="Sekolah Binaan Aktif" subtitle="Daftar unit sekolah penerima manfaat dalam wilayah layanan {{ $sppg->code }}. Data siswa pokok di bawah merupakan acuan dasar, sedangkan porsi masak harian dikonfirmasi setiap hari oleh masing-masing PIC Sekolah.">
+            <x-slot:headerAction>
+                <a href="{{ route('head.schools.index') }}"
+                   class="min-h-[44px] px-3.5 py-2 text-xs font-semibold text-[#1C6654] bg-[#EDF7F2] hover:bg-[#DCF0E6] border border-[#BCE2D0] rounded-xl inline-flex items-center gap-1.5 smooth-transition">
+                    <span>Kelola Sekolah</span>
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                    </svg>
+                </a>
+            </x-slot:headerAction>
+
+            @if ($schools->isEmpty())
+                <div class="py-10 px-4 text-center">
+                    <div class="w-12 h-12 mx-auto mb-3 rounded-2xl bg-[#EDF7F2] text-[#1C6654] flex items-center justify-center">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-sm font-bold text-[#172923]">Belum Ada Sekolah Binaan Terdaftar</h3>
+                    <p class="text-xs text-[#53645B] mt-1 max-w-sm mx-auto leading-relaxed">
+                        Unit {{ $sppg->code }} belum memiliki sekolah binaan. Daftarkan sekolah pertama untuk membuka penjadwalan porsi dan pengantaran.
+                    </p>
+                    <div class="mt-4">
+                        <a href="{{ route('head.schools.create') }}"
+                           class="min-h-[44px] inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-semibold text-white bg-[#1C6654] hover:bg-[#164D42] rounded-xl smooth-transition">
+                            + Daftarkan Sekolah Binaan Pertama
+                        </a>
+                    </div>
+                </div>
+            @else
+                <!-- Desktop Luxury Ledger -->
+                <div class="hidden md:block -mx-6 -mb-6 overflow-x-auto">
+                    <table class="ledger-table text-xs sm:text-sm">
+                        <thead>
+                            <tr>
+                                <th>Kode</th>
+                                <th>Sekolah &amp; Lokasi</th>
+                                <th>Jenjang</th>
+                                <th>PIC Sekolah</th>
+                                <th class="text-right">Siswa Pokok</th>
+                                <th class="text-right">Tautan</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($schools as $school)
+                                @php $pic = $school->relationLoaded('picUsers') ? $school->picUsers->first() : null; @endphp
+                                <tr>
+                                    <td class="font-mono text-xs font-semibold text-[#1C6654]">{{ $school->school_code }}</td>
+                                    <td>
+                                        <a href="{{ route('head.schools.show', $school) }}" class="font-semibold text-[#172923] hover:text-[#1C6654] block">
+                                            {{ $school->name }}
+                                        </a>
+                                        <span class="text-[11px] text-[#53645B] block truncate max-w-xs mt-0.5">{{ $school->address }}</span>
+                                    </td>
+                                    <td>
+                                        <span class="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#FAFBF9] text-[#172923] border border-[#DCE5DD]">
+                                            {{ $school->education_level }}
+                                        </span>
+                                    </td>
+                                    <td class="text-xs">
+                                        @if ($pic)
+                                            <span class="font-medium text-[#172923] block">{{ $pic->name }}</span>
+                                            <span class="text-[11px] text-[#53645B] font-mono">{{ $pic->email }}</span>
+                                        @else
+                                            <span class="text-[11px] text-[#885D1C] font-medium">Belum ditugaskan</span>
+                                        @endif
+                                    </td>
+                                    <td class="text-right font-bold text-[#172923] tabular-nums">
+                                        {{ number_format($school->registered_beneficiaries) }} <span class="text-xs font-normal text-[#53645B]">siswa</span>
+                                    </td>
+                                    <td class="text-right whitespace-nowrap">
+                                        <a href="{{ route('public.schools.show', $school->public_slug) }}"
+                                           target="_blank"
+                                           rel="noopener"
+                                           class="min-h-[44px] px-3 py-2 text-xs font-semibold text-[#1C6654] hover:bg-[#EDF7F2] rounded-xl inline-flex items-center gap-1 smooth-transition">
+                                            <span>Publik</span>
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                                            </svg>
+                                        </a>
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Mobile Minimalist Card List -->
+                <div class="md:hidden divide-y divide-[#E7ECE8] -my-1">
+                    @foreach ($schools as $school)
+                        @php $pic = $school->relationLoaded('picUsers') ? $school->picUsers->first() : null; @endphp
+                        <div class="py-3.5 flex flex-col gap-2">
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <a href="{{ route('head.schools.show', $school) }}" class="text-sm font-bold text-[#172923] hover:text-[#1C6654] block leading-snug">
                                         {{ $school->name }}
                                     </a>
-                                    <span class="block text-[11px] text-[#53645B] truncate max-w-xs mt-0.5">{{ $school->address }}</span>
-                                </td>
-                                <td class="py-3 px-3">
-                                    <span class="px-2 py-0.5 rounded text-xs font-semibold bg-[#EDF2ED] text-[#172923] border border-[#DCE5DD]">
-                                        {{ $school->education_level }}
-                                    </span>
-                                </td>
-                                <td class="py-3 px-3 text-right font-bold text-[#172923] tabular-nums">
-                                    {{ number_format($school->registered_beneficiaries) }} <span class="text-xs font-normal text-[#53645B]">anak</span>
-                                </td>
-                                <td class="py-3 px-3">
-                                    <a href="{{ route('public.schools.show', $school->public_slug) }}" 
-                                       target="_blank" 
-                                       class="text-[#1C6654] hover:underline text-xs font-semibold inline-flex items-center gap-1 focus:outline-none focus:ring-1 focus:ring-[#1C6654] rounded">
-                                        <span>Portal Publik</span>
-                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                                        </svg>
-                                    </a>
-                                </td>
-                                <td class="py-3 px-3 text-center">
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-[#EDF7F2] text-[#21684B] border border-[#BCE2D0]">
-                                        TERISOLASI
-                                    </span>
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- Mobile Stacked Card View (390px & 320px Optimized) -->
-            <div class="sm:hidden divide-y divide-[#EDF2ED]">
-                @foreach ($schools as $school)
-                    <div class="py-3.5 first:pt-0 last:pb-0 space-y-2">
-                        <div class="flex items-start justify-between gap-2">
-                            <div>
-                                <span class="font-mono text-[11px] font-bold text-[#1C6654] block">{{ $school->school_code }}</span>
-                                <a href="{{ route('schools.show', $school) }}" class="text-sm font-bold text-[#172923] hover:underline block leading-tight">
-                                    {{ $school->name }}
-                                </a>
+                                    <span class="text-[11px] text-[#53645B] font-mono block mt-0.5">{{ $school->school_code }} • {{ $school->education_level }}</span>
+                                </div>
+                                <div class="text-right shrink-0">
+                                    <span class="text-sm font-bold text-[#172923] tabular-nums block">{{ number_format($school->registered_beneficiaries) }}</span>
+                                    <span class="text-[10px] text-[#53645B]">siswa</span>
+                                </div>
                             </div>
-                            <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-[#EDF2ED] text-[#172923] border border-[#DCE5DD]">
-                                {{ $school->education_level }}
-                            </span>
-                        </div>
 
-                        <p class="text-xs text-[#53645B] line-clamp-1">{{ $school->address }}</p>
-
-                        <div class="flex items-center justify-between text-xs bg-[#FAFBF9] p-2.5 rounded-xl border border-[#DCE5DD]">
-                            <div>
-                                <span class="text-[10px] text-[#53645B] block uppercase font-medium">Data Siswa Pokok</span>
-                                <span class="font-bold text-[#172923] tabular-nums">{{ number_format($school->registered_beneficiaries) }} anak</span>
-                            </div>
-                            <div class="text-right">
-                                <a href="{{ route('public.schools.show', $school->public_slug) }}" 
-                                   target="_blank" 
-                                   class="text-xs font-semibold text-[#1C6654] hover:underline inline-flex items-center gap-1">
-                                    <span>Lihat Publik</span>
-                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                            <div class="flex items-center justify-between text-xs pt-1">
+                                <span class="text-[11px] text-[#53645B] truncate max-w-[200px]">
+                                    PIC: {{ $pic ? $pic->email : 'Belum ada PIC' }}
+                                </span>
+                                <a href="{{ route('public.schools.show', $school->public_slug) }}"
+                                   target="_blank"
+                                   rel="noopener"
+                                   class="text-xs font-semibold text-[#1C6654] hover:underline inline-flex items-center gap-1 py-1">
+                                    <span>Portal Publik</span>
+                                    <span aria-hidden="true">&rarr;</span>
                                 </a>
                             </div>
                         </div>
-                    </div>
-                @endforeach
-            </div>
-        @endif
-    </x-card>
+                    @endforeach
+                </div>
+            @endif
+        </x-card>
+    </div>
 </x-app-shell>

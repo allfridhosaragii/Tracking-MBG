@@ -1,52 +1,39 @@
-<x-app-shell title="Pengambilan Ompreng — Kurir MBG">
-    <div class="max-w-5xl mx-auto px-4 py-6 sm:px-6 space-y-6">
-
-        <!-- Header Halaman D05 -->
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-[#DCE5DD]">
+<x-app-shell title="Penjemputan Wadah & Ompreng">
+    <div class="space-y-5">
+        <header class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 pb-4 border-b border-[#DCE5DD]">
             <div>
-                <div class="flex items-center gap-2">
-                    <span class="text-[11px] font-bold text-[#1C6654] uppercase tracking-wider bg-[#EDF2ED] px-2 py-0.5 rounded">
-                        Modul Kurir (D05)
-                    </span>
-                    <span class="text-xs text-[#53645B] font-medium">Armada Logistik Balik</span>
-                </div>
-                <h1 class="text-xl font-bold text-[#172923] mt-1">Penjemputan Wadah & Ompreng</h1>
-                <p class="text-xs text-[#53645B] mt-0.5">Kurir: {{ $driver->name }} &bull; Unit SPPG: {{ $driver->sppg?->name ?? 'SPPG Pusat' }}</p>
+                <span class="eyebrow-label text-[#55327A] block mb-1">Kurir Pengantaran • {{ $driver->sppg?->code ?? 'SPPG' }}</span>
+                <h1 class="page-title">Penjemputan Wadah & Ompreng</h1>
+                <p class="text-xs sm:text-sm text-[#53645B] mt-1">Pengangkutan kembali wadah bersih dari sekolah binaan menuju dapur SPPG.</p>
             </div>
-            <div class="flex items-center gap-2">
-                <a href="{{ route('driver.trips.index') }}" 
-                   class="inline-flex items-center gap-1.5 text-xs font-semibold text-[#53645B] hover:text-[#172923] px-3 py-2 rounded-lg border border-[#DCE5DD] bg-white hover:bg-[#F5F7F3] touch-target">
-                    <svg class="w-4 h-4 text-[#1C6654]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
-                    </svg>
-                    <span>Daftar Rute Pengiriman</span>
-                </a>
-            </div>
-        </div>
 
-        <!-- Banner Info SOP Kurir -->
-        <div class="p-4 rounded-2xl bg-white border border-[#DCE5DD] shadow-xs flex items-start gap-3 text-xs text-[#53645B]">
-            <svg class="w-5 h-5 text-[#1C6654] shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
-            </svg>
-            <div class="leading-relaxed">
-                <strong class="text-[#172923]">SOP Penjemputan Ompreng:</strong> Hitung fisik wadah bersama PIC Sekolah sebelum dimuat ke dalam armada. Konfirmasikan jumlah aktual yang diangkut. Jika jumlah fisik berbeda dari yang dilaporkan sekolah, masukkan jumlah riil dan sertakan catatan selisih beserta foto bukti.
-            </div>
-        </div>
+            <a href="{{ route('driver.trips.index') }}"
+               class="min-h-[44px] px-3.5 py-2 rounded-xl border border-[#DCE5DD] bg-white hover:bg-[#FAFBF9] text-xs font-semibold text-[#172923] inline-flex items-center shrink-0 smooth-transition">
+                Daftar Rute Pengiriman
+            </a>
+        </header>
 
-        <!-- Flash Messages -->
-        @if (session('success'))
-            <div class="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-800 flex items-center gap-2">
-                <svg class="w-4 h-4 text-emerald-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+        <details class="sop-disclosure">
+            <summary>
+                <span>Panduan Hitung Fisik Penjemputan Ompreng</span>
+                <svg class="w-4 h-4 text-[#53645B] disclosure-chevron shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                 </svg>
-                <span>{{ session('success') }}</span>
+            </summary>
+            <div class="p-4 text-xs text-[#53645B] leading-relaxed">
+                Hitung jumlah fisik ompreng bersama PIC Sekolah sebelum dimuat ke kendaraan. Jika jumlah berbeda dari laporan siap sekolah, isi jumlah riil dan tuliskan keterangan selisihnya.
+            </div>
+        </details>
+
+        @if (session('success'))
+            <div class="p-4 rounded-xl bg-[#EDF7F2] border border-[#BCE2D0] text-xs sm:text-sm font-medium text-[#1B573E]">
+                {{ session('success') }}
             </div>
         @endif
 
         @if ($errors->any())
-            <div class="p-4 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 space-y-1">
-                <div class="font-bold">Gagal memproses penjemputan ompreng:</div>
+            <div class="p-4 rounded-xl bg-[#FDF2F2] border border-[#F5C2C2] text-xs text-[#9B3232] space-y-1">
+                <p class="font-bold">Gagal memproses penjemputan:</p>
                 <ul class="list-disc list-inside">
                     @foreach ($errors->all() as $error)
                         <li>{{ $error }}</li>
@@ -55,14 +42,9 @@
             </div>
         @endif
 
-        <!-- SECTION 1: Tugas Penjemputan Siap Dijemput -->
-        <div class="space-y-4">
-            <div class="flex items-center justify-between">
-                <h2 class="text-xs font-bold text-[#53645B] uppercase tracking-wider">
-                    Sekolah Menunggu Penjemputan Wadah ({{ count($pendingPickups) }})
-                </h2>
-                <span class="text-xs text-[#708177]">Prioritas Berdasarkan Waktu Siap</span>
-            </div>
+        <!-- Pending Pickups -->
+        <section class="space-y-4">
+            <h2 class="eyebrow-label text-[#172923]">Sekolah Menunggu Penjemputan ({{ count($pendingPickups) }})</h2>
 
             @forelse ($pendingPickups as $tray)
                 @php
@@ -70,185 +52,142 @@
                     $origTrip = $tray->schoolServiceRecord?->tripStop?->trip;
                 @endphp
 
-                <div class="bg-white rounded-2xl border-2 border-amber-400 p-5 shadow-xs space-y-4">
-                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-3 border-b border-[#EDF2ED]">
+                <div class="luxury-surface p-5 space-y-4 border-l-4 border-l-[#885D1C]">
+                    <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 pb-3 border-b border-[#E7ECE8]">
                         <div>
-                            <span class="text-[10px] font-bold text-amber-800 uppercase tracking-wider bg-amber-100 px-2 py-0.5 rounded">
-                                Siap Diambil
-                            </span>
-                            <h3 class="text-base font-bold text-[#172923] mt-1">{{ $school?->name ?? 'Sekolah MBG' }}</h3>
+                            <span class="text-[10px] font-semibold text-[#885D1C] uppercase tracking-wider bg-[#FEF7EC] px-2 py-0.5 rounded-md border border-[#F7D7A3]">Siap Diambil</span>
+                            <h3 class="text-base font-bold text-[#172923] mt-1.5">{{ $school?->name ?? 'Sekolah MBG' }}</h3>
                             <p class="text-xs text-[#53645B]">{{ $school?->address ?? '-' }}</p>
                         </div>
-                        <div class="text-right sm:text-right">
-                            <span class="text-xs font-mono font-bold text-[#172923] block">ID Wadah: #{{ $tray->id }}</span>
-                            <span class="text-[11px] text-[#708177] block">Trip Kirim: {{ $origTrip?->trip_code ?? '-' }}</span>
+                        <div class="sm:text-right text-xs font-mono text-[#53645B]">
+                            <span class="font-bold text-[#172923] block">Wadah #{{ $tray->id }}</span>
+                            <span>Trip: {{ $origTrip?->trip_code ?? '-' }}</span>
                         </div>
                     </div>
 
-                    <!-- Ringkasan Angka Pelaporan Sekolah -->
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center text-xs">
-                        <div class="p-3 rounded-xl bg-[#F5F7F3] border border-[#DCE5DD]">
-                            <span class="text-[10px] text-[#708177] block">Terkirim Awal</span>
-                            <span class="text-base font-bold text-[#172923] tabular-nums mt-0.5 block">
-                                {{ $tray->expected_trays }}
-                            </span>
-                            <span class="text-[10px] text-[#53645B]">Wadah</span>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                        <div class="inset-surface p-3">
+                            <span class="text-[10px] text-[#53645B] block">Terkirim Awal</span>
+                            <span class="text-base font-bold text-[#172923] tabular-nums mt-0.5 block">{{ $tray->expected_trays }}</span>
                         </div>
-                        <div class="p-3 rounded-xl bg-amber-50 border border-amber-200">
-                            <span class="text-[10px] text-amber-800 block font-semibold">Siap Fisik Sekolah</span>
-                            <span class="text-base font-bold text-amber-900 tabular-nums mt-0.5 block">
-                                {{ $tray->ready_count ?? 0 }}
-                            </span>
-                            <span class="text-[10px] text-amber-700">Dihitung PIC</span>
+                        <div class="p-3 rounded-xl bg-[#FEF7EC] border border-[#F7D7A3]">
+                            <span class="text-[10px] text-[#885D1C] font-semibold block">Siap di Sekolah</span>
+                            <span class="text-base font-bold text-[#885D1C] tabular-nums mt-0.5 block">{{ $tray->ready_count ?? 0 }}</span>
                         </div>
-                        <div class="p-3 rounded-xl bg-[#F5F7F3] border border-[#DCE5DD]">
-                            <span class="text-[10px] text-[#708177] block">Laporan Rusak</span>
-                            <span class="text-base font-bold text-[#172923] tabular-nums mt-0.5 block">
-                                {{ (int) $tray->damaged_count }}
-                            </span>
-                            <span class="text-[10px] text-[#708177]">Wadah Pecah/Cacat</span>
+                        <div class="inset-surface p-3">
+                            <span class="text-[10px] text-[#53645B] block">Laporan Rusak</span>
+                            <span class="text-base font-bold text-[#172923] tabular-nums mt-0.5 block">{{ (int) $tray->damaged_count }}</span>
                         </div>
-                        <div class="p-3 rounded-xl bg-[#F5F7F3] border border-[#DCE5DD]">
-                            <span class="text-[10px] text-[#708177] block">Waktu Dikonfirmasi</span>
-                            <span class="text-xs font-bold text-[#172923] mt-1 block">
-                                {{ $tray->ready_at ? $tray->ready_at->setTimezone('Asia/Jakarta')->format('H:i \W\I\B') : '-' }}
+                        <div class="inset-surface p-3">
+                            <span class="text-[10px] text-[#53645B] block">Waktu Siap</span>
+                            <span class="text-xs font-bold text-[#172923] tabular-nums mt-1 block">
+                                {{ $tray->ready_at ? $tray->ready_at->setTimezone('Asia/Jakarta')->format('H:i') . ' WIB' : '-' }}
                             </span>
-                            <span class="text-[10px] text-[#708177]">Hari Ini</span>
                         </div>
                     </div>
 
                     @if ($tray->notes)
-                        <div class="p-3 rounded-xl bg-[#F5F7F3] border border-[#DCE5DD] text-xs text-[#53645B]">
-                            <strong class="text-[#172923]">Catatan dari PIC Sekolah:</strong>
-                            <p class="mt-0.5 italic text-[#172923]">"{{ $tray->notes }}"</p>
+                        <div class="inset-surface p-3 text-xs text-[#53645B]">
+                            <strong class="text-[#172923]">Catatan PIC Sekolah:</strong> {{ $tray->notes }}
                         </div>
                     @endif
 
-                    <!-- Formulir Konfirmasi Penjemputan Fisik oleh Kurir -->
-                    <div class="p-4 rounded-xl bg-[#F5F7F3] border border-[#DCE5DD] space-y-3">
-                        <div class="flex items-center gap-2 text-xs font-bold text-[#172923]">
-                            <svg class="w-4 h-4 text-[#1C6654]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
-                            </svg>
-                            <span>Input Fisik Muatan Balik</span>
+                    <form action="{{ route('driver.tray-returns.pickup', $tray) }}" method="POST" enctype="multipart/form-data" class="inset-surface p-4 space-y-3.5">
+                        @csrf
+                        <span class="text-xs font-bold text-[#172923] block">Konfirmasi Jumlah Fisik Dimuat</span>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                            <div>
+                                <label for="pickup_count_{{ $tray->id }}" class="block font-semibold text-[#172923] mb-1">
+                                    Jumlah Wadah Dimuat ke Armada <span class="text-[#9B3232]">*</span>
+                                </label>
+                                <input type="number"
+                                       id="pickup_count_{{ $tray->id }}"
+                                       name="picked_up_count"
+                                       min="0"
+                                       value="{{ old('picked_up_count', $tray->ready_count ?? $tray->expected_trays) }}"
+                                       required
+                                       class="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-[#DCE5DD] bg-white text-[#172923] font-bold text-sm tabular-nums">
+                            </div>
+                            <div>
+                                <label for="pickup_photo_{{ $tray->id }}" class="block font-semibold text-[#172923] mb-1">Foto Muatan (Opsional)</label>
+                                <input type="file"
+                                       id="pickup_photo_{{ $tray->id }}"
+                                       name="photo"
+                                       accept="image/*"
+                                       class="w-full text-xs text-[#53645B] file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#1C6654] file:text-white">
+                            </div>
                         </div>
 
-                        <form action="{{ route('driver.tray-returns.pickup', $tray) }}" method="POST" enctype="multipart/form-data" class="space-y-3">
-                            @csrf
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                                <div>
-                                    <label for="pickup_count_{{ $tray->id }}" class="block font-semibold text-[#172923] mb-1">
-                                        Jumlah Wadah Dimuat ke Mobil <span class="text-rose-600">*</span>
-                                    </label>
-                                    <input type="number" 
-                                           id="pickup_count_{{ $tray->id }}"
-                                           name="picked_up_count" 
-                                           min="0" 
-                                           value="{{ old('picked_up_count', $tray->ready_count ?? $tray->expected_trays) }}" 
-                                           required
-                                           class="w-full px-3 py-2 rounded-lg border border-[#DCE5DD] bg-white text-[#172923] font-bold text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-[#1C6654] touch-target">
-                                    <span class="text-[10px] text-[#708177] mt-0.5 block">Jumlah fisik ompreng yang riil dibawa armada kurir.</span>
-                                </div>
-                                <div>
-                                    <label for="pickup_photo_{{ $tray->id }}" class="block font-semibold text-[#172923] mb-1">
-                                        Foto Muatan di Mobil (Opsional)
-                                    </label>
-                                    <input type="file" 
-                                           id="pickup_photo_{{ $tray->id }}"
-                                           name="photo" 
-                                           accept="image/*"
-                                           class="w-full text-xs text-[#53645B] file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-[#1C6654] file:text-white hover:file:bg-[#154d40]">
-                                </div>
-                            </div>
+                        <div class="text-xs">
+                            <label for="pickup_notes_{{ $tray->id }}" class="block font-semibold text-[#172923] mb-1">
+                                Catatan Serah Terima Fisik (Wajib bila selisih)
+                            </label>
+                            <input type="text"
+                                   id="pickup_notes_{{ $tray->id }}"
+                                   name="notes"
+                                   placeholder="Contoh: 1 ompreng masih tertinggal di ruang kelas"
+                                   class="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-[#DCE5DD] bg-white text-[#172923]">
+                        </div>
 
-                            <div class="text-xs">
-                                <label for="pickup_notes_{{ $tray->id }}" class="block font-semibold text-[#172923] mb-1">
-                                    Catatan Serah Terima Fisik (Wajib jika berbeda dari laporan sekolah)
-                                </label>
-                                <input type="text" 
-                                       id="pickup_notes_{{ $tray->id }}"
-                                       name="notes" 
-                                       placeholder="Contoh: 1 ompreng tertinggal di lab, atau kondisi tumpukan wadah basah" 
-                                       class="w-full px-3 py-2 rounded-lg border border-[#DCE5DD] bg-white text-[#172923] text-xs focus:outline-none focus:ring-2 focus:ring-[#1C6654]">
-                            </div>
-
-                            <div class="pt-1">
-                                <button type="submit" 
-                                        class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-[#1C6654] text-white font-bold text-xs hover:bg-[#154d40] shadow-xs touch-target transition-colors">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                                    </svg>
-                                    <span>Konfirmasi Wadah Berhasil Diambil</span>
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-
+                        <button type="submit"
+                                class="w-full sm:w-auto min-h-[46px] px-5 py-2.5 rounded-xl bg-[#1C6654] hover:bg-[#164D42] text-white font-bold text-xs cursor-pointer smooth-transition">
+                            Konfirmasi Wadah Berhasil Diambil
+                        </button>
+                    </form>
                 </div>
             @empty
-                <div class="p-8 text-center bg-white rounded-2xl border border-[#DCE5DD] text-xs text-[#53645B] space-y-2">
-                    <svg class="w-10 h-10 text-[#708177] mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
-                    <p class="font-bold text-[#172923]">Tidak Ada Antrean Penjemputan</p>
-                    <p class="text-[#708177]">Saat ini belum ada sekolah yang menandai wadah ompreng siap dijemput.</p>
+                <div class="luxury-surface p-8 text-center text-xs text-[#53645B] space-y-1">
+                    <p class="font-bold text-sm text-[#172923]">Tidak Ada Antrean Penjemputan</p>
+                    <p>Belum ada sekolah yang menandai wadah ompreng siap dijemput saat ini.</p>
                 </div>
             @endforelse
-        </div>
+        </section>
 
-        <!-- SECTION 2: Riwayat Pengambilan Terakhir -->
-        <div class="space-y-4 pt-6 border-t border-[#DCE5DD]">
-            <h2 class="text-xs font-bold text-[#53645B] uppercase tracking-wider">
-                Riwayat Pengambilan Wadah Sebelumnya ({{ $completedPickups->total() }})
-            </h2>
+        <!-- Completed History -->
+        <x-card title="Riwayat Pengambilan Wadah" badge="{{ $completedPickups->total() }} Selesai">
+            @if ($completedPickups->isEmpty())
+                <p class="py-4 text-center text-xs text-[#53645B]">Belum ada riwayat penjemputan sebelumnya.</p>
+            @else
+                <div class="divide-y divide-[#E7ECE8] -my-1">
+                    @foreach ($completedPickups as $completed)
+                        @php $school = $completed->schoolServiceRecord?->tripStop?->school; @endphp
+                        <div class="py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs">
+                            <div class="space-y-1">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="font-bold text-[#172923] text-sm">{{ $school?->name ?? 'Sekolah MBG' }}</span>
+                                    <span class="text-[10px] px-2 py-0.5 rounded-md font-semibold border {{ $completed->status->badgeClass() }}">
+                                        {{ $completed->status->label() }}
+                                    </span>
+                                </div>
+                                <p class="text-[11px] text-[#53645B] tabular-nums">
+                                    Diambil: <strong>{{ $completed->picked_up_count ?? 0 }} wadah</strong> • {{ $completed->picked_up_at ? $completed->picked_up_at->setTimezone('Asia/Jakarta')->format('d/m/Y H:i') : '-' }}
+                                    @if ($completed->returned_count !== null)
+                                        • Tiba SPPG: <strong>{{ $completed->returned_count }}</strong>
+                                    @endif
+                                </p>
+                            </div>
 
-            <div class="space-y-3">
-                @forelse ($completedPickups as $completed)
-                    @php
-                        $school = $completed->schoolServiceRecord?->tripStop?->school;
-                    @endphp
-                    <div class="p-4 rounded-xl bg-white border border-[#DCE5DD] shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs">
-                        <div class="space-y-1">
-                            <div class="flex items-center gap-2">
-                                <span class="font-bold text-[#172923] text-sm">{{ $school?->name ?? 'Sekolah MBG' }}</span>
-                                <span class="text-xs px-2 py-0.5 rounded-full font-bold border {{ $completed->status->badgeClass() }}">
-                                    {{ $completed->status->label() }}
-                                </span>
-                            </div>
-                            <div class="text-[#53645B] text-[11px] flex flex-wrap gap-x-3">
-                                <span>Waktu Ambil: <strong>{{ $completed->picked_up_at ? $completed->picked_up_at->setTimezone('Asia/Jakarta')->format('d/m/Y H:i') : '-' }}</strong></span>
-                                <span>Diambil: <strong>{{ $completed->picked_up_count ?? 0 }} wadah</strong></span>
-                                @if ($completed->returned_count !== null)
-                                    <span>Tiba SPPG: <strong>{{ $completed->returned_count }} wadah</strong></span>
-                                @endif
-                            </div>
-                            @if ($completed->notes)
-                                <p class="text-[11px] text-[#708177] italic">"{{ $completed->notes }}"</p>
+                            @if ($completed->evidencePhotos->isNotEmpty())
+                                <div class="flex gap-1.5 shrink-0">
+                                    @foreach ($completed->evidencePhotos as $photo)
+                                        <a href="{{ route('evidence-photos.show', $photo) }}" target="_blank" rel="noopener"
+                                           class="w-10 h-10 rounded-lg border border-[#DCE5DD] overflow-hidden bg-[#FAFBF9]">
+                                            <img src="{{ route('evidence-photos.show', $photo) }}" alt="Bukti" class="w-full h-full object-cover">
+                                        </a>
+                                    @endforeach
+                                </div>
                             @endif
                         </div>
-
-                        @if ($completed->evidencePhotos->isNotEmpty())
-                            <div class="flex gap-1.5 shrink-0">
-                                @foreach ($completed->evidencePhotos as $photo)
-                                    <a href="{{ route('evidence-photos.show', $photo) }}" target="_blank" 
-                                       class="w-10 h-10 rounded border border-[#DCE5DD] overflow-hidden bg-slate-100 flex items-center justify-center hover:ring-2 hover:ring-[#1C6654]">
-                                        <img src="{{ route('evidence-photos.show', $photo) }}" alt="Bukti" class="w-full h-full object-cover">
-                                    </a>
-                                @endforeach
-                            </div>
-                        @endif
-                    </div>
-                @empty
-                    <p class="text-xs text-[#708177] italic text-center py-4 bg-white rounded-xl border border-[#DCE5DD]">
-                        Belum ada riwayat penjemputan sebelumnya.
-                    </p>
-                @endforelse
-
-                <div class="pt-2">
-                    {{ $completedPickups->links() }}
+                    @endforeach
                 </div>
-            </div>
-        </div>
 
+                @if ($completedPickups->hasPages())
+                    <div class="pt-4 mt-4 border-t border-[#E7ECE8]">
+                        {{ $completedPickups->links() }}
+                    </div>
+                @endif
+            @endif
+        </x-card>
     </div>
 </x-app-shell>

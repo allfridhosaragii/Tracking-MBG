@@ -1,196 +1,206 @@
-<x-app-shell title="Receipt Workflow : PIC Sekolah">
-    <!-- Header & Unit Identity -->
-    <header class="mb-5 pb-4 border-b border-[#DCE5DD]">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-                <div class="flex flex-wrap items-center gap-2 mb-1.5">
+<x-app-shell title="Beranda Operasional | {{ $school->name }}">
+    <div class="space-y-6">
+        <!-- School Operational Header -->
+        <header class="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-5 border-b border-[#DCE5DD]">
+            <div class="space-y-1.5">
+                <div class="flex flex-wrap items-center gap-2">
                     <x-role-badge :role="$user->role" />
-                    <span class="text-xs font-mono text-[#53645B]">Unit: {{ $school->school_code }}</span>
-                    <span class="px-2 py-0.5 rounded text-[11px] font-bold bg-[#EDF2ED] text-[#172923] border border-[#DCE5DD]">
+                    <span class="text-xs font-mono text-[#53645B] bg-white border border-[#DCE5DD] px-2.5 py-0.5 rounded-lg">
+                        Unit: {{ $school->school_code }}
+                    </span>
+                    <span class="px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-[#FAFBF9] text-[#172923] border border-[#DCE5DD]">
                         Jenjang {{ $school->education_level }}
                     </span>
                 </div>
-                <h1 class="text-xl sm:text-2xl font-bold text-[#172923] tracking-tight">Receipt Workflow : {{ $school->name }}</h1>
-                <p class="text-xs sm:text-sm text-[#53645B] mt-0.5">Penanggung Jawab Distribusi: <strong>{{ $user->name }}</strong></p>
+                <h1 class="page-title">{{ $school->name }}</h1>
+                <p class="text-xs sm:text-sm text-[#53645B]">
+                    PIC Bertugas: <strong class="text-[#172923]">{{ $user->name }}</strong>
+                    <span class="font-mono text-xs text-[#53645B]">({{ $user->email }})</span>
+                </p>
             </div>
 
-            <div class="flex items-center gap-2 self-start sm:self-auto">
-                <a href="{{ route('public.schools.show', $school->public_slug) }}" 
-                   target="_blank"
-                   rel="noopener"
-                   class="min-h-[44px] px-3.5 py-2 rounded-xl bg-white border border-[#DCE5DD] text-xs font-bold text-[#1C6654] hover:bg-[#EDF5F2] hover:border-[#1C6654] transition-colors inline-flex items-center gap-2 subtle-shadow focus:outline-none focus:ring-2 focus:ring-[#1C6654]">
-                    <span>Portal Publik Sekolah</span>
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+            <a href="{{ route('public.schools.show', $school->public_slug) }}"
+               target="_blank"
+               rel="noopener"
+               class="min-h-[44px] self-start sm:self-auto px-4 py-2 rounded-xl bg-white border border-[#DCE5DD] text-xs font-bold text-[#1C6654] hover:bg-[#EDF7F2] hover:border-[#1C6654] smooth-transition inline-flex items-center gap-2 subtle-shadow">
+                <span>Portal Publik Sekolah</span>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                </svg>
+            </a>
+        </header>
+
+        <!-- Primary First-Fold Daily Actions (All 4 PIC Modules Accessible in 1 Tap) -->
+        <section aria-labelledby="daily-actions-heading" class="space-y-3">
+            <div class="flex items-center justify-between">
+                <h2 id="daily-actions-heading" class="eyebrow-label">Tugas Harian PIC Sekolah</h2>
+                <span class="text-[11px] font-mono font-bold bg-[#EDF7F2] text-[#21684B] px-2.5 py-0.5 rounded-md border border-[#BCE2D0]">
+                    TENANT SECURE
+                </span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <!-- 1. Portion Confirmation (P02) -->
+                <article class="luxury-surface p-5 flex flex-col justify-between gap-4">
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="eyebrow-label text-[#1C6654]">1. Kebutuhan Harian (P02)</span>
+                            @if ($todayPortionRequest)
+                                <span class="text-[11px] font-bold px-2.5 py-0.5 rounded-md border {{ $todayPortionRequest->status->badgeClasses() }}">
+                                    {{ $todayPortionRequest->status->label() }}
+                                </span>
+                            @else
+                                <span class="text-[11px] font-semibold px-2.5 py-0.5 rounded-md border bg-[#FEF7EC] text-[#885D1C] border-[#F7D7A3]">
+                                    Belum Dikonfirmasi
+                                </span>
+                            @endif
+                        </div>
+                        <h3 class="section-title">Konfirmasi Kebutuhan Porsi</h3>
+                        <p class="text-xs text-[#53645B] leading-relaxed">
+                            Kirim jumlah siswa hadir dan kebutuhan ompreng H-1 sebelum pukul 16:00 WIB sebagai rujukan masak SPPG.
+                        </p>
+                    </div>
+                    <a href="{{ route('school.portions.index') }}"
+                       class="min-h-[44px] w-full px-4 py-2.5 rounded-xl bg-[#1C6654] hover:bg-[#164D42] text-white text-xs font-bold smooth-transition inline-flex items-center justify-between subtle-shadow">
+                        <span>Buka Konfirmasi Porsi</span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+                        </svg>
+                    </a>
+                </article>
+
+                <!-- 2. Receipt & Organoleptic Arrival (P04) -->
+                <article class="luxury-surface p-5 flex flex-col justify-between gap-4 {{ $awaitingReceiptsCount > 0 ? 'border-[#885D1C] ring-1 ring-[#F7D7A3]' : '' }}">
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="eyebrow-label text-[#1C6654]">2. Kedatangan Armada (P04)</span>
+                            <span class="text-[11px] font-bold tabular-nums px-2.5 py-0.5 rounded-md border {{ $awaitingReceiptsCount > 0 ? 'bg-[#FEF7EC] text-[#885D1C] border-[#F7D7A3]' : 'bg-[#FAFBF9] text-[#53645B] border-[#DCE5DD]' }}">
+                                {{ $awaitingReceiptsCount }} Menunggu Terima
+                            </span>
+                        </div>
+                        <h3 class="section-title">Penerimaan &amp; Uji Organoleptik</h3>
+                        <p class="text-xs text-[#53645B] leading-relaxed">
+                            Hitung porsi fisik ompreng saat kurir tiba, periksa suhu dan kelayakan pangan, lalu sahkan berita acara.
+                        </p>
+                    </div>
+                    <a href="{{ route('school.receipts.index') }}"
+                       class="min-h-[44px] w-full px-4 py-2.5 rounded-xl {{ $awaitingReceiptsCount > 0 ? 'bg-[#885D1C] hover:bg-[#6E4A15] text-white' : 'bg-[#1C6654] hover:bg-[#164D42] text-white' }} text-xs font-bold smooth-transition inline-flex items-center justify-between subtle-shadow">
+                        <span>Buka Penerimaan Makanan</span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+                        </svg>
+                    </a>
+                </article>
+
+                <!-- 3. Pre-Consumption Check & Distribution (P05) -->
+                <article class="luxury-surface p-5 flex flex-col justify-between gap-4">
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="eyebrow-label text-[#285F80]">3. Jam Makan Siswa (P05)</span>
+                            <span class="text-[11px] font-bold tabular-nums px-2.5 py-0.5 rounded-md border {{ $activeDistributionsCount > 0 ? 'bg-[#F0F6FA] text-[#285F80] border-[#C2DBE8]' : 'bg-[#FAFBF9] text-[#53645B] border-[#DCE5DD]' }}">
+                                {{ $activeDistributionsCount }} Layanan Aktif
+                            </span>
+                        </div>
+                        <h3 class="section-title">Pembagian Makanan &amp; Uji ke-2</h3>
+                        <p class="text-xs text-[#53645B] leading-relaxed">
+                            Lakukan pemeriksaan organoleptik sesaat sebelum makan, mulai pembagian, dan catat porsi terbagi serta sisa.
+                        </p>
+                    </div>
+                    <a href="{{ route('school.meal-distribution.index') }}"
+                       class="min-h-[44px] w-full px-4 py-2.5 rounded-xl bg-white hover:bg-[#FAFBF9] text-[#172923] border border-[#DCE5DD] text-xs font-bold smooth-transition inline-flex items-center justify-between">
+                        <span>Buka Pembagian Makanan</span>
+                        <svg class="w-4 h-4 text-[#1C6654]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+                        </svg>
+                    </a>
+                </article>
+
+                <!-- 4. Reverse Logistics Trays (P06) -->
+                <article class="luxury-surface p-5 flex flex-col justify-between gap-4">
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="eyebrow-label text-[#885D1C]">4. Logistik Balik (P06)</span>
+                            <span class="text-[11px] font-bold tabular-nums px-2.5 py-0.5 rounded-md border {{ $inUseTraysCount > 0 ? 'bg-[#FEF7EC] text-[#885D1C] border-[#F7D7A3]' : 'bg-[#FAFBF9] text-[#53645B] border-[#DCE5DD]' }}">
+                                {{ $inUseTraysCount }} Siklus di Sekolah
+                            </span>
+                        </div>
+                        <h3 class="section-title">Kesiapan &amp; Retur Ompreng</h3>
+                        <p class="text-xs text-[#53645B] leading-relaxed">
+                            Hitung wadah kosong pasca makan dan tandai siap dijemput agar kurir SPPG dapat mengambil ompreng balik.
+                        </p>
+                    </div>
+                    <a href="{{ route('school.trays.index') }}"
+                       class="min-h-[44px] w-full px-4 py-2.5 rounded-xl bg-white hover:bg-[#FAFBF9] text-[#172923] border border-[#DCE5DD] text-xs font-bold smooth-transition inline-flex items-center justify-between">
+                        <span>Kelola Wadah Ompreng</span>
+                        <svg class="w-4 h-4 text-[#1C6654]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+                        </svg>
+                    </a>
+                </article>
+            </div>
+        </section>
+
+        <!-- School & SPPG Partnership Summary -->
+        <section aria-label="Metrik Sekolah dan Rekanan" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="luxury-surface p-4 sm:p-5">
+                <span class="eyebrow-label block mb-1">Siswa Terdaftar (Data Pokok)</span>
+                <div class="flex items-baseline gap-2">
+                    <span class="text-3xl font-bold text-[#1C6654] tabular-nums">{{ number_format($school->registered_beneficiaries) }}</span>
+                    <span class="text-xs text-[#53645B]">siswa</span>
+                </div>
+                <p class="text-[11px] text-[#53645B] mt-1.5 leading-relaxed">
+                    Basis alokasi sasaran. Angka kebutuhan aktual dikonfirmasi harian pada modul P02.
+                </p>
+            </div>
+
+            <div class="luxury-surface p-4 sm:p-5">
+                <span class="eyebrow-label block mb-1">Mitra SPPG Penyedia</span>
+                <span class="text-sm font-bold text-[#172923] block">{{ $sppg->name }}</span>
+                <span class="text-xs font-mono text-[#53645B] block mt-0.5">Kode: {{ $sppg->code }}</span>
+                <span class="inline-flex items-center gap-1.5 text-[11px] text-[#21684B] font-bold mt-2">
+                    <span class="w-1.5 h-1.5 rounded-full bg-[#21684B]" aria-hidden="true"></span>
+                    <span>Terhubung Resmi</span>
+                </span>
+            </div>
+
+            <div class="luxury-surface p-4 sm:p-5">
+                <span class="eyebrow-label block mb-1">Titik Drop-Off &amp; Isolasi Scope</span>
+                <p class="text-xs text-[#172923] leading-relaxed">{{ $school->address }}</p>
+                <p class="text-[11px] text-[#21684B] font-medium mt-1.5">
+                    Scope terisolasi khusus untuk data <strong>{{ $school->name }}</strong>.
+                </p>
+            </div>
+        </section>
+
+        <!-- Progressive Disclosure for 4-Step Inspection SOP -->
+        <details class="sop-disclosure">
+            <summary>
+                <span class="flex items-center gap-2 text-xs font-bold text-[#172923]">
+                    <svg class="w-4 h-4 text-[#1C6654] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
                     </svg>
-                </a>
-            </div>
-        </div>
-    </header>
-
-    <!-- Tenant Isolation Guard Banner -->
-    <section aria-label="Status Isolasi Data" class="mb-5 p-3.5 rounded-xl bg-[#EDF7F2] border border-[#BCE2D0] text-[#1B573E] text-xs flex flex-wrap items-center justify-between gap-3">
-        <div class="flex items-center gap-2.5">
-            <svg class="w-4 h-4 text-[#21684B] shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                <path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
-            </svg>
-            <span>Scope Terisolasi: Anda hanya memiliki akses operasional terhadap data <strong>{{ $school->name }}</strong>.</span>
-        </div>
-        <span class="text-[11px] font-mono font-bold bg-white text-[#21684B] px-2.5 py-1 rounded-md border border-[#BCE2D0]">
-            TENANT SECURE
-        </span>
-    </section>
-
-    <!-- School Metrics (First Fold Truth) -->
-    <section aria-label="Metrik Sekolah dan Rekanan" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <div class="bg-white rounded-xl border border-[#DCE5DD] p-4 subtle-shadow">
-            <span class="text-xs text-[#53645B] block mb-1">Siswa Terdaftar (Data Pokok)</span>
-            <div class="flex items-baseline gap-2">
-                <span class="text-3xl font-bold text-[#1C6654] tabular-nums">{{ number_format($school->registered_beneficiaries) }}</span>
-                <span class="text-xs text-[#53645B]">siswa</span>
-            </div>
-            <p class="text-[11px] text-[#53645B] mt-1.5 leading-relaxed">
-                Basis alokasi porsi. Konfirmasi kebutuhan harian aktual dikirim H-1 sebelum masak.
-            </p>
-        </div>
-
-        <div class="bg-white rounded-xl border border-[#DCE5DD] p-4 subtle-shadow">
-            <span class="text-xs text-[#53645B] block mb-1">Mitra SPPG Penyedia</span>
-            <span class="text-sm font-bold text-[#172923] block">{{ $sppg->name }}</span>
-            <span class="text-xs font-mono text-[#53645B] block mt-0.5">Kode: {{ $sppg->code }}</span>
-            <span class="inline-flex items-center gap-1.5 text-[11px] text-[#21684B] font-bold mt-2">
-                <span class="w-1.5 h-1.5 rounded-full bg-[#21684B]" aria-hidden="true"></span>
-                <span>Terhubung Resmi</span>
-            </span>
-        </div>
-
-        <div class="bg-white rounded-xl border border-[#DCE5DD] p-4 subtle-shadow">
-            <span class="text-xs text-[#53645B] block mb-1">Titik Drop-Off & Alamat</span>
-            <p class="text-xs text-[#172923] leading-relaxed">{{ $school->address }}</p>
-            <span class="text-[11px] font-mono text-[#53645B] block mt-1.5">Jenjang Layanan: {{ $school->education_level }}</span>
-        </div>
-    </section>
-
-    <!-- Receipt Workflow Stages (Structured Inspection Protocol) -->
-    <x-card title="Tahapan Serah Terima & Verifikasi Ompreng" subtitle="Alur kerja terstruktur PIC Sekolah saat armada pengantar MBG tiba di lokasi">
-        <div class="space-y-3.5">
-            <!-- Step 1 -->
-            <div class="p-4 rounded-xl border border-[#DCE5DD] bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div class="flex items-start gap-3.5">
-                    <div class="w-8 h-8 rounded-full bg-[#1C6654] text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
-                        1
-                    </div>
-                    <div>
-                        <div class="flex items-center gap-2">
-                            <span class="font-bold text-sm text-[#172923]">Pemeriksaan Fisik & Segel Suhu</span>
-                            <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-[#EDF7F2] text-[#1B573E] border border-[#BCE2D0]">KEDATANGAN</span>
-                        </div>
-                        <p class="text-xs text-[#53645B] mt-1 leading-relaxed">
-                            Pastikan wadah ompreng dalam kondisi tersegel utuh, tutup rapat, dan makanan tiba dalam kondisi hangat (&gt;60°C).
-                        </p>
-                    </div>
+                    <span>Tahapan Serah Terima &amp; Verifikasi Ompreng (SOP Sekolah)</span>
+                </span>
+                <span class="text-[11px] font-semibold text-[#1C6654]">4 Tahap SOP</span>
+            </summary>
+            <div class="sop-disclosure-body grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div class="inset-surface p-3.5 space-y-1">
+                    <span class="font-bold text-[#172923] block">1. Pemeriksaan Fisik &amp; Segel Suhu (Kedatangan)</span>
+                    <p class="text-[#53645B] leading-relaxed">Pastikan wadah ompreng tersegel utuh, tutup rapat, dan makanan tiba dalam kondisi hangat (&gt;60°C).</p>
                 </div>
-                <div class="sm:text-right shrink-0">
-                    <span class="text-xs font-medium text-[#1C6654] bg-[#F5F7F3] px-3 py-1.5 rounded-lg border border-[#DCE5DD] inline-block">
-                        Standar Sanitasi BGN
-                    </span>
+                <div class="inset-surface p-3.5 space-y-1">
+                    <span class="font-bold text-[#172923] block">2. Uji Organoleptik Cepat (Sebelum Makan)</span>
+                    <p class="text-[#53645B] leading-relaxed">Periksa rupa, aroma, tekstur, dan cicipi sampel bila aman sebelum dibagikan ke ruang kelas.</p>
+                </div>
+                <div class="inset-surface p-3.5 space-y-1">
+                    <span class="font-bold text-[#172923] block">3. Rekonsiliasi Porsi &amp; Catatan Deviasi</span>
+                    <p class="text-[#53645B] leading-relaxed">Bandingkan fisik ompreng diterima dengan target porsi dan dokumentasikan jika ada kerusakan.</p>
+                </div>
+                <div class="inset-surface p-3.5 space-y-1">
+                    <span class="font-bold text-[#172923] block">4. Konsolidasi Wadah Kosong untuk Pickup</span>
+                    <p class="text-[#53645B] leading-relaxed">Kumpulkan wadah ompreng yang telah dibilas bersih ke titik serah sekolah untuk diambil kurir SPPG.</p>
                 </div>
             </div>
-
-            <!-- Step 2 -->
-            <div class="p-4 rounded-xl border border-[#DCE5DD] bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div class="flex items-start gap-3.5">
-                    <div class="w-8 h-8 rounded-full bg-[#1C6654] text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
-                        2
-                    </div>
-                    <div>
-                        <div class="flex items-center gap-2">
-                            <span class="font-bold text-sm text-[#172923]">Uji Organoleptik Cepat (Tim 3 Guru)</span>
-                            <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-[#FAF4EB] text-[#885D1C] border border-[#E8D7BE]">SEBELUM MAKAN</span>
-                        </div>
-                        <p class="text-xs text-[#53645B] mt-1 leading-relaxed">
-                            Cicipi sampel acak bersama 3 perwakilan guru/komite untuk memverifikasi aroma, rasa, dan kematangan sebelum dibagikan ke siswa.
-                        </p>
-                    </div>
-                </div>
-                <div class="sm:text-right shrink-0">
-                    <span class="text-xs font-medium text-[#885D1C] bg-[#FAF4EB] px-3 py-1.5 rounded-lg border border-[#E8D7BE] inline-block">
-                        Protokol Pencegahan
-                    </span>
-                </div>
-            </div>
-
-            <!-- Step 3 -->
-            <div class="p-4 rounded-xl border border-[#DCE5DD] bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div class="flex items-start gap-3.5">
-                    <div class="w-8 h-8 rounded-full bg-[#1C6654] text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
-                        3
-                    </div>
-                    <div>
-                        <div class="flex items-center gap-2">
-                            <span class="font-bold text-sm text-[#172923]">Rekonsiliasi Porsi & Catatan Deviasi</span>
-                            <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-[#F2EDF7] text-[#5C3280] border border-[#DFCBEF]">DATA AKHIR</span>
-                        </div>
-                        <p class="text-xs text-[#53645B] mt-1 leading-relaxed">
-                            Bandingkan jumlah fisik ompreng diterima dengan target porsi. Catat jika terdapat ompreng rusak atau kekurangan porsi.
-                        </p>
-                    </div>
-                </div>
-                <div class="sm:text-right shrink-0">
-                    <span class="text-xs font-medium text-[#5C3280] bg-[#F2EDF7] px-3 py-1.5 rounded-lg border border-[#DFCBEF] inline-block">
-                        Pencatatan Selisih
-                    </span>
-                </div>
-            </div>
-
-            <!-- Step 4 -->
-            <div class="p-4 rounded-xl border border-[#DCE5DD] bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div class="flex items-start gap-3.5">
-                    <div class="w-8 h-8 rounded-full bg-[#E5ECE7] text-[#172923] flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
-                        4
-                    </div>
-                    <div>
-                        <div class="flex items-center gap-2">
-                            <span class="font-bold text-sm text-[#172923]">Konsolidasi Wadah Kosong untuk Pickup</span>
-                            <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-[#F5F7F3] text-[#53645B] border border-[#DCE5DD]">PASCA MAKAN</span>
-                        </div>
-                        <p class="text-xs text-[#53645B] mt-1 leading-relaxed">
-                            Kumpulkan wadah ompreng yang telah dibilas bersih ke titik drop-off sekolah untuk diambil kembali oleh armada kurir SPPG.
-                        </p>
-                    </div>
-                </div>
-                <div class="sm:text-right shrink-0">
-                    <span class="text-xs font-medium text-[#53645B] bg-[#F5F7F3] px-3 py-1.5 rounded-lg border border-[#DCE5DD] inline-block">
-                        Logistik Sirkular
-                    </span>
-                </div>
-            </div>
-        <div class="mt-5 p-4 rounded-xl bg-[#EDF7F2] border border-[#BCE2D0] text-[#1B573E] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-                <span class="font-bold text-xs block text-[#172923]">Konfirmasi Kebutuhan Porsi Harian (P02) Aktif</span>
-                <span class="text-xs text-[#53645B] mt-0.5 block">Kirim konfirmasi jumlah siswa hadir dan kebutuhan ompreng H-1 sebelum pukul 16:00 WIB.</span>
-            </div>
-            <a href="{{ route('school.portions.index') }}" 
-               class="min-h-[44px] px-4 py-2 rounded-xl bg-[#1C6654] hover:bg-[#154D40] text-white text-xs font-bold transition-colors inline-flex items-center justify-center gap-2 subtle-shadow shrink-0 focus:outline-none focus:ring-2 focus:ring-[#1C6654] focus:ring-offset-2">
-                <span>Buka Konfirmasi Porsi</span>
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
-                </svg>
-            </a>
-        </div>
-
-        <div class="mt-3 p-4 rounded-xl bg-[#F0F7F4] border border-[#BCE2D0] text-[#1B573E] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-                <span class="font-bold text-xs block text-[#172923]">Penerimaan Makanan & Uji Organoleptik (P04)</span>
-                <span class="text-xs text-[#53645B] mt-0.5 block">Verifikasi porsi fisik ompreng saat armada kurir tiba dan sahkan berita acara serah terima.</span>
-            </div>
-            <a href="{{ route('school.receipts.index') }}" 
-               class="min-h-[44px] px-4 py-2 rounded-xl bg-[#1C6654] hover:bg-[#154D40] text-white text-xs font-bold transition-colors inline-flex items-center justify-center gap-2 subtle-shadow shrink-0 focus:outline-none focus:ring-2 focus:ring-[#1C6654] focus:ring-offset-2">
-                <span>Buka Penerimaan Makanan</span>
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
-                </svg>
-            </a>
-        </div>
-    </x-card>
+        </details>
+    </div>
 </x-app-shell>

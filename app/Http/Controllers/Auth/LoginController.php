@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers\Auth;
 
+use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
+use App\Models\School;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -14,19 +17,47 @@ use Illuminate\View\View;
 class LoginController extends Controller
 {
     /**
+     * Display the operational login workspace with dynamic multi-school PIC presets in dev/testing.
      */
     public function showLoginForm(): View
     {
         $enablePresets = filter_var(env('ENABLE_DEMO_PRESETS', false), FILTER_VALIDATE_BOOLEAN);
         $isProduction = (app()->isProduction() || config('app.env') === 'production') && ! $enablePresets;
-        
+
         $sampleSchoolSlug = null;
+        $publicSchools = collect();
+        $staffPresets = collect();
+        $picPresets = collect();
+
         try {
-            $sampleSchoolSlug = \App\Models\School::query()
+            $publicSchools = School::query()
                 ->where('is_active', true)
                 ->whereNotNull('public_slug')
                 ->orderBy('id')
-                ->value('public_slug');
+                ->get(['id', 'name', 'school_code', 'education_level', 'public_slug']);
+
+            $sampleSchoolSlug = $publicSchools->first()?->public_slug;
+
+            if (! $isProduction) {
+                $staffPresets = User::query()
+                    ->where('is_active', true)
+                    ->whereIn('role', [
+                        UserRole::KEPALA_SPPG->value,
+                        UserRole::PENGAWAS_GIZI->value,
+                        UserRole::ASISTEN_LAPANGAN->value,
+                        UserRole::KURIR->value,
+                    ])
+                    ->orderBy('id')
+                    ->get(['id', 'name', 'email', 'role', 'sppg_id']);
+
+                $picPresets = User::query()
+                    ->where('is_active', true)
+                    ->where('role', UserRole::PIC_SEKOLAH->value)
+                    ->with('school:id,name,school_code,education_level')
+                    ->orderBy('school_id')
+                    ->orderBy('id')
+                    ->get(['id', 'name', 'email', 'role', 'school_id']);
+            }
         } catch (\Throwable) {
             $sampleSchoolSlug = null;
         }
@@ -34,6 +65,9 @@ class LoginController extends Controller
         return view('auth.login', [
             'isProduction' => $isProduction,
             'sampleSchoolSlug' => $sampleSchoolSlug,
+            'publicSchools' => $publicSchools,
+            'staffPresets' => $staffPresets,
+            'picPresets' => $picPresets,
         ]);
     }
 
@@ -73,7 +107,6 @@ class LoginController extends Controller
 
         $user = Auth::user();
 
-        // Enforce account active status
         if (! $user->is_active) {
             Auth::logout();
             $request->session()->invalidate();
@@ -84,14 +117,12 @@ class LoginController extends Controller
             ]);
         }
 
-        // Record last login timestamp
         $user->forceFill([
             'last_login_at' => now(),
         ])->save();
 
         $request->session()->regenerate();
 
-        // Role-based automatic dispatch
         $targetRoute = $user->role ? $user->role->dashboardRoute() : 'login';
 
         return redirect()->intended(route($targetRoute));
