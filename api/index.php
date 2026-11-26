@@ -24,10 +24,14 @@ if (!file_exists($tmpDb) && file_exists($templateDb)) {
     @touch($tmpDb);
 }
 
-// 3. Force HTTPS environment flags for Vercel edge/proxy routing
+// 3. Force HTTPS environment flags for Vercel edge/proxy routing and normalize script path
+// so Symfony Request::prepareBaseUrl() never strips '/public' on /public/* routes.
 $_SERVER['HTTPS'] = 'on';
 $_SERVER['SERVER_PORT'] = 443;
 $_SERVER['HTTP_X_FORWARDED_PROTO'] = 'https';
+$_SERVER['SCRIPT_NAME'] = '/index.php';
+$_SERVER['PHP_SELF'] = '/index.php';
+$_SERVER['SCRIPT_FILENAME'] = __DIR__ . '/../public/index.php';
 
 // 4. Delegate request to Laravel public entrypoint
 require __DIR__ . '/../public/index.php';
