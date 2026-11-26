@@ -18,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \App\Http\Middleware\EnsureUserHasRole::class,
         ]);
         $middleware->appendToGroup('web', [
+            \App\Http\Middleware\AutoPurgeCacheMiddleware::class,
             \App\Http\Middleware\EnsureUserIsActive::class,
         ]);
     })
