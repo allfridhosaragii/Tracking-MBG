@@ -105,31 +105,31 @@
 
         <div class="flex-1 flex flex-col lg:flex-row min-h-0">
             <!-- Desktop Left Editorial Navigation Rail (>= 1024px) -->
-            <aside aria-label="Navigasi Samping Desktop" class="hidden lg:flex lg:flex-col lg:w-[264px] lg:shrink-0 bg-white border-r border-[#DCE5DD] lg:sticky lg:top-7 lg:h-[calc(100vh-1.75rem)]">
+            <aside aria-label="Navigasi Samping Desktop" class="hidden lg:flex lg:flex-col lg:w-[272px] lg:shrink-0 bg-white border-r border-[#DCE5DD] lg:sticky lg:top-7 lg:h-[calc(100vh-1.75rem)] shadow-xs">
                 <!-- Brand & Unit Lockup -->
-                <div class="px-5 py-5 border-b border-[#E7ECE8]">
-                    <a href="{{ route('home') }}" class="flex items-center gap-3 group rounded-xl p-1 -m-1">
-                        <div class="w-9 h-9 rounded-xl bg-[#1C6654] text-white flex items-center justify-center font-bold text-sm tracking-tight group-hover:bg-[#164D42] smooth-transition shrink-0">
+                <div class="px-6 py-5 border-b border-[#E7ECE8]">
+                    <a href="{{ route('home') }}" class="flex items-center gap-3.5 group rounded-xl p-1 -m-1">
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1C6654] to-[#123B33] text-white flex items-center justify-center font-bold text-base tracking-tight shadow-sm group-hover:scale-105 smooth-transition shrink-0">
                             M
                         </div>
                         <div class="min-w-0">
-                            <span class="text-[15px] font-bold tracking-tight text-[#172923] block leading-tight">MBG-Track</span>
+                            <span class="text-base font-bold tracking-tight text-[#172923] block leading-tight">MBG-Track</span>
                             <span class="text-[11px] font-medium text-[#53645B] block truncate mt-0.5" title="{{ $unitName }}">{{ $unitCode }}</span>
                         </div>
                     </a>
                 </div>
 
                 <!-- Vertical Navigation Links (Zero Text Wrapping) -->
-                <nav aria-label="Navigasi Utama" class="flex-1 overflow-y-auto px-3.5 py-4 space-y-5">
+                <nav aria-label="Navigasi Utama" class="flex-1 overflow-y-auto px-4 py-5 space-y-6">
                     <div>
-                        <span class="px-2.5 text-[10px] font-bold uppercase tracking-widest text-[#53645B] block mb-2">Alur Utama</span>
-                        <div class="space-y-1">
+                        <span class="px-2.5 text-[10px] font-bold uppercase tracking-widest text-[#53645B] block mb-2.5">Alur Operasional</span>
+                        <div class="space-y-1.5">
                             @foreach ($primaryNav as $item)
                                 @php $isActive = request()->routeIs(...$item['active']); @endphp
                                 <a href="{{ route($item['route']) }}"
                                    @if($isActive) aria-current="page" @endif
-                                   class="min-h-[44px] px-3 py-2 rounded-xl flex items-center gap-3 text-[13px] font-semibold smooth-transition {{ $isActive ? 'bg-[#EDF7F2] text-[#1C6654] border border-[#BCE2D0]/80' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3] border border-transparent' }}">
-                                    <svg class="w-[18px] h-[18px] shrink-0 {{ $isActive ? 'text-[#1C6654]' : 'text-[#53645B]' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                   class="min-h-[44px] px-3.5 py-2.5 rounded-xl flex items-center gap-3 text-[13px] font-semibold smooth-transition {{ $isActive ? 'bg-[#1C6654] text-white shadow-sm' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
+                                    <svg class="w-[18px] h-[18px] shrink-0 {{ $isActive ? 'text-white' : 'text-[#53645B]' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="{{ $item['icon'] }}"/>
                                     </svg>
                                     <span class="truncate">{{ $item['fullLabel'] }}</span>
@@ -140,14 +140,14 @@
 
                     @if (count($secondaryNav) > 0)
                         <div>
-                            <span class="px-2.5 text-[10px] font-bold uppercase tracking-widest text-[#53645B] block mb-2">Tata Kelola &amp; Kendala</span>
-                            <div class="space-y-1">
+                            <span class="px-2.5 text-[10px] font-bold uppercase tracking-widest text-[#53645B] block mb-2.5">Tata Kelola &amp; Kendala</span>
+                            <div class="space-y-1.5">
                                 @foreach ($secondaryNav as $item)
                                     @php $isActive = request()->routeIs(...$item['active']); @endphp
                                     <a href="{{ route($item['route']) }}"
                                        @if($isActive) aria-current="page" @endif
-                                       class="min-h-[44px] px-3 py-2 rounded-xl flex items-center gap-3 text-[13px] font-semibold smooth-transition {{ $isActive ? 'bg-[#EDF7F2] text-[#1C6654] border border-[#BCE2D0]/80' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3] border border-transparent' }}">
-                                        <svg class="w-[18px] h-[18px] shrink-0 {{ $isActive ? 'text-[#1C6654]' : 'text-[#53645B]' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                       class="min-h-[44px] px-3.5 py-2.5 rounded-xl flex items-center gap-3 text-[13px] font-semibold smooth-transition {{ $isActive ? 'bg-[#1C6654] text-white shadow-sm' : 'text-[#53645B] hover:text-[#172923] hover:bg-[#F5F7F3]' }}">
+                                        <svg class="w-[18px] h-[18px] shrink-0 {{ $isActive ? 'text-white' : 'text-[#53645B]' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="{{ $item['icon'] }}"/>
                                         </svg>
                                         <span class="truncate">{{ $item['fullLabel'] }}</span>

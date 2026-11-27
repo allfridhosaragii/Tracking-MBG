@@ -1,16 +1,19 @@
 <x-app-shell title="Briefing Operasional">
     <div class="space-y-6">
         <!-- Minimalist First-Fold Header -->
-        <header class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 pb-4 border-b border-[#DCE5DD]">
+        <header class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 pb-5 border-b border-[#DCE5DD]">
             <div>
-                <span class="eyebrow-label text-[#1C6654] block mb-1">Kepala SPPG • {{ $sppg->code }}</span>
-                <h1 class="page-title">{{ $sppg->name }}</h1>
-                <p class="text-xs sm:text-sm text-[#53645B] mt-1">Ringkasan kapasitas layanan, kesiapan produksi harian, dan cakupan sekolah binaan.</p>
+                <div class="flex items-center gap-2 mb-1.5">
+                    <span class="px-2.5 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider bg-[#EDF7F2] text-[#1C6654] border border-[#BCE2D0]">SPPG Active Unit</span>
+                    <span class="text-xs font-mono text-[#53645B]">{{ $sppg->code }}</span>
+                </div>
+                <h1 class="text-2xl sm:text-3xl font-bold text-[#172923] tracking-tight">{{ $sppg->name }}</h1>
+                <p class="text-xs sm:text-sm text-[#53645B] mt-1 max-w-xl">Pusat kendali operasional harian, pemantauan kapasitas porsi, dan koordinasi distribusi sekolah binaan.</p>
             </div>
 
             <div class="flex flex-wrap items-center gap-2.5 shrink-0">
                 <a href="{{ route('head.production.index') }}"
-                   class="min-h-[44px] px-4 py-2.5 rounded-xl bg-[#1C6654] hover:bg-[#164D42] text-white text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-2 smooth-transition">
+                   class="min-h-[44px] px-4 py-2.5 rounded-xl bg-[#1C6654] hover:bg-[#164D42] text-white text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-2 smooth-transition shadow-sm">
                     <span>Rencana Produksi</span>
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
